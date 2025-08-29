@@ -9,7 +9,7 @@ function MicMatrixView({ currentShowId, sketches = [], people = [], shows = [], 
     .filter((sk) => sk && sk.kind !== "break" && sk.kind !== "waerse")
     .sort((a, b) => (a.order || 0) - (b.order || 0));
 
-  // Per-show aantallen (defaults = 0, geen crash als veld nog niet bestaat)
+  // Per-show aantallen (defaults = 0)
   const headsetCount = Number.isInteger(show?.headsetCount) ? show.headsetCount : 0;
   const handheldCount = Number.isInteger(show?.handheldCount) ? show.handheldCount : 0;
 
@@ -26,7 +26,6 @@ function MicMatrixView({ currentShowId, sketches = [], people = [], shows = [], 
 
   // ===== Helpers =====
   const eligibleForSketch = (sk) => {
-    // spelers uit rollen met needsMic = true
     const ids = (sk.roles || [])
       .filter((r) => r && r.needsMic && r.personId)
       .map((r) => r.personId);
@@ -37,9 +36,15 @@ function MicMatrixView({ currentShowId, sketches = [], people = [], shows = [], 
   };
 
   const rowComplete = (sk) => {
-    if (!channels.length) return false;
-    const a = sk.micAssignments || {};
-    return channels.every((ch) => !!a[ch.key]);
+    const requiredIds = new Set(
+      (sk.roles || [])
+        .filter((r) => r && r.needsMic && r.personId)
+        .map((r) => r.personId)
+    );
+    if (requiredIds.size === 0) return false;
+
+    const assignedIds = new Set(Object.values(sk.micAssignments || {}).filter(Boolean));
+    return [...requiredIds].every((id) => assignedIds.has(id));
   };
 
   // ===== Mutators =====
@@ -58,17 +63,11 @@ function MicMatrixView({ currentShowId, sketches = [], people = [], shows = [], 
 
       return {
         ...prev,
-        // show-velden bijwerken
         shows: (prev.shows || []).map((s) =>
           s.id === show.id
-            ? {
-                ...s,
-                headsetCount: nextHeadsets,
-                handheldCount: nextHandhelds,
-              }
+            ? { ...s, headsetCount: nextHeadsets, handheldCount: nextHandhelds }
             : s
         ),
-        // assignments trimmen naar toegestane kanalen
         sketches: (prev.sketches || []).map((sk) => {
           if (sk.showId !== show.id) return sk;
           const a = sk.micAssignments || {};
@@ -85,13 +84,12 @@ function MicMatrixView({ currentShowId, sketches = [], people = [], shows = [], 
         if (sk.id !== sketchId) return sk;
         const a = { ...(sk.micAssignments || {}) };
 
-        // Regel: dezelfde persoon mag in dezelfde sketch niet meerdere mics
+        // Safety: geen dubbele mics voor 1 speler
         if (personId) {
-          const already = Object.entries(a).find(([k, v]) => v === personId && k !== channelKey);
-          if (already) {
-            alert("Deze speler heeft in deze sketch al een microfoon. Kies iemand anders.");
-            return sk;
-          }
+          const already = Object.entries(a).some(
+            ([k, v]) => k !== channelKey && v === personId
+          );
+          if (already) return sk;
         }
 
         if (!personId) delete a[channelKey];
@@ -168,15 +166,36 @@ function MicMatrixView({ currentShowId, sketches = [], people = [], shows = [], 
                       {channels.map((ch) => {
                         const a = sk.micAssignments || {};
                         const value = a[ch.key] || "";
+
+                        // spelers die al op andere mic zitten in deze sketch
+                        const assignedOther = new Set(
+                          Object.entries(a)
+                            .filter(([k, v]) => k !== ch.key && v)
+                            .map(([, v]) => v)
+                        );
+
+                        // filter kandidaten
+                        const options = candidates.filter(
+                          (p) => p.id === value || !assignedOther.has(p.id)
+                        );
+
+                        // disable lege selects als rij groen is
+                        const disabledEmpty = !value && rowOk;
+                        const selectClass = `rounded border px-2 py-1 w-full ${
+                          disabledEmpty ? "bg-gray-100 text-gray-400" : ""
+                        }`;
+
                         return (
                           <td key={ch.key} className="border px-2 py-1">
                             <select
-                              className="rounded border px-2 py-1 w-full"
+                              className={selectClass}
                               value={value}
                               onChange={(e) => setAssignment(sk.id, ch.key, e.target.value)}
+                              disabled={disabledEmpty}
+                              title={disabledEmpty ? "Niet nodig in deze sketch" : ""}
                             >
                               <option value="">— kies speler —</option>
-                              {candidates.map((p) => (
+                              {options.map((p) => (
                                 <option key={p.id} value={p.id}>
                                   {(p.firstName || "") + " " + (p.lastName || "")}
                                 </option>
@@ -206,7 +225,7 @@ function MicMatrixView({ currentShowId, sketches = [], people = [], shows = [], 
           <div className="mt-3 text-xs text-gray-600">
             <div>
               <span className="inline-block w-3 h-3 align-middle mr-1 bg-green-200 border"></span>
-              Rij groen = alle microfoons in die sketch zijn toegewezen.
+              Rij groen = alle spelers met mic zijn toegewezen.
             </div>
             <div>
               <span className="inline-block w-3 h-3 align-middle mr-1 bg-red-200 border"></span>
