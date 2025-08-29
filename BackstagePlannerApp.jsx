@@ -75,7 +75,20 @@ function App() {
   const restoreVersion = (id) => { const v = versions.find((x)=>x.id===id); if (!v) return; pushHistory(state); applyState(v.data); };
   const deleteVersion = (id) => { const next = versions.filter((v)=>v.id!==id); setVersions(next); localStorage.setItem(`${STORAGE_KEY}:versions`, JSON.stringify(next)); };
 
-  React.useEffect(() => saveState(state), [state]);
+// Bij eerste keer laden: haal data uit Supabase
+React.useEffect(() => {
+  (async () => {
+    const remote = await loadState();
+    if (remote) setState(remote);
+  })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, []);
+
+// Elke keer dat state verandert: bewaar in Supabase (met kleine vertraging)
+React.useEffect(() => {
+  const t = setTimeout(() => { saveStateRemote(state); }, 500);
+  return () => clearTimeout(t);
+}, [state]);
 
   // ---- View link per tab (hash) ----
   React.useEffect(()=>{ const fromHash = new URLSearchParams((location.hash||'').replace('#','')).get('tab'); if (fromHash) setTab(fromHash); },[]);
