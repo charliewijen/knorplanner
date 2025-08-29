@@ -1,3 +1,4 @@
+
 const PlannerMinimal = ({ state, setState, activeShowId, setActiveShowId }) => {
   const activeShow = state.shows.find((s)=>s.id===activeShowId) || state.shows[0];
   const showSketches = (state.sketches||[]).filter((s)=>s.showId===activeShow?.id).sort((a,b)=>(a.order||0)-(b.order||0));
