@@ -5,7 +5,8 @@ function PlannerMinimal({ state, setState, activeShowId, setActiveShowId }) {
     (a, b) => (a.order || 0) - (b.order || 0)
   );
 
-  const addSketch = () =>
+  const addSketch = () => {
+    if (!activeShow) return;
     setState((prev) => {
       const newSketch = {
         id: uid(),
@@ -21,7 +22,6 @@ function PlannerMinimal({ state, setState, activeShowId, setActiveShowId }) {
         costumes: [],
         attachments: [],
       };
-
       return {
         ...prev,
         shows: prev.shows.map((s) =>
@@ -31,6 +31,7 @@ function PlannerMinimal({ state, setState, activeShowId, setActiveShowId }) {
         ),
       };
     });
+  };
 
   const updateSketch = (id, u) =>
     setState((prev) => ({
@@ -60,7 +61,6 @@ function PlannerMinimal({ state, setState, activeShowId, setActiveShowId }) {
       ),
     }));
 
-  // Nieuwe show aanmaken
   const addShow = () => {
     const newId = uid();
     const newShow = {
@@ -73,12 +73,36 @@ function PlannerMinimal({ state, setState, activeShowId, setActiveShowId }) {
       sketches: [],
       rehearsals: [],
     };
-
     setState((prev) => ({
       ...prev,
       shows: [...prev.shows, newShow],
     }));
     setActiveShowId(newId);
+  };
+
+  const updateShow = (updates) => {
+    if (!activeShow) return;
+    setState((prev) => ({
+      ...prev,
+      shows: prev.shows.map((s) =>
+        s.id === activeShow.id ? { ...s, ...updates } : s
+      ),
+    }));
+  };
+
+  const removeShow = () => {
+    if (!activeShow) return;
+    setState((prev) => {
+      if (prev.shows.length <= 1) return prev; // minimaal 1 show houden
+      const filtered = prev.shows.filter((s) => s.id !== activeShow.id);
+      return {
+        ...prev,
+        shows: filtered,
+      };
+    });
+    // nieuwe actieve show pakken (eerste in lijst)
+    const firstRemaining = state.shows.find((s) => s.id !== activeShow.id);
+    if (firstRemaining) setActiveShowId(firstRemaining.id);
   };
 
   return (
@@ -97,12 +121,37 @@ function PlannerMinimal({ state, setState, activeShowId, setActiveShowId }) {
           ))}
         </select>
 
-        <button
-          className="mt-3 rounded-xl border px-3 py-2 bg-gray-100 hover:bg-gray-200 w-full"
-          onClick={addShow}
-        >
-          + Nieuwe show
-        </button>
+        {activeShow && (
+          <div className="mt-3 space-y-2">
+            <input
+              className="rounded border px-2 py-1 w-full"
+              value={activeShow.name}
+              onChange={(e) => updateShow({ name: e.target.value })}
+              placeholder="Naam van de show"
+            />
+            <input
+              className="rounded border px-2 py-1 w-full"
+              type="date"
+              value={activeShow.date}
+              onChange={(e) => updateShow({ date: e.target.value })}
+            />
+            <div className="flex gap-2">
+              <button
+                className="flex-1 rounded-xl border px-3 py-2 bg-gray-100 hover:bg-gray-200"
+                onClick={addShow}
+              >
+                + Nieuwe show
+              </button>
+              <button
+                className="flex-1 rounded-xl border px-3 py-2 bg-red-100 hover:bg-red-200 text-red-700"
+                onClick={removeShow}
+                disabled={state.shows.length <= 1}
+              >
+                🗑️ Verwijder
+              </button>
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="md:col-span-2 rounded-2xl border p-4">
