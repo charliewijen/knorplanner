@@ -1,47 +1,129 @@
-
-const ScriptsView = ({ sketches = [], onUpdate }) => {
-  const ordered = [...sketches].sort((a,b)=>(a.order||0)-(b.order||0));
+function ScriptsView({ sketches = [], onUpdate, people = [] }) {
+  const ordered = [...sketches].sort((a, b) => (a.order || 0) - (b.order || 0));
   const [sel, setSel] = React.useState(ordered[0]?.id);
   const active = ordered.find((s) => s.id === sel);
-  const attachments = active?.attachments || [];
 
-  const addAttachment = () => onUpdate(active.id, { attachments: [...attachments, { id: uid(), label: "", url: "", type: "link" }] });
-  const updateAttachment = (idx, u) => onUpdate(active.id, { attachments: attachments.map((a,i)=> i===idx?{...a,...u}:a) });
-  const removeAttachment = (idx) => onUpdate(active.id, { attachments: attachments.filter((_,i)=> i!==idx) });
+  if (!active) {
+    return <div className="text-sm text-gray-500">Geen sketch geselecteerd</div>;
+  }
+
+  // Helpers
+  const update = (patch) => onUpdate(active.id, { ...active, ...patch });
+
+  // Rollen
+  const roles = active.roles || [];
+  const updateRole = (idx, patch) =>
+    update({ roles: roles.map((r, i) => (i === idx ? { ...r, ...patch } : r)) });
+  const addRoles = (count) => {
+    const newRoles = Array.from({ length: count }, (_, i) => ({
+      name: `Rol ${i + 1}`,
+      personId: "",
+    }));
+    update({ roles: newRoles });
+  };
 
   return (
     <div className="rounded-2xl border p-4">
-      <h2 className="mb-3 text-lg font-semibold">Scripts & bestanden</h2>
-      <div className="flex gap-2 mb-3 items-center">
-        <select className="rounded border px-3 py-2" value={sel} onChange={(e) => setSel(e.target.value)}>
-          {ordered.map((s) => <option key={s.id} value={s.id}>{`#${s.order||"?"} ${s.title}`}</option>)}
-        </select>
-        {active && <button className="rounded-xl border px-3 py-2" onClick={()=>window.print()}>Print</button>}
+      {/* Header met titel + duur */}
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-xl font-bold">{active.title}</h2>
+        <span className="text-gray-600">{active.durationMin || 0} min</span>
       </div>
-      {active ? (
-        <>
-          <textarea className="w-full h-96 border rounded p-2" value={active.script || ""} onChange={(e) => onUpdate(active.id, { script: e.target.value })} placeholder="Plak hier de volledige tekst" />
-          <div className="mt-4 rounded-xl border p-3">
-            <div className="mb-2 flex items-center justify-between"><h3 className="font-semibold">Bestanden/links per sketch</h3><button className="rounded-xl border px-3 py-2" onClick={addAttachment}>+ Link/Bestand</button></div>
-            {(attachments.length===0) && <div className="text-sm text-gray-500">Nog geen items.</div>}
-            {attachments.map((a, idx)=> (
-              <div key={a.id} className="mb-2 grid grid-cols-12 gap-2 items-center">
-                <select className="col-span-2 rounded border px-2 py-1" value={a.type} onChange={(e)=>updateAttachment(idx,{type:e.target.value})}>
-                  <option value="link">link</option>
-                  <option value="video">video</option>
-                  <option value="doc">doc</option>
-                  <option value="audio">audio</option>
-                </select>
-                <input className="col-span-4 rounded border px-2 py-1" placeholder="Label" value={a.label} onChange={(e)=>updateAttachment(idx,{label:e.target.value})} />
-                <input className="col-span-5 rounded border px-2 py-1" placeholder="URL (https://...)" value={a.url} onChange={(e)=>updateAttachment(idx,{url:e.target.value})} />
-                <button className="col-span-1 rounded border px-2 py-1" onClick={()=>removeAttachment(idx)}>x</button>
-              </div>
-            ))}
+
+      {/* Locatiekeuze */}
+      <div className="mb-3">
+        <label className="text-sm block">Locatie</label>
+        <select
+          className="rounded border px-3 py-2"
+          value={active.stagePlace || "podium"}
+          onChange={(e) => update({ stagePlace: e.target.value })}
+        >
+          <option value="podium">Podium</option>
+          <option value="voorgordijn">Voor de gordijn</option>
+        </select>
+      </div>
+
+      {/* Rollen */}
+      <div className="mb-3">
+        <label className="text-sm block">Aantal rollen</label>
+        <input
+          type="number"
+          min={0}
+          className="rounded border px-3 py-2 w-24"
+          value={roles.length}
+          onChange={(e) => addRoles(parseInt(e.target.value || 0, 10))}
+        />
+      </div>
+      <div className="space-y-2 mb-4">
+        {roles.map((r, idx) => (
+          <div key={idx} className="flex gap-2 items-center">
+            <input
+              className="flex-1 rounded border px-2 py-1"
+              placeholder="Naam van de rol"
+              value={r.name}
+              onChange={(e) => updateRole(idx, { name: e.target.value })}
+            />
+            <select
+              className="rounded border px-2 py-1"
+              value={r.personId}
+              onChange={(e) => updateRole(idx, { personId: e.target.value })}
+            >
+              <option value="">— kies speler —</option>
+              {people.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.firstName} {p.lastName}
+                </option>
+              ))}
+            </select>
           </div>
-        </>
-      ) : (
-        <div className="text-sm text-gray-500">Geen sketch geselecteerd</div>
-      )}
+        ))}
+      </div>
+
+      {/* Vaste links */}
+      <div className="mb-4 space-y-2">
+        <div>
+          <label className="text-sm block">Link naar tekst</label>
+          <input
+            className="w-full rounded border px-2 py-1"
+            value={active.linkText || ""}
+            onChange={(e) => update({ linkText: e.target.value })}
+            placeholder="https://..."
+          />
+        </div>
+        <div>
+          <label className="text-sm block">Link naar licht/geluid schema</label>
+          <input
+            className="w-full rounded border px-2 py-1"
+            value={active.linkTech || ""}
+            onChange={(e) => update({ linkTech: e.target.value })}
+            placeholder="https://..."
+          />
+        </div>
+      </div>
+
+      {/* Extra sectie voor geluiden/muziek */}
+      <div className="mb-4">
+        <label className="text-sm font-semibold block mb-1">Geluiden en muziek</label>
+        <textarea
+          className="w-full rounded border px-2 py-1"
+          rows={3}
+          value={active.sounds || ""}
+          onChange={(e) => update({ sounds: e.target.value })}
+          placeholder="Beschrijf of plak links naar geluiden/muziek"
+        />
+      </div>
+
+      {/* Decor beschrijving */}
+      <div className="mb-4">
+        <label className="text-sm font-semibold block mb-1">Decor</label>
+        <textarea
+          className="w-full rounded border px-2 py-1"
+          rows={3}
+          value={active.decor || ""}
+          onChange={(e) => update({ decor: e.target.value })}
+          placeholder="Beschrijving van decor en decorstukken"
+        />
+      </div>
     </div>
   );
-};
+}
