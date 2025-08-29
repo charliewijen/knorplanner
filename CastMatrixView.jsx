@@ -13,10 +13,11 @@ const CastMatrixView = ({ sketches, people, setState }) => {
       lastName: lastName.trim(),
       role,
     };
-    setState(prev => ({
-      ...prev,
-      people: [...prev.people, newPerson],
-    }));
+    setState((prev) => ({
+  ...prev,
+  people: [...prev.people, newPerson],
+}));
+
     setFirstName("");
     setLastName("");
     setRole("Speler");
