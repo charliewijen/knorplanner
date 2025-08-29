@@ -18,6 +18,23 @@
     );
   </script>
   <script src="https://cdn.tailwindcss.com"></script>
+  
+<style>
+  @media print {
+    /* verberg alles standaard */
+    body * { visibility: hidden !important; }
+    /* toon alleen programma */
+    #print-program, #print-program * { visibility: visible !important; }
+    /* laat het blok netjes bovenaan staan */
+    #print-program { position: absolute; inset: 0 auto auto 0; width: 100%; }
+    /* verberg sticky topbar en floating tools */
+    header, .fixed { display: none !important; }
+    /* verwijder randen/achtergrond voor print */
+    #print-program { box-shadow: none !important; border: none !important; }
+  }
+</style>
+
+  
 </head>
 <body class="bg-white text-gray-900">
   <div id="root"></div>
