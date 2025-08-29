@@ -3,9 +3,32 @@ function ScriptsView({ sketches = [], onUpdate, people = [] }) {
   const [sel, setSel] = React.useState(ordered[0]?.id);
   const active = ordered.find((s) => s.id === sel);
 
-  if (!active) {
-    return <div className="text-sm text-gray-500">Geen sketch geselecteerd</div>;
-  }
+  return (
+  <div className="rounded-2xl border p-4">
+    {/* Sketch selector */}
+    <div className="flex gap-2 mb-3 items-center">
+      <select
+        className="rounded border px-3 py-2"
+        value={sel}
+        onChange={(e) => setSel(e.target.value)}
+      >
+        {ordered.map((s) => (
+          <option key={s.id} value={s.id}>
+            #{s.order || "?"} {s.title}
+          </option>
+        ))}
+      </select>
+    </div>
+
+    {!active ? (
+      <div className="text-sm text-gray-500">Geen sketch geselecteerd</div>
+    ) : (
+      <>
+        {/* Hier komt de rest (titel, duur, locatie, rollen, links, geluid, decor) */}
+      </>
+    )}
+  </div>
+);
 
   // Helpers
   const update = (patch) => onUpdate(active.id, { ...active, ...patch });
@@ -57,25 +80,34 @@ function ScriptsView({ sketches = [], onUpdate, people = [] }) {
       <div className="space-y-2 mb-4">
         {roles.map((r, idx) => (
           <div key={idx} className="flex gap-2 items-center">
-            <input
-              className="flex-1 rounded border px-2 py-1"
-              placeholder="Naam van de rol"
-              value={r.name}
-              onChange={(e) => updateRole(idx, { name: e.target.value })}
-            />
-            <select
-              className="rounded border px-2 py-1"
-              value={r.personId}
-              onChange={(e) => updateRole(idx, { personId: e.target.value })}
-            >
-              <option value="">— kies speler —</option>
-              {people.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.firstName} {p.lastName}
-                </option>
-              ))}
-            </select>
-          </div>
+  <input
+    className="flex-1 rounded border px-2 py-1"
+    placeholder="Naam van de rol"
+    value={r.name}
+    onChange={(e) => updateRole(idx, { name: e.target.value })}
+  />
+  <select
+    className="rounded border px-2 py-1"
+    value={r.personId}
+    onChange={(e) => updateRole(idx, { personId: e.target.value })}
+  >
+    <option value="">— kies speler —</option>
+    {people.map((p) => (
+      <option key={p.id} value={p.id}>
+        {p.firstName} {p.lastName}
+      </option>
+    ))}
+  </select>
+  <label className="flex items-center gap-1 text-sm">
+    <input
+      type="checkbox"
+      checked={!!r.needsMic}
+      onChange={(e) => updateRole(idx, { needsMic: e.target.checked })}
+    />
+    Mic
+  </label>
+</div>
+
         ))}
       </div>
 
