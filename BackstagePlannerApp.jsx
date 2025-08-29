@@ -45,12 +45,30 @@ const todayStr = () => new Date().toISOString().slice(0, 10);
 const newEmptyShow = () => ({ id: uid(), name: "Nieuwe show", date: todayStr(), startTime: "19:30" });
 function withDefaults(s = {}) {
   return {
+    // Root-model met showId op items
     people: Array.isArray(s.people) ? s.people : [],
     mics: Array.isArray(s.mics) ? s.mics : [],
     shows: Array.isArray(s.shows) && s.shows.length ? s.shows : [newEmptyShow()],
     sketches: Array.isArray(s.sketches) ? s.sketches : [],
     rehearsals: Array.isArray(s.rehearsals) ? s.rehearsals : [],
   };
+}
+
+// ---------- ErrorBoundary voor tabs ----------
+class TabErrorBoundary extends React.Component {
+  constructor(props){ super(props); this.state={hasError:false, err:null}; }
+  static getDerivedStateFromError(err){ return {hasError:true, err}; }
+  componentDidCatch(err, info){ console.error("Tab crash:", err, info); }
+  render(){
+    if(this.state.hasError){
+      return (
+        <div className="rounded-xl border p-3 bg-red-50 text-red-700 text-sm">
+          Deze pagina kon niet laden. Open de console voor details. Probeer te verversen.
+        </div>
+      );
+    }
+    return this.props.children;
+  }
 }
 
 // ---------- Root Component ----------
@@ -76,15 +94,27 @@ function App() {
   const restoreVersion = (id) => { const v = versions.find((x)=>x.id===id); if (!v) return; pushHistory(state); applyState(v.data); };
   const deleteVersion = (id) => { const next = versions.filter((v)=>v.id!==id); setVersions(next); localStorage.setItem(`sll-backstage-v2:versions`, JSON.stringify(next)); };
 
-  // Bij eerste keer laden uit Supabase
+  // Bij eerste keer laden uit Supabase + eenvoudige migratie naar root+showId
   React.useEffect(() => {
     (async () => {
       const remote = await loadState();
       const merged = withDefaults(remote || {});
-      setState(merged);
+      const firstShowId = merged.shows[0]?.id;
+
+      // MIGRATIE: als items geen showId hebben, zet ze op eerste show
+      const fix = (arr=[]) => arr.map(x => x && (x.showId ? x : { ...x, showId: firstShowId }));
+      const migrated = {
+        ...merged,
+        sketches: fix(merged.sketches),
+        people: fix(merged.people),
+        mics: fix(merged.mics),
+        rehearsals: fix(merged.rehearsals),
+      };
+
+      setState(migrated);
       setActiveShowId((prev) => {
-        if (prev && merged.shows.some(s => s.id === prev)) return prev;
-        return merged.shows[0]?.id || null;
+        if (prev && migrated.shows.some(s => s.id === prev)) return prev;
+        return migrated.shows[0]?.id || null;
       });
     })();
   }, []);
@@ -113,25 +143,69 @@ function App() {
     return found || arr[0] || null;
   }, [state.shows, activeShowId]);
 
+  // Filter per showId (root-model)
   const showSketches = React.useMemo(() => {
     if (!activeShow) return [];
     const all = Array.isArray(state.sketches) ? state.sketches : [];
     return all.filter(sk => sk.showId === activeShow.id).sort((a,b)=>(a.order||0)-(b.order||0));
   }, [state.sketches, activeShow]);
 
-  const micById = Object.fromEntries((state.mics || []).map((m) => [m.id, m]));
-  const personById = Object.fromEntries((state.people || []).map((p) => [p.id, p]));
+  const showPeople = React.useMemo(() => {
+    if (!activeShow) return [];
+    return (state.people || []).filter(p => p.showId === activeShow.id);
+  }, [state.people, activeShow]);
+
+  const showMics = React.useMemo(() => {
+    if (!activeShow) return [];
+    return (state.mics || []).filter(m => m.showId === activeShow.id);
+  }, [state.mics, activeShow]);
+
+  const showRehearsals = React.useMemo(() => {
+    if (!activeShow) return [];
+    return (state.rehearsals || []).filter(r => r.showId === activeShow.id);
+  }, [state.rehearsals, activeShow]);
+
+  const micById = Object.fromEntries(showMics.map((m) => [m.id, m]));
+  const personById = Object.fromEntries(showPeople.map((p) => [p.id, p]));
   const runSheet = React.useMemo(() => activeShow ? buildRunSheet(activeShow, showSketches) : {items:[],totalMin:0}, [activeShow, showSketches]);
   const micWarnings = React.useMemo(() => detectMicConflicts(showSketches), [showSketches]);
   const castWarnings = React.useMemo(() => detectCastConflicts(showSketches), [showSketches]);
 
   // ---------- Rehearsal handlers ----------
-  const addRehearsal = () => { pushHistory(state); setState((prev) => ({ ...prev, rehearsals: [...(prev.rehearsals || []), { id: uid(), date: todayStr(), location: "", comments: "", absentees: [] }] })); };
-  const updateRehearsal = (id, updates) => { pushHistory(state); setState((prev) => ({ ...prev, rehearsals: prev.rehearsals.map((r) => (r.id === id ? { ...r, ...updates } : r)) })); };
-  const removeRehearsal = (id) => { pushHistory(state); setState((prev) => ({ ...prev, rehearsals: prev.rehearsals.filter((r) => r.id !== id) })); };
+  const addRehearsal = () => {
+    if (!activeShow) return;
+    pushHistory(state);
+    setState((prev) => ({
+      ...prev,
+      rehearsals: [
+        ...(prev.rehearsals || []),
+        { id: uid(), showId: activeShow.id, date: todayStr(), location: "", comments: "", absentees: [] }
+      ]
+    }));
+  };
+  const updateRehearsal = (id, updates) => {
+    pushHistory(state);
+    setState((prev) => ({
+      ...prev,
+      rehearsals: prev.rehearsals.map((r) => (r.id === id ? { ...r, ...updates } : r))
+    }));
+  };
+  const removeRehearsal = (id) => {
+    pushHistory(state);
+    setState((prev) => ({
+      ...prev,
+      rehearsals: prev.rehearsals.filter((r) => r.id !== id)
+    }));
+  };
 
   // ---------- Sketch handlers ----------
-  const updateSketch = (id, updates) => { pushHistory(state); setState((prev) => ({ ...prev, sketches: prev.sketches.map((s) => (s.id === id ? { ...s, ...updates } : s)) })); };
+  const updateSketch = (id, updates) => {
+    pushHistory(state);
+    setState((prev) => ({
+      ...prev,
+      sketches: prev.sketches.map((s) => (s.id === id ? { ...s, ...updates } : s))
+    }));
+  };
 
   return (
     <div className="mx-auto max-w-7xl p-4">
@@ -169,7 +243,7 @@ function App() {
         </div>
       </header>
 
-      {/* Sync status balkje */}
+      {/* Sync status */}
       <div className="text-xs text-gray-500 mt-1">{syncStatus}</div>
 
       <main className="mt-6">
@@ -187,20 +261,67 @@ function App() {
             <RunSheetView runSheet={runSheet} show={activeShow} />
           </div>
         )}
+
         {tab === "cast" && (
-  <CastMatrixView
-    sketches={showSketches}
-    people={showPeople}
-    currentShowId={activeShow?.id}
-    setState={(fn) => { pushHistory(state); setState(fn(state)); }}
-  />
-)}
-        {tab === "mics" && <MicMatrixView sketches={showSketches} mics={state.mics} people={state.people} />}
-        {tab === "tech" && <TechPackViewPage sketches={showSketches} micById={micById} personById={personById} show={activeShow} />}
-        {tab === "people" && <PeopleAndResources state={state} setState={(fn)=>{ pushHistory(state); setState(fn(state)); }} />}
-        {tab === "rehearsals" && <RehearsalPlanner rehearsals={state.rehearsals} people={state.people} onAdd={addRehearsal} onUpdate={updateRehearsal} onRemove={removeRehearsal} />}
-        {tab === "scripts" && <ScriptsView sketches={showSketches} onUpdate={updateSketch} />}
-        {tab === "planner" && <PlannerMinimal state={state} setState={(fn)=>{ pushHistory(state); setState(fn(state)); }} activeShowId={activeShowId} setActiveShowId={setActiveShowId} />}
+          <TabErrorBoundary>
+            <CastMatrixView
+              sketches={showSketches}
+              people={showPeople}
+              currentShowId={activeShow?.id}
+              setState={(fn) => { pushHistory(state); setState(fn(state)); }}
+            />
+          </TabErrorBoundary>
+        )}
+
+        {tab === "mics" && (
+          <MicMatrixView
+            sketches={showSketches}
+            mics={showMics}
+            people={showPeople}
+          />
+        )}
+
+        {tab === "tech" && (
+          <TechPackViewPage
+            sketches={showSketches}
+            micById={micById}
+            personById={personById}
+            show={activeShow}
+          />
+        )}
+
+        {tab === "people" && (
+          <PeopleAndResources
+            state={state}
+            setState={(fn)=>{ pushHistory(state); setState(fn(state)); }}
+          />
+        )}
+
+        {tab === "rehearsals" && (
+          <RehearsalPlanner
+            rehearsals={showRehearsals}
+            people={showPeople}
+            onAdd={addRehearsal}
+            onUpdate={updateRehearsal}
+            onRemove={removeRehearsal}
+          />
+        )}
+
+        {tab === "scripts" && (
+          <ScriptsView
+            sketches={showSketches}
+            onUpdate={updateSketch}
+          />
+        )}
+
+        {tab === "planner" && (
+          <PlannerMinimal
+            state={state}
+            setState={(fn)=>{ pushHistory(state); setState(fn(state)); }}
+            activeShowId={activeShowId}
+            setActiveShowId={setActiveShowId}
+          />
+        )}
       </main>
     </div>
   );
