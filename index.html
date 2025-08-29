@@ -1,88 +1,44 @@
-
 <!DOCTYPE html>
 <html lang="nl">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Knorplanner</title>
-    <style>
-      body{font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,Arial;margin:0}
-      .border{border:1px solid #e5e7eb}.rounded-2xl{border-radius:1rem}.rounded-xl{border-radius:.75rem}.rounded-full{border-radius:9999px}
-      .p-4{padding:1rem}.p-3{padding:.75rem}.px-3{padding-left:.75rem;padding-right:.75rem}.py-2{padding-top:.5rem;padding-bottom:.5rem}.py-1{padding-top:.25rem;padding-bottom:.25rem}
-      .mb-3{margin-bottom:.75rem}.mb-2{margin-bottom:.5rem}.mb-4{margin-bottom:1rem}.mt-6{margin-top:1.5rem}.mt-2{margin-top:.5rem}.mt-3{margin-top:.75rem}
-      .gap-2{gap:.5rem}.grid{display:grid}.grid-cols-12{grid-template-columns:repeat(12,minmax(0,1fr))}
-      .flex{display:flex}.items-center{align-items:center}.justify-between{justify-content:space-between}.flex-wrap{flex-wrap:wrap}
-      .text-lg{font-size:1.125rem;font-weight:600}.text-sm{font-size:.875rem}.font-semibold{font-weight:600}.font-bold{font-weight:700}
-      .bg-gray-50{background:#f9fafb}.bg-gray-100{background:#f3f4f6}.text-gray-500{color:#6b7280}.text-gray-600{color:#4b5563}.text-gray-400{color:#9ca3af}
-      .max-w-7xl{max-width:80rem}.mx-auto{margin-left:auto;margin-right:auto}.w-full{width:100%}.w-16{width:4rem}.w-20{width:5rem}.h-64{height:16rem}.h-96{height:24rem}
-      .rounded{border-radius:.375rem}.space-y-2> *+*{margin-top:.5rem}.overflow-auto{overflow:auto}.min-w-full{min-width:100%}.border-separate{border-collapse:separate}
-      .error{background:#fee2e2;color:#991b1b;border:1px solid #fecaca;padding:12px;border-radius:12px;margin:12px;font-family:monospace;white-space:pre-wrap}
-      .ok{background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0;padding:10px;border-radius:10px;margin:12px}
-    </style>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Knorplanner – Bonte Avond</title>
+  <!-- React + Babel -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Supabase -->
+  <script src="https://unpkg.com/@supabase/supabase-js"></script>
+  <script>
+    // maak Supabase client globaal beschikbaar
+    window.SUPA = supabase.createClient(
+      "https://tsqcqtkporzvdfwzwcjy.supabase.co", // jouw Supabase project URL
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzcWNxdGtwb3J6dmRmd3p3Y2p5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY0NzcwODIsImV4cCI6MjA3MjA1MzA4Mn0.dTAr_B0smr6PE8zQp6ABcmfCO_39d5svi8RlEF-EWxE"
+    );
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-white text-gray-900">
+  <div id="root"></div>
 
-<!-- Supabase client -->
-<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
-<script>
-  // jouw Supabase project (PUBLIC keys, geen service_role!)
-  window.SUPABASE_URL = "https://tsqcqtkporzvdfwzwcjy.supabase.co";
-  window.SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzcWNxdGtwb3J6dmRmd3p3Y2p5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY0NzcwODIsImV4cCI6MjA3MjA1MzA4Mn0.dTAr_B0smr6PE8zQp6ABcmfCO_39d5svi8RlEF-EWxE";
-  window.SUPA = supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON);
-</script>
- 
-    
-    <!-- React + ReactDOM + Babel (met CORS zodat fouten zichtbaar zijn) -->
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin="anonymous"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js" crossorigin="anonymous"></script>
+  <!-- 📦 Componenten / helpers -->
+  <script type="text/babel" src="BackstageComponents.jsx"></script>
 
-    <!-- Error overlay -->
-    <script>
-      function showErr(msg, file, line, col, stack) {
-        const div = document.createElement('div');
-        div.className = 'error';
-        div.innerHTML =
-          '<strong>Fout:</strong> ' + (msg || 'onbekend') +
-          (file ? '<br><strong>Bestand:</strong> ' + file : '') +
-          (line ? ' (r:' + line + (col ? ', k:' + col : '') + ')' : '') +
-          (stack ? '<br><pre>' + stack + '</pre>' : '');
-        document.body.prepend(div);
-      }
-      window.addEventListener('error', (e) => {
-        const msg = e.message || (e.error && e.error.message) || 'Script error';
-        const stack = e.error && e.error.stack;
-        showErr(msg, e.filename, e.lineno, e.colno, stack);
-      });
-      window.addEventListener('unhandledrejection', (e) => {
-        const r = e.reason || {};
-        showErr(r.message || String(e.reason), r.fileName, r.lineNumber, r.columnNumber, r.stack);
-      });
-    </script>
+  <!-- 📦 Losse pagina’s -->
+  <script type="text/babel" src="PlannerMinimal.jsx"></script>
+  <script type="text/babel" src="RehearsalPlanner.jsx"></script>
+  <script type="text/babel" src="ScriptsView.jsx"></script>
+  <script type="text/babel" src="CastMatrixView.jsx"></script>
+  <script type="text/babel" src="MicMatrixView.jsx"></script>
+  <script type="text/babel" src="TechPackViewPage.jsx"></script>
 
-    <!-- Laad je JSX-bestanden -->
-    <script type="text/babel" src="BackstageComponents.jsx"></script>
+  <!-- 📦 Hoofd-app -->
+  <script type="text/babel" src="BackstagePlannerApp.jsx"></script>
 
-<!-- nieuwe losse bestanden -->
-<script type="text/babel" src="PlannerMinimal.jsx"></script>
-<script type="text/babel" src="RehearsalPlanner.jsx"></script>
-<script type="text/babel" src="ScriptsView.jsx"></script>
-
-<!-- hoofd-app -->
-<script type="text/babel" src="BackstagePlannerApp.jsx"></script>
-
-    
-  </head>
-  <body>
-    <div id="root"></div>
-    <div class="ok" id="status">JS geladen. Wacht op app…</div>
-
-    <!-- Wacht met mounten tot beide bestanden klaar zijn -->
-    <script>
-      (function mountWhenReady(){
-        if (window.BackstagePlannerApp && window.ReactDOM && window.React) {
-          ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(window.BackstagePlannerApp));
-          const s = document.getElementById('status'); if (s) s.textContent = 'OK: App gerenderd ✅';
-        } else { setTimeout(mountWhenReady, 60); }
-      })();
-    </script>
-  </body>
+  <script type="text/babel">
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(<BackstagePlannerApp />);
+  </script>
+</body>
 </html>
