@@ -77,7 +77,6 @@ function App() {
   const [state, setState] = React.useState(boot);
   const [activeShowId, setActiveShowId] = React.useState(boot.shows[0]?.id || null);
   const [tab, setTab] = React.useState("planner");
-
   const [syncStatus, setSyncStatus] = React.useState("Nog niet gesynced");
 
   // ---- History (undo/redo) ----
@@ -207,6 +206,17 @@ function App() {
     }));
   };
 
+  // ---------- Show mutatie vanaf RunSheet (begintijd editen) ----------
+  const updateActiveShow = (patch) => {
+    if (!activeShow) return;
+    setState((prev) => ({
+      ...prev,
+      shows: (prev.shows || []).map((s) =>
+        s.id === activeShow.id ? { ...s, ...patch } : s
+      ),
+    }));
+  };
+
   return (
     <div className="mx-auto max-w-7xl p-4">
       <header className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -249,6 +259,20 @@ function App() {
       <main className="mt-6">
         {tab === "runsheet" && (
           <div className="grid gap-4">
+            {/* Begintijd instellen */}
+            <div className="rounded-2xl border p-3 flex items-center gap-3">
+              <label className="text-sm text-gray-700">Begintijd</label>
+              <input
+                type="time"
+                className="rounded border px-2 py-1"
+                value={activeShow?.startTime || "19:30"}
+                onChange={(e) => updateActiveShow({ startTime: e.target.value })}
+              />
+              <span className="text-xs text-gray-500">
+                Wordt gebruikt om tijden in de runsheet te berekenen.
+              </span>
+            </div>
+
             {(micWarnings?.length>0 || castWarnings?.length>0) && (
               <div className="rounded-xl border p-3">
                 <div className="font-semibold mb-2">Waarschuwingen</div>
@@ -258,6 +282,7 @@ function App() {
                 </ul>
               </div>
             )}
+
             <RunSheetView runSheet={runSheet} show={activeShow} />
           </div>
         )}
