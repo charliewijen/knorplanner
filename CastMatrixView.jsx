@@ -14,18 +14,40 @@ const CastMatrixView = ({ sketches, people, setState }) => {
       role,
     };
     setState((prev) => ({
-  ...prev,
-  people: [...prev.people, newPerson],
-}));
-
+      ...prev,
+      people: [...prev.people, newPerson],
+    }));
     setFirstName("");
     setLastName("");
     setRole("Speler");
   };
 
+  // Speler verwijderen
+  const removePerson = (id) => {
+    setState((prev) => ({
+      ...prev,
+      people: prev.people.filter((p) => p.id !== id),
+      // verwijder ook uit sketches
+      sketches: prev.sketches.map((sk) => ({
+        ...sk,
+        performers: (sk.performers || []).filter((pid) => pid !== id),
+      })),
+    }));
+  };
+
+  // Speler aanpassen
+  const updatePerson = (id, updates) => {
+    setState((prev) => ({
+      ...prev,
+      people: prev.people.map((p) =>
+        p.id === id ? { ...p, ...updates, name: `${updates.firstName || p.firstName} ${updates.lastName || p.lastName}`.trim() } : p
+      ),
+    }));
+  };
+
   // Tel hoeveel sketches een persoon heeft
   const countAssignments = (personId) => {
-    return sketches.filter(sk => sk.performers?.includes(personId)).length;
+    return sketches.filter((sk) => sk.performers?.includes(personId)).length;
   };
 
   return (
@@ -69,26 +91,55 @@ const CastMatrixView = ({ sketches, people, setState }) => {
             <th className="border px-2 py-1">Naam</th>
             <th className="border px-2 py-1">Rol</th>
             <th className="border px-2 py-1">Aantal sketches</th>
-            {sketches.map(sk => (
-              <th key={sk.id} className="border px-2 py-1">{sk.title}</th>
-            ))}
+            <th className="border px-2 py-1">Acties</th>
           </tr>
         </thead>
         <tbody>
           {people.map(p => (
             <tr key={p.id} className="odd:bg-white even:bg-gray-50">
-              <td className="border px-2 py-1">{p.name}</td>
-              <td className="border px-2 py-1">{p.role}</td>
-              <td className="border px-2 py-1 text-center">{countAssignments(p.id)}</td>
-              {sketches.map(sk => (
-                <td key={sk.id} className="border text-center">
-                  {sk.performers?.includes(p.id) ? "🎭" : ""}
-                </td>
-              ))}
+              <td className="border px-2 py-1">
+                <input
+                  className="w-full rounded border px-1"
+                  value={p.firstName}
+                  onChange={(e) => updatePerson(p.id, { firstName: e.target.value })}
+                  placeholder="Voornaam"
+                />
+                <input
+                  className="w-full rounded border px-1 mt-1"
+                  value={p.lastName}
+                  onChange={(e) => updatePerson(p.id, { lastName: e.target.value })}
+                  placeholder="Achternaam"
+                />
+              </td>
+              <td className="border px-2 py-1">
+                <select
+                  className="rounded border px-2 py-1"
+                  value={p.role}
+                  onChange={(e) => updatePerson(p.id, { role: e.target.value })}
+                >
+                  <option value="Speler">Speler</option>
+                  <option value="Danser">Danser</option>
+                </select>
+              </td>
+              <td className="border px-2 py-1 text-center">
+                {countAssignments(p.id)}
+              </td>
+              <td className="border px-2 py-1 text-center">
+                <button
+                  className="rounded-full border px-2 py-1 text-red-600"
+                  onClick={() => removePerson(p.id)}
+                >
+                  ❌
+                </button>
+              </td>
             </tr>
           ))}
           {people.length === 0 && (
-            <tr><td className="px-2 py-3 text-gray-500 text-sm" colSpan={3 + sketches.length}>Nog geen mensen toegevoegd.</td></tr>
+            <tr>
+              <td className="px-2 py-3 text-gray-500 text-sm text-center" colSpan={4}>
+                Nog geen mensen toegevoegd.
+              </td>
+            </tr>
           )}
         </tbody>
       </table>
