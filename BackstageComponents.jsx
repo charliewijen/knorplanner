@@ -27,11 +27,17 @@ window.buildRunSheet = (show, sketches) => {
     const inTime = cur;
     const outTime = inTime + dur;
     items.push({ type: "sketch", order: s.order, title: s.title, in: minToTime(inTime), out: minToTime(outTime), duration: dur });
-    cur = outTime + 2;
-    if (show.breakAfterItem && show.breakMinutes && s.order === show.breakAfterItem) {
-      items.push({ type: "break", title: "PAUZE", in: minToTime(cur), out: minToTime(cur + show.breakMinutes), duration: show.breakMinutes });
-      cur += show.breakMinutes + 2;
-    }
+   cur = outTime;
+if (show.breakAfterItem && show.breakMinutes && s.order === show.breakAfterItem) {
+  items.push({
+    type: "break",
+    title: "PAUZE",
+    in: minToTime(cur),
+    out: minToTime(cur + show.breakMinutes),
+    duration: show.breakMinutes
+  });
+  cur += show.breakMinutes;
+}
   });
   const totalMin = Math.max(0, cur - window.parseTimeToMin(start));
   return { items, totalMin };
