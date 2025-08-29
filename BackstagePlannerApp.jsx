@@ -299,12 +299,17 @@ function App() {
         )}
 
         {tab === "mics" && (
-          <MicMatrixView
-            sketches={showSketches}
-            mics={showMics}
-            people={showPeople}
-          />
-        )}
+  <TabErrorBoundary>
+    <MicMatrixView
+      currentShowId={activeShow?.id}
+      sketches={showSketches}
+      people={showPeople}
+      shows={state.shows}
+      setState={(fn) => { pushHistory(state); setState(fn(state)); }}
+    />
+  </TabErrorBoundary>
+)}
+
 
         {tab === "tech" && (
           <TechPackViewPage
