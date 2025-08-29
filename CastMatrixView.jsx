@@ -178,7 +178,7 @@ function CastMatrixView({ sketches = [], people = [], currentShowId, setState = 
                   <td className="border px-2 py-1">
                     <span className="inline-flex items-center gap-2">
                       <span className="font-medium">{count}</span>
-                      <span className="text-xs text-gray-500">met rol(len)</span>
+                      
                     </span>
                   </td>
 
