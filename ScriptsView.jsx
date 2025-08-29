@@ -1,21 +1,25 @@
 function ScriptsView({ sketches = [], onUpdate, people = [] }) {
   // Altijd veilige arrays
-  const ordered = Array.isArray(sketches)
-    ? [...sketches].sort((a, b) => (a.order || 0) - (b.order || 0))
-    : [];
-  const peopleSafe = Array.isArray(people) ? people : [];
+  const selectable = Array.isArray(sketches)
+  ? sketches
+      .filter((s) => s?.kind !== "break" && s?.kind !== "waerse")
+      .sort((a, b) => (a.order || 0) - (b.order || 0))
+  : [];
+const peopleSafe = Array.isArray(people) ? people : [];
+
 
   // Geselecteerde sketch id
-  const [sel, setSel] = React.useState(ordered[0]?.id || "");
+  const [sel, setSel] = React.useState(selectable[0]?.id || "");
   // Corrigeer 'sel' als de lijst verandert (bv. show wissel)
   React.useEffect(() => {
-    if (!ordered.some((s) => s.id === sel)) {
-      setSel(ordered[0]?.id || "");
-    }
-  }, [ordered, sel]);
+  if (!selectable.some((s) => s.id === sel)) {
+    setSel(selectable[0]?.id || "");
+  }
+}, [selectable, sel]);
+
 
   // Actieve sketch
-  const active = ordered.find((s) => s.id === sel);
+const active = selectable.find((s) => s.id === sel);
 
   // Helpers: alleen uitvoeren als er een actieve sketch is
   const update = React.useCallback(
@@ -62,17 +66,18 @@ function ScriptsView({ sketches = [], onUpdate, people = [] }) {
           value={sel}
           onChange={(e) => setSel(e.target.value)}
         >
-          {ordered.map((s) => (
-            <option key={s.id} value={s.id}>
-              #{s.order || "?"} {s.title} ({s.durationMin || 0} min)
-            </option>
-          ))}
+          {selectable.map((s) => (
+  <option key={s.id} value={s.id}>
+    #{s.order || "?"} {s.title} ({s.durationMin || 0} min)
+  </option>
+))}
+
         </select>
       </div>
 
       {!active ? (
         <div className="text-sm text-gray-500">
-          Geen sketch geselecteerd of er zijn nog geen sketches.
+          Geen selecteerbare sketches. (Pauzes en “De Waerse Ku-j” worden hier verborgen.)
         </div>
       ) : (
         <>
