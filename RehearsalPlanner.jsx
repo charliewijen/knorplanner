@@ -1,3 +1,4 @@
+
 const RehearsalPlanner = ({ rehearsals = [], people = [], onAdd, onUpdate, onRemove }) => {
   const today = new Date().toISOString().slice(0, 10);
   return (
