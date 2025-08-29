@@ -1,18 +1,21 @@
 function PlannerMinimal({ state, setState, activeShowId, setActiveShowId }) {
   const activeShow = state.shows.find((s) => s.id === activeShowId) || state.shows[0];
 
-  // Alle items (sketches + pauzes) voor deze show
+  // Alle items (sketches + pauzes + waerse) voor deze show
   const showItems = (state.sketches || [])
     .filter((s) => s.showId === activeShow?.id)
     .sort((a, b) => (a.order || 0) - (b.order || 0));
 
-  const nextOrder = () => (showItems.at(-1)?.order || 0) + 1;
+  const nextOrder = () => (showItems.length || 0) + 1;
 
-  // ---------- Sketch ----------
+  // --- Helpers: renummeren zodat order altijd 1..N is ---
+  const renumber = (items) => items.map((it, idx) => ({ ...it, order: idx + 1 }));
+
+  // ---------- Items toevoegen ----------
   const addSketch = () => {
     if (!activeShow) return;
     setState((prev) => {
-      const newSketch = {
+      const newItem = {
         id: uid(),
         showId: activeShow.id,
         kind: "sketch",
@@ -27,41 +30,162 @@ function PlannerMinimal({ state, setState, activeShowId, setActiveShowId }) {
         costumes: [],
         attachments: [],
       };
-      return { ...prev, sketches: [...(prev.sketches || []), newSketch] };
+      const combined = [...(prev.sketches || []), newItem]
+        .filter((x) => x.showId === activeShow.id)
+        .sort((a, b) => (a.order || 0) - (b.order || 0));
+      const merged = [
+        ...((prev.sketches || []).filter((x) => x.showId !== activeShow.id)),
+        ...renumber(combined),
+      ];
+      return { ...prev, sketches: merged };
     });
   };
 
-  // ---------- Pauze ----------
   const addPause = () => {
     if (!activeShow) return;
     setState((prev) => {
-      const pauseItem = {
+      const newItem = {
         id: uid(),
         showId: activeShow.id,
-        kind: "break",         // <- markeer als pauze
-        title: "PAUZE",        // <- vaste benaming
+        kind: "break",
+        title: "PAUZE",
         order: nextOrder(),
-        durationMin: 10,       // standaard 10 min, aanpasbaar
+        durationMin: 10,
         performers: [],
         mics: [],
       };
-      return { ...prev, sketches: [...(prev.sketches || []), pauseItem] };
+      const combined = [...(prev.sketches || []), newItem]
+        .filter((x) => x.showId === activeShow.id)
+        .sort((a, b) => (a.order || 0) - (b.order || 0));
+      const merged = [
+        ...((prev.sketches || []).filter((x) => x.showId !== activeShow.id)),
+        ...renumber(combined),
+      ];
+      return { ...prev, sketches: merged };
     });
   };
 
-  const updateItem = (id, u) =>
-    setState((prev) => ({
-      ...prev,
-      sketches: prev.sketches.map((sk) => (sk.id === id ? { ...sk, ...u } : sk)),
-    }));
+  // NIEUW: "De Waerse Ku-j" (zelfde regels als pauze: vaste naam, alleen volgorde & tijd)
+  const addWaerse = () => {
+    if (!activeShow) return;
+    setState((prev) => {
+      const newItem = {
+        id: uid(),
+        showId: activeShow.id,
+        kind: "waerse",
+        title: "De Waerse Ku-j",
+        order: nextOrder(),
+        durationMin: 5,
+        performers: [],
+        mics: [],
+      };
+      const combined = [...(prev.sketches || []), newItem]
+        .filter((x) => x.showId === activeShow.id)
+        .sort((a, b) => (a.order || 0) - (b.order || 0));
+      const merged = [
+        ...((prev.sketches || []).filter((x) => x.showId !== activeShow.id)),
+        ...renumber(combined),
+      ];
+      return { ...prev, sketches: merged };
+    });
+  };
+
+  // ---------- Item wijzigen/verwijderen ----------
+  const updateItem = (id, patch) =>
+    setState((prev) => {
+      // patch kan order wijzigen; daarna altijd renumber op de subset van deze show
+      let nextAll = (prev.sketches || []).map((sk) => (sk.id === id ? { ...sk, ...patch } : sk));
+      const currentShowSet = nextAll
+        .filter((x) => x.showId === activeShow.id)
+        .sort((a, b) => (a.order || 0) - (b.order || 0));
+
+      // Als order direct met nummer is aangepast: clamp en herordenen
+      if (patch && typeof patch.order === "number") {
+        const target = currentShowSet.find((x) => x.id === id);
+        if (target) {
+          const max = currentShowSet.length;
+          let desired = Math.max(1, Math.min(max, patch.order | 0));
+          // haal item eruit en steek 'm op gewenste plek
+          const without = currentShowSet.filter((x) => x.id !== id);
+          const before = without.slice(0, desired - 1);
+          const after = without.slice(desired - 1);
+          const reordered = renumber([...before, target, ...after]);
+          // vervang de subset in het geheel
+          nextAll = [
+            ...nextAll.filter((x) => x.showId !== activeShow.id),
+            ...reordered,
+          ];
+          return { ...prev, sketches: nextAll };
+        }
+      }
+
+      // Geen expliciete orderwijziging: toch renumber om 1..N te houden
+      const merged = [
+        ...nextAll.filter((x) => x.showId !== activeShow.id),
+        ...renumber(
+          nextAll
+            .filter((x) => x.showId === activeShow.id)
+            .sort((a, b) => (a.order || 0) - (b.order || 0))
+        ),
+      ];
+      return { ...prev, sketches: merged };
+    });
 
   const removeItem = (id) =>
-    setState((prev) => ({
-      ...prev,
-      sketches: prev.sketches.filter((sk) => sk.id !== id),
-    }));
+    setState((prev) => {
+      const nextAll = (prev.sketches || []).filter((sk) => sk.id !== id);
+      const merged = [
+        ...nextAll.filter((x) => x.showId !== activeShow.id),
+        ...renumber(
+          nextAll
+            .filter((x) => x.showId === activeShow.id)
+            .sort((a, b) => (a.order || 0) - (b.order || 0))
+        ),
+      ];
+      return { ...prev, sketches: merged };
+    });
 
-  // ---------- Shows ----------
+  // ---------- Drag & Drop (HTML5) ----------
+  const [dragId, setDragId] = React.useState(null);
+
+  const onDragStart = (e, id) => {
+    setDragId(id);
+    e.dataTransfer.effectAllowed = "move";
+  };
+  const onDragOver = (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  };
+  const onDrop = (e, overId) => {
+    e.preventDefault();
+    if (!dragId || dragId === overId) return;
+
+    setState((prev) => {
+      const list = (prev.sketches || [])
+        .filter((x) => x.showId === activeShow.id)
+        .sort((a, b) => (a.order || 0) - (b.order || 0));
+
+      const dragIdx = list.findIndex((x) => x.id === dragId);
+      const overIdx = list.findIndex((x) => x.id === overId);
+      if (dragIdx < 0 || overIdx < 0) return prev;
+
+      const item = list[dragIdx];
+      const without = list.filter((x) => x.id !== dragId);
+      const before = without.slice(0, overIdx);
+      const after = without.slice(overIdx);
+      const reordered = renumber([...before, item, ...after]);
+
+      const merged = [
+        ...((prev.sketches || []).filter((x) => x.showId !== activeShow.id)),
+        ...reordered,
+      ];
+      return { ...prev, sketches: merged };
+    });
+
+    setDragId(null);
+  };
+
+  // ---------- Shows (naam/edit/delete) ----------
   const addShow = () => {
     const newId = uid();
     const newShow = {
@@ -84,7 +208,6 @@ function PlannerMinimal({ state, setState, activeShowId, setActiveShowId }) {
   const removeShow = () => {
     if (!activeShow) return;
     if (state.shows.length <= 1) return; // minimaal 1 show houden
-
     const ok = confirm(
       `Weet je zeker dat je de show “${activeShow.name || "zonder naam"}” wilt verwijderen?\n` +
       `Alle bijbehorende data (sketches/cast/mics/repetities) wordt ook verwijderd.`
@@ -158,7 +281,7 @@ function PlannerMinimal({ state, setState, activeShowId, setActiveShowId }) {
         )}
       </section>
 
-      {/* Items (sketches + pauzes) */}
+      {/* Items (sketches + pauzes + waerse) */}
       <section className="md:col-span-2 rounded-2xl border p-4">
         <div className="mb-2 flex items-center justify-between">
           <h3 className="font-semibold">Show-items</h3>
@@ -169,29 +292,45 @@ function PlannerMinimal({ state, setState, activeShowId, setActiveShowId }) {
             <button className="rounded-xl border px-3 py-2" onClick={addPause} disabled={!activeShow}>
               + Pauze
             </button>
+            <button className="rounded-xl border px-3 py-2" onClick={addWaerse} disabled={!activeShow}>
+              + De Waerse Ku-j
+            </button>
           </div>
         </div>
 
         <ul className="space-y-2">
           {showItems.map((it) => {
             const isBreak = it.kind === "break";
+            const isWaerse = it.kind === "waerse";
+            const fixedTitle = isBreak ? "PAUZE" : isWaerse ? "De Waerse Ku-j" : null;
+
             return (
-              <li key={it.id} className="rounded-xl bg-gray-50 p-3 flex items-center gap-2">
-                {/* Volgorde */}
+              <li
+                key={it.id}
+                className="rounded-xl bg-gray-50 p-3 flex items-center gap-2"
+                draggable
+                onDragStart={(e) => onDragStart(e, it.id)}
+                onDragOver={onDragOver}
+                onDrop={(e) => onDrop(e, it.id)}
+                title="Sleep om te herordenen"
+              >
+                {/* Volgorde (1..N) */}
                 <input
                   className="w-16 rounded border px-2 py-1"
                   type="number"
-                  value={it.order || 0}
+                  value={it.order || 1}
                   onChange={(e) =>
-                    updateItem(it.id, { order: parseInt(e.target.value || 0, 10) })
+                    updateItem(it.id, { order: parseInt(e.target.value || 1, 10) })
                   }
-                  title="Volgorde"
+                  title="Volgorde (1..N)"
                 />
 
-                {/* Titel: alleen editbaar voor sketches; pauze is vaste naam */}
-                {isBreak ? (
-                  <span className="px-2 py-1 rounded bg-yellow-100 text-yellow-800 font-semibold">
-                    PAUZE
+                {/* Titel: alleen editbaar voor sketches; pauze/waerse vaste naam */}
+                {fixedTitle ? (
+                  <span className={`px-2 py-1 rounded font-semibold ${
+                    isBreak ? "bg-yellow-100 text-yellow-800" : "bg-pink-100 text-pink-800"
+                  }`}>
+                    {fixedTitle}
                   </span>
                 ) : (
                   <input
