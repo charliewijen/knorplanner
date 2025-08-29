@@ -1,112 +1,214 @@
-const CastMatrixView = ({ sketches = [], people = [], currentShowId, setState = () => {} }) => {
-  const [firstName, setFirstName] = React.useState("");
-  const [lastName, setLastName] = React.useState("");
-  const [role, setRole] = React.useState("Speler");
+function CastMatrixView({ sketches = [], people = [], currentShowId, setState = () => {} }) {
+  const uid = window.uid;
 
-  const safePeople = Array.isArray(people) ? people : [];
-  const safeSketches = Array.isArray(sketches) ? sketches : [];
+  // ====== Helpers ======
+  const norm = (s) => (s || "").trim();
+  const fullName = (p) => [norm(p.firstName), norm(p.lastName || p.name)].filter(Boolean).join(" ");
 
-  const countAssignments = (personId) =>
-    safeSketches.filter((sk) => Array.isArray(sk.performers) && sk.performers.includes(personId)).length;
+  // Alleen items uit de huidige show en geen pauze/waerse
+  const realSketches = (Array.isArray(sketches) ? sketches : [])
+    .filter(sk => sk && sk.showId === currentShowId && sk.kind !== "break" && sk.kind !== "waerse");
+
+  // Aantal unieke sketches per persoon (>=1 rol)
+  const sketchCountByPerson = React.useMemo(() => {
+    const counts = new Map(); // personId -> count
+    realSketches.forEach(sk => {
+      const setForSketch = new Set(
+        (sk.roles || [])
+          .map(r => r?.personId)
+          .filter(Boolean)
+      );
+      // elke personId in deze sketch telt 1 (ongeacht #rollen in deze sketch)
+      setForSketch.forEach(pid => {
+        counts.set(pid, (counts.get(pid) || 0) + 1);
+      });
+    });
+    return counts;
+  }, [realSketches]);
+
+  // Sorteren: spelers (achternaam A-Z), daarna dansers (achternaam A-Z)
+  const lastNameOf = (p) => (p.lastName?.trim()) || (p.name?.trim()?.split(" ").slice(-1)[0] || "");
+  const roleKind = (p) => ((p.role || p.type || "").toLowerCase().includes("dans") ? "danser" : "speler");
+
+  const players = (people || []).filter(p => roleKind(p) === "speler")
+    .sort((a,b)=> lastNameOf(a).localeCompare(lastNameOf(b)));
+  const dancers = (people || []).filter(p => roleKind(p) === "danser")
+    .sort((a,b)=> lastNameOf(a).localeCompare(lastNameOf(b)));
+  const ordered = [...players, ...dancers];
+
+  // ====== Add person ======
+  const [draft, setDraft] = React.useState({ firstName: "", lastName: "", role: "speler" });
+  const canAdd = norm(draft.firstName) || norm(draft.lastName);
 
   const addPerson = () => {
-    if (!currentShowId) return;
-    const fn = firstName.trim(), ln = lastName.trim();
-    if (!fn && !ln) return;
-
-    const newPerson = {
-      id: uid(),
-      showId: currentShowId,
-      firstName: fn,
-      lastName: ln,
-      name: `${fn} ${ln}`.trim(),
-      role,
-    };
-
-    setState((prev) => ({ ...prev, people: [...(prev.people || []), newPerson] }));
-    setFirstName(""); setLastName(""); setRole("Speler");
+    if (!canAdd || !currentShowId) return;
+    setState(prev => ({
+      ...prev,
+      people: [
+        ...(prev.people || []),
+        {
+          id: uid(),
+          showId: currentShowId,
+          firstName: norm(draft.firstName),
+          lastName: norm(draft.lastName),
+          role: draft.role, // "speler" | "danser"
+        }
+      ]
+    }));
+    setDraft({ firstName: "", lastName: "", role: "speler" });
   };
 
-  const updatePerson = (id, updates) => {
-    setState((prev) => ({
+  // ====== Update / Delete ======
+  const updatePerson = (id, patch) => {
+    setState(prev => ({
       ...prev,
-      people: (prev.people || []).map((p) => {
-        if (p.id !== id) return p;
-        const next = { ...p, ...updates };
-        const fn = updates.firstName !== undefined ? updates.firstName : (p.firstName || "");
-        const ln = updates.lastName  !== undefined ? updates.lastName  : (p.lastName  || "");
-        next.name = `${fn} ${ln}`.trim();
-        return next;
-      }),
+      people: (prev.people || []).map(p => p.id === id ? { ...p, ...patch } : p)
     }));
   };
 
   const removePerson = (id) => {
-    setState((prev) => ({
+    if (!confirm("Weet je zeker dat je deze persoon wilt verwijderen?")) return;
+    setState(prev => ({
       ...prev,
-      people: (prev.people || []).filter((p) => p.id !== id),
-      sketches: (prev.sketches || []).map((sk) => ({
-        ...sk,
-        performers: (sk.performers || []).filter((pid) => pid !== id),
-      })),
+      // Verwijder persoon
+      people: (prev.people || []).filter(p => p.id !== id),
+      // Haal die persoon ook uit alle sketch-rollen
+      sketches: (prev.sketches || []).map(sk => {
+        if (sk.showId !== currentShowId) return sk;
+        const roles = (sk.roles || []).map(r => r?.personId === id ? { ...r, personId: "" } : r);
+        return { ...sk, roles };
+      })
     }));
   };
 
   return (
     <div className="rounded-2xl border p-4">
-      <h2 className="text-lg font-semibold mb-4">Cast-overzicht</h2>
+      <h2 className="text-lg font-semibold mb-3">Biggenconvent</h2>
 
-      {!currentShowId && (
-        <div className="mb-4 rounded border bg-yellow-50 p-2 text-sm">
-          Selecteer eerst een show.
+      {/* Add form */}
+      <div className="mb-4 grid grid-cols-12 gap-2 items-end">
+        <div className="col-span-4">
+          <label className="block text-sm text-gray-700">Voornaam</label>
+          <input
+            className="w-full rounded border px-2 py-1"
+            value={draft.firstName}
+            onChange={(e)=>setDraft(d => ({...d, firstName: e.target.value}))}
+            placeholder="Voornaam"
+          />
         </div>
-      )}
-
-      <div className="mb-6 flex flex-wrap gap-2 items-end">
-        <input className="rounded border px-2 py-1" placeholder="Voornaam" value={firstName} onChange={(e)=>setFirstName(e.target.value)} />
-        <input className="rounded border px-2 py-1" placeholder="Achternaam" value={lastName} onChange={(e)=>setLastName(e.target.value)} />
-        <select className="rounded border px-2 py-1" value={role} onChange={(e)=>setRole(e.target.value)}>
-          <option value="Speler">Speler</option>
-          <option value="Danser">Danser</option>
-        </select>
-        <button className="rounded-xl border px-3 py-1 bg-gray-100 hover:bg-gray-200" onClick={addPerson} disabled={!currentShowId}>
-          + Voeg toe
-        </button>
+        <div className="col-span-4">
+          <label className="block text-sm text-gray-700">Achternaam</label>
+          <input
+            className="w-full rounded border px-2 py-1"
+            value={draft.lastName}
+            onChange={(e)=>setDraft(d => ({...d, lastName: e.target.value}))}
+            placeholder="Achternaam"
+          />
+        </div>
+        <div className="col-span-3">
+          <label className="block text-sm text-gray-700">Type</label>
+          <select
+            className="w-full rounded border px-2 py-1"
+            value={draft.role}
+            onChange={(e)=>setDraft(d => ({...d, role: e.target.value}))}
+          >
+            <option value="speler">Speler</option>
+            <option value="danser">Danser</option>
+          </select>
+        </div>
+        <div className="col-span-1">
+          <button
+            className={`w-full rounded-xl border px-3 py-2 ${canAdd ? "bg-black text-white" : "opacity-50 cursor-not-allowed"}`}
+            onClick={addPerson}
+            disabled={!canAdd}
+            title={canAdd ? "Voeg toe" : "Vul minimaal voor- of achternaam in"}
+          >
+            +
+          </button>
+        </div>
       </div>
 
-      <table className="min-w-full border text-sm">
-        <thead>
-          <tr className="bg-gray-100">
-            <th className="border px-2 py-1">Naam</th>
-            <th className="border px-2 py-1">Rol</th>
-            <th className="border px-2 py-1">Aantal sketches</th>
-            <th className="border px-2 py-1">Acties</th>
-          </tr>
-        </thead>
-        <tbody>
-          {safePeople.map((p) => (
-            <tr key={p.id} className="odd:bg-white even:bg-gray-50">
-              <td className="border px-2 py-1">
-                <input className="w-full rounded border px-1" value={p.firstName || ""} onChange={(e)=>updatePerson(p.id,{firstName:e.target.value})} placeholder="Voornaam"/>
-                <input className="w-full rounded border px-1 mt-1" value={p.lastName || ""} onChange={(e)=>updatePerson(p.id,{lastName:e.target.value})} placeholder="Achternaam"/>
-              </td>
-              <td className="border px-2 py-1">
-                <select className="rounded border px-2 py-1 w-full" value={p.role || "Speler"} onChange={(e)=>updatePerson(p.id,{role:e.target.value})}>
-                  <option value="Speler">Speler</option>
-                  <option value="Danser">Danser</option>
-                </select>
-              </td>
-              <td className="border px-2 py-1 text-center">{countAssignments(p.id)}</td>
-              <td className="border px-2 py-1 text-center">
-                <button className="rounded-full border px-2 py-1 text-red-600" onClick={()=>removePerson(p.id)} title="Verwijderen">❌</button>
-              </td>
+      {/* List */}
+      <div className="overflow-auto">
+        <table className="min-w-full border text-sm">
+          <thead>
+            <tr className="bg-gray-100">
+              <th className="border px-2 py-1 text-left">Naam</th>
+              <th className="border px-2 py-1 text-left w-32">Type</th>
+              <th className="border px-2 py-1 text-left w-40">Aantal sketches</th>
+              <th className="border px-2 py-1 text-left w-40">Acties</th>
             </tr>
-          ))}
-          {safePeople.length === 0 && (
-            <tr><td className="px-2 py-3 text-gray-500 text-sm text-center" colSpan={4}>Nog geen mensen toegevoegd voor deze show.</td></tr>
-          )}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {ordered.map(p => {
+              const count = sketchCountByPerson.get(p.id) || 0;
+              return (
+                <tr key={p.id} className="odd:bg-gray-50">
+                  {/* NAAM: voor- en achternaam naast elkaar */}
+                  <td className="border px-2 py-1">
+                    <div className="flex gap-2">
+                      <input
+                        className="rounded border px-2 py-1 w-40"
+                        value={p.firstName || ""}
+                        onChange={(e)=>updatePerson(p.id, { firstName: e.target.value })}
+                        placeholder="Voornaam"
+                      />
+                      <input
+                        className="rounded border px-2 py-1 w-48"
+                        value={p.lastName || ""}
+                        onChange={(e)=>updatePerson(p.id, { lastName: e.target.value })}
+                        placeholder="Achternaam"
+                      />
+                    </div>
+                  </td>
+
+                  {/* TYPE */}
+                  <td className="border px-2 py-1">
+                    <select
+                      className="rounded border px-2 py-1"
+                      value={roleKind(p)}
+                      onChange={(e)=>updatePerson(p.id, { role: e.target.value })}
+                    >
+                      <option value="speler">Speler</option>
+                      <option value="danser">Danser</option>
+                    </select>
+                  </td>
+
+                  {/* Aantal sketches (uniek per sketch) */}
+                  <td className="border px-2 py-1">
+                    <span className="inline-flex items-center gap-2">
+                      <span className="font-medium">{count}</span>
+                      <span className="text-xs text-gray-500">met rol(len)</span>
+                    </span>
+                  </td>
+
+                  {/* Acties */}
+                  <td className="border px-2 py-1">
+                    <button
+                      className="rounded-full border px-3 py-1"
+                      onClick={()=>removePerson(p.id)}
+                    >
+                      Verwijder
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+            {ordered.length === 0 && (
+              <tr>
+                <td className="border px-2 py-2 text-gray-500 text-center" colSpan={4}>
+                  Nog geen mensen in deze show.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="mt-3 text-xs text-gray-600">
+        • “Aantal sketches” telt per persoon het aantal unieke sketches waar hij/zij minstens één rol heeft.<br/>
+        • Pauzes en “De Waerse Ku-j” tellen niet mee.
+      </div>
     </div>
   );
-};
+}
