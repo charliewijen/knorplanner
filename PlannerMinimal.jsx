@@ -235,7 +235,7 @@ function PlannerMinimal({ state, setState, activeShowId, setActiveShowId }) {
     <div className="grid gap-6 md:grid-cols-3">
       {/* Show selector + beheer */}
       <section className="rounded-2xl border p-4">
-        <h3 className="mb-2 font-semibold">Show</h3>
+        <h3 className="mb-2 font-semibold">Voorstelling</h3>
 
         <select
           className="rounded border px-3 py-2 w-full"
@@ -284,7 +284,7 @@ function PlannerMinimal({ state, setState, activeShowId, setActiveShowId }) {
       {/* Items (sketches + pauzes + waerse) */}
       <section className="md:col-span-2 rounded-2xl border p-4">
         <div className="mb-2 flex items-center justify-between">
-          <h3 className="font-semibold">Show-items</h3>
+          <h3 className="font-semibold">Programma</h3>
           <div className="flex gap-2">
             <button className="rounded-xl border px-3 py-2" onClick={addSketch} disabled={!activeShow}>
               + Sketch
