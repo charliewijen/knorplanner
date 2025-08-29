@@ -1,3 +1,4 @@
+
 // Verwijderd: const { useState, useMemo } = React;
 
 /* ========= Utilities ========= */
