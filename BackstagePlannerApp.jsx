@@ -37,7 +37,7 @@ function App() {
   // ---- History (undo/redo) ----
   const [past, setPast] = useState([]);
   const [future, setFuture] = useState([]);
-  const pushHistory = (prev) => setPast((p) => [...p.slice(-49), prev]); // 50 stappen
+  const pushHistory = (prev) => setPast((p) => [...p.slice(-49), prev]);
   const applyState = (next) => { setState(next); setFuture([]); };
   const undo = () => { if (past.length === 0) return; const prev = past[past.length-1]; setPast(past.slice(0,-1)); setFuture((f)=>[state, ...f]); setState(prev); };
   const redo = () => { if (future.length === 0) return; const nxt = future[0]; setFuture(future.slice(1)); setPast((p)=>[...p, state]); setState(nxt); };
@@ -60,6 +60,7 @@ function App() {
   const micById = Object.fromEntries((state.mics || []).map((m) => [m.id, m]));
   const personById = Object.fromEntries((state.people || []).map((p) => [p.id, p]));
   const runSheet = useMemo(() => buildRunSheet(activeShow, showSketches), [activeShow, showSketches]);
+  const micWarnings = useMemo(() => detectMicConflicts(showSketches), [showSketches]);
 
   // ---------- Rehearsal handlers ----------
   const addRehearsal = () => { pushHistory(state); setState((prev) => ({ ...prev, rehearsals: [...(prev.rehearsals || []), { id: uid(), date: new Date().toISOString().slice(0, 10), location: "", comments: "", absentees: [] }] })); };
@@ -220,7 +221,7 @@ function ScriptsView({ sketches = [], onUpdate }) {
       </div>
       {active ? (
         <>
-          <textarea className="w-full h-96 border rounded p-2" value={active.script || ""} onChange={(e) => onUpdate(active.id, { script: e.target.value })} placeholder={"Plak hier de volledige tekst.\nTip: begin regels met LIGHT: of SOUND: voor cues (kan later automatisch)."} />
+          <textarea className="w-full h-96 border rounded p-2" value={active.script || ""} onChange={(e) => onUpdate(active.id, { script: e.target.value })} placeholder={"Plak hier de volledige tekst.\nTip: begin regels met LIGHT: of SOUND: voor cues."} />
           <div className="mt-4 rounded-xl border p-3">
             <div className="mb-2 flex items-center justify-between"><h3 className="font-semibold">Bestanden/links per sketch</h3><button className="rounded-xl border px-3 py-2" onClick={addAttachment}>+ Link/Bestand</button></div>
             {(attachments.length===0) && <div className="text-sm text-gray-500">Nog geen items.</div>}
