@@ -187,7 +187,13 @@ function App() {
             <RunSheetView runSheet={runSheet} show={activeShow} />
           </div>
         )}
-        {tab === "cast" && <CastMatrixView sketches={showSketches} people={state.people} />}
+        {tab === "cast" && (
+  <CastMatrixView
+    sketches={showSketches}
+    people={state.people}
+    setState={(fn) => { pushHistory(state); setState(fn(state)); }}
+  />
+)}
         {tab === "mics" && <MicMatrixView sketches={showSketches} mics={state.mics} people={state.people} />}
         {tab === "tech" && <TechPackViewPage sketches={showSketches} micById={micById} personById={personById} show={activeShow} />}
         {tab === "people" && <PeopleAndResources state={state} setState={(fn)=>{ pushHistory(state); setState(fn(state)); }} />}
