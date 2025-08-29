@@ -190,7 +190,8 @@ function App() {
         {tab === "cast" && (
   <CastMatrixView
     sketches={showSketches}
-    people={state.people}
+    people={showPeople}
+    currentShowId={activeShow?.id}
     setState={(fn) => { pushHistory(state); setState(fn(state)); }}
   />
 )}
