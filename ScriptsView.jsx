@@ -1,3 +1,4 @@
+
 const ScriptsView = ({ sketches = [], onUpdate }) => {
   const ordered = [...sketches].sort((a,b)=>(a.order||0)-(b.order||0));
   const [sel, setSel] = React.useState(ordered[0]?.id);
