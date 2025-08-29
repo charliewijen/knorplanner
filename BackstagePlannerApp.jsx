@@ -14,10 +14,37 @@ const {
   parseTimeToMin
 } = window;
 
-// ---------- Storage ----------
-const STORAGE_KEY = "sll-backstage-v2";
-const loadState = () => { try { const raw = localStorage.getItem(STORAGE_KEY); return raw ? JSON.parse(raw) : null; } catch { return null; } };
-const saveState = (state) => { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch {} };
+// ---------- Storage via Supabase (met lokale fallback) ----------
+const TABLE = "planner_data";
+const ROW_ID = 1;
+
+// Ophalen uit Supabase (met fallback naar localStorage)
+const loadState = async () => {
+  try {
+    const { data, error } = await window.SUPA
+      .from(TABLE)
+      .select("data")
+      .eq("id", ROW_ID)
+      .maybeSingle();
+    if (error) throw error;
+    return data?.data || null;
+  } catch {
+    try {
+      const raw = localStorage.getItem("sll-backstage-v2");
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  }
+};
+
+// Opslaan in Supabase (en ook lokaal bewaren als backup)
+const saveStateRemote = async (state) => {
+  try {
+    await window.SUPA.from(TABLE).upsert({ id: ROW_ID, data: state });
+  } catch {}
+  try {
+    localStorage.setItem("sll-backstage-v2", JSON.stringify(state));
+  } catch {}
+};
 
 // ---------- Root Component ----------
 function App() {
