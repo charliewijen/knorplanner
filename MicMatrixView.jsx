@@ -5,8 +5,8 @@ function MicMatrixView({ currentShowId, sketches = [], people = [], shows = [], 
   const safePeople = Array.isArray(people) ? people : [];
 
   // Per-show: aantallen headsets/handhelds (bewaren in show)
-  const headsetCount = Math.max(0, parseInt(show?.headsetCount ?? 0, 10) || 0);
-  const handheldCount = Math.max(0, parseInt(show?.handheldCount ?? 0, 10) || 0);
+  const headsetCount = Number.isInteger(show?.headsetCount) ? show.headsetCount : 0;
+const handheldCount = Number.isInteger(show?.handheldCount) ? show.handheldCount : 0;
 
   // Alleen echte sketches (geen pauze/waerse)
   const realSketches = safeSketches
@@ -19,11 +19,10 @@ function MicMatrixView({ currentShowId, sketches = [], people = [], shows = [], 
   const channels = [...headsets, ...handhelds];
 
   // ===== Mutators =====
-  const updateShow = (patch) => {
-    if (!show) return;
-    setState(prev => ({
-      ...prev,
-      shows: (prev.shows || []).map(s => s.id === show.id ? { ...s, ...patch } : s),
+ // Als headsetCount/handheldCount nog niet bestaan → zet ze naar 0
+if (show && typeof show.headsetCount !== "number") show.headsetCount = 0;
+if (show && typeof show.handheldCount !== "number") show.handheldCount = 0;
+
       // trim assignments die buiten nieuwe counts vallen
       sketches: (prev.sketches || []).map(sk => {
         if (sk.showId !== show.id) return sk;
