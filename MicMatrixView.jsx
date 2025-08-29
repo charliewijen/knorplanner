@@ -22,7 +22,11 @@ const handheldCount = Number.isInteger(show?.handheldCount) ? show.handheldCount
  // Als headsetCount/handheldCount nog niet bestaan → zet ze naar 0
 if (show && typeof show.headsetCount !== "number") show.headsetCount = 0;
 if (show && typeof show.handheldCount !== "number") show.handheldCount = 0;
-
+const updateShow = (patch) => {
+  if (!show) return;
+  setState(prev => ({
+    ...prev,
+    shows: (prev.shows || []).map(s => s.id === show.id ? { ...s, ...patch } : s),
       // trim assignments die buiten nieuwe counts vallen
       sketches: (prev.sketches || []).map(sk => {
         if (sk.showId !== show.id) return sk;
