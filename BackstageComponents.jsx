@@ -22,26 +22,36 @@ window.buildRunSheet = (show, sketches) => {
   const start = show.startTime || "19:30";
   let cur = window.parseTimeToMin(start);
   const items = [];
+
   ordered.forEach((s) => {
+    const kind = s.kind || "sketch"; // 'sketch' | 'break' | 'waerse'
     const dur = parseInt(s.durationMin || 0, 10) || 0;
+    const title =
+      kind === "break" ? (s.title || "PAUZE") :
+      kind === "waerse" ? (s.title || "De Waerse Ku-j") :
+      (s.title || "");
+
     const inTime = cur;
     const outTime = inTime + dur;
-    items.push({ type: "sketch", order: s.order, title: s.title, in: minToTime(inTime), out: minToTime(outTime), duration: dur });
-   cur = outTime;
-if (show.breakAfterItem && show.breakMinutes && s.order === show.breakAfterItem) {
-  items.push({
-    type: "break",
-    title: "PAUZE",
-    in: minToTime(cur),
-    out: minToTime(cur + show.breakMinutes),
-    duration: show.breakMinutes
+
+    items.push({
+      type: kind,
+      order: s.order,
+      title,
+      duration: dur,
+      in: minToTime(inTime),
+      out: minToTime(outTime),
+      isMusic: kind === "waerse",
+    });
+
+    // géén automatische 2-minuten extra
+    cur = outTime;
   });
-  cur += show.breakMinutes;
-}
-  });
+
   const totalMin = Math.max(0, cur - window.parseTimeToMin(start));
   return { items, totalMin };
 };
+
 
 /* ========= Conflicts ========= */
 window.detectMicConflicts = (sketches) => {
@@ -98,39 +108,81 @@ window.ListTable = function ListTable({ headers, rows }) {
 
 /* ========= Views ========= */
 window.RunSheetView = function RunSheetView({ runSheet, show }) {
-  if (!show) return null;
+  const items = Array.isArray(runSheet?.items) ? runSheet.items : [];
+  const start = show?.startTime || "19:30";
+  const total = runSheet?.totalMin || 0;
+
+  const rowClass = (t) =>
+    t === "break" ? "bg-yellow-50" :
+    t === "waerse" ? "bg-blue-50" :
+    "";
+
+  const printNow = () => window.print();
+
   return (
-    <div className="rounded-2xl border p-4">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+    <section id="print-program" className="rounded-2xl border p-4 bg-white">
+      <div className="mb-3 flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold">Run Sheet</h2>
-          <p className="text-sm text-gray-500">Start {show.startTime} • Totale tijd ± {runSheet.totalMin} min</p>
+          <h2 className="text-xl font-bold">Programma en tijden</h2>
+          <div className="text-sm text-gray-600">
+            Start {start} • Totale tijd {total} min
+          </div>
         </div>
-        <button className="rounded-xl border px-3 py-2" onClick={()=>window.print()}>Print / PDF</button>
+        <button
+          className="rounded-full border px-3 py-1 text-sm"
+          onClick={printNow}
+        >
+          Print / PDF
+        </button>
       </div>
+
       <div className="overflow-auto">
-        <table className="min-w-full border-separate border-spacing-y-2">
+        <table className="min-w-full border text-sm">
           <thead>
-            <tr className="text-left text-sm text-gray-600">
-              <th className="px-3">#</th><th className="px-3">Item</th><th className="px-3">In</th><th className="px-3">Uit</th><th className="px-3">Duur</th>
+            <tr className="bg-gray-100">
+              <th className="border px-2 py-1 text-left w-12">#</th>
+              <th className="border px-2 py-1 text-left">Item</th>
+              <th className="border px-2 py-1 text-left w-28">In</th>
+              <th className="border px-2 py-1 text-left w-28">Uit</th>
+              <th className="border px-2 py-1 text-left w-24">Duur</th>
             </tr>
           </thead>
           <tbody>
-            {runSheet.items.map((it, i) => (
-              <tr key={i} className={`rounded-xl ${it.type === "break" ? "bg-yellow-50" : "bg-gray-50"}`}>
-                <td className="px-3 py-2">{it.type === "break" ? "—" : it.order}</td>
-                <td className="px-3 py-2 font-medium">{it.title}</td>
-                <td className="px-3 py-2">{it.in}</td>
-                <td className="px-3 py-2">{it.out}</td>
-                <td className="px-3 py-2">{it.duration} min</td>
+            {items.map((it, idx) => (
+              <tr key={idx} className={rowClass(it.type)}>
+                <td className="border px-2 py-1">{it.order ?? idx + 1}</td>
+                <td className="border px-2 py-1">
+                  {it.title}
+                  {it.isMusic && (
+                    <span className="ml-2 inline-block rounded-full bg-blue-100 text-blue-700 text-xs px-2 py-0.5 align-middle">
+                      muziek
+                    </span>
+                  )}
+                  {it.type === "break" && (
+                    <span className="ml-2 inline-block rounded-full bg-yellow-100 text-yellow-800 text-xs px-2 py-0.5 align-middle">
+                      pauze
+                    </span>
+                  )}
+                </td>
+                <td className="border px-2 py-1">{it.in}</td>
+                <td className="border px-2 py-1">{it.out}</td>
+                <td className="border px-2 py-1">{it.duration} min</td>
               </tr>
             ))}
+            {items.length === 0 && (
+              <tr>
+                <td className="border px-2 py-2 text-gray-500 text-center" colSpan={5}>
+                  Nog geen items.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
-    </div>
+    </section>
   );
 };
+
 
 window.TechPackView = function TechPackView({ sketches, micById, personById, show }) {
   const propsAgg = [], costumesAgg = [], cuesLights = [], cuesSound = [], micsAgg = [];
