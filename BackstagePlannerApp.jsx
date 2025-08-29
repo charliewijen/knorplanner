@@ -228,11 +228,12 @@ function App() {
         </div>
         <div className="flex flex-wrap gap-2 items-center">
           <nav className="flex flex-wrap gap-2">
-            {["planner","runsheet","cast","mics","tech","scripts","rehearsals","people"].map((k) => (
-              <button key={k} className={`rounded-full px-4 py-2 text-sm ${tab === k ? "bg-black text-white" : "bg-gray-100"}`} onClick={() => setTab(k)}>
-                {k}
-              </button>
-            ))}
+            {["planner","runsheet","cast","mics","rolverdeling","scripts","rehearsals","people"].map((k) => (
+  <button key={k} className={`rounded-full px-4 py-2 text-sm ${tab === k ? "bg-black text-white" : "bg-gray-100"}`} onClick={() => setTab(k)}>
+    {k}
+  </button>
+))}
+
           </nav>
           <button className="rounded-full border px-3 py-1 text-sm" onClick={()=>{ navigator.clipboard?.writeText(location.href); }}>Kopieer link</button>
           <details className="rounded-xl border px-3 py-2">
@@ -311,14 +312,17 @@ function App() {
 )}
 
 
-        {tab === "tech" && (
-          <TechPackViewPage
-            sketches={showSketches}
-            micById={micById}
-            personById={personById}
-            show={activeShow}
-          />
-        )}
+        {tab === "rolverdeling" && (
+  <TabErrorBoundary>
+    <RoleDistributionView
+      currentShowId={activeShow?.id}
+      sketches={showSketches}
+      people={showPeople}
+      setState={(fn) => { pushHistory(state); setState(fn(state)); }}
+    />
+  </TabErrorBoundary>
+)}
+
 
         {tab === "people" && (
           <PeopleAndResources
