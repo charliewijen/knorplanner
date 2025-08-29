@@ -1,11 +1,14 @@
-const CastMatrixView = ({ sketches, people, currentShowId, setState }) => {
+const CastMatrixView = ({ sketches = [], people = [], currentShowId, setState = () => {} }) => {
   const [firstName, setFirstName] = React.useState("");
   const [lastName, setLastName] = React.useState("");
   const [role, setRole] = React.useState("Speler");
 
+  const safePeople = Array.isArray(people) ? people : [];
+  const safeSketches = Array.isArray(sketches) ? sketches : [];
+
   // Tel in hoeveel sketches iemand zit (alleen binnen de huidige show)
   const countAssignments = (personId) => {
-    return sketches.filter((sk) => sk.performers?.includes(personId)).length;
+    return safeSketches.filter((sk) => Array.isArray(sk.performers) && sk.performers.includes(personId)).length;
   };
 
   // Nieuw persoon toevoegen met showId van de actieve show
@@ -34,22 +37,22 @@ const CastMatrixView = ({ sketches, people, currentShowId, setState }) => {
     setRole("Speler");
   };
 
-  // Persoon bewerken (werkt alleen binnen huidige show-rijen die je ziet)
+  // Persoon bewerken
   const updatePerson = (id, updates) => {
     setState((prev) => ({
       ...prev,
       people: (prev.people || []).map((p) => {
         if (p.id !== id) return p;
         const next = { ...p, ...updates };
-        const fn = updates.firstName !== undefined ? updates.firstName : p.firstName || "";
-        const ln = updates.lastName  !== undefined ? updates.lastName  : p.lastName  || "";
+        const fn = updates.firstName !== undefined ? updates.firstName : (p.firstName || "");
+        const ln = updates.lastName  !== undefined ? updates.lastName  : (p.lastName  || "");
         next.name = `${fn} ${ln}`.trim();
         return next;
       }),
     }));
   };
 
-  // Persoon verwijderen (en ook uit performers lijsten halen)
+  // Persoon verwijderen (en ook uit performers-lijsten halen)
   const removePerson = (id) => {
     setState((prev) => ({
       ...prev,
@@ -64,6 +67,12 @@ const CastMatrixView = ({ sketches, people, currentShowId, setState }) => {
   return (
     <div className="rounded-2xl border p-4">
       <h2 className="text-lg font-semibold mb-4">Cast-overzicht</h2>
+
+      {!currentShowId && (
+        <div className="mb-4 rounded border bg-yellow-50 p-2 text-sm">
+          Selecteer eerst een show.
+        </div>
+      )}
 
       {/* Formulier om iemand toe te voegen */}
       <div className="mb-6 flex flex-wrap gap-2 items-end">
@@ -107,7 +116,7 @@ const CastMatrixView = ({ sketches, people, currentShowId, setState }) => {
           </tr>
         </thead>
         <tbody>
-          {people.map((p) => (
+          {safePeople.map((p) => (
             <tr key={p.id} className="odd:bg-white even:bg-gray-50">
               <td className="border px-2 py-1">
                 <input
@@ -147,7 +156,7 @@ const CastMatrixView = ({ sketches, people, currentShowId, setState }) => {
               </td>
             </tr>
           ))}
-          {people.length === 0 && (
+          {safePeople.length === 0 && (
             <tr>
               <td className="px-2 py-3 text-gray-500 text-sm text-center" colSpan={4}>
                 Nog geen mensen toegevoegd voor deze show.
