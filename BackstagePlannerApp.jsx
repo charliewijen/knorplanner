@@ -6,7 +6,7 @@ const {
   detectMicConflicts,
   detectCastConflicts,
   RunSheetView,
-  PeopleAndResources,
+  PeopleAndResources, // (niet gebruikt, mag blijven staan)
   parseTimeToMin
 } = window;
 
@@ -71,9 +71,124 @@ class TabErrorBoundary extends React.Component {
   }
 }
 
+// ===== Data Migratie =====
+const STATE_VERSION = 3;
+
+function migrateState(input) {
+  try {
+    const s = JSON.parse(JSON.stringify(input || {}));
+
+    // basis containers
+    s.people = Array.isArray(s.people) ? s.people : [];
+    s.mics = Array.isArray(s.mics) ? s.mics : [];
+    s.shows = Array.isArray(s.shows) ? s.shows : [];
+    s.sketches = Array.isArray(s.sketches) ? s.sketches : [];
+    s.rehearsals = Array.isArray(s.rehearsals) ? s.rehearsals : [];
+
+    // helpers
+    const firstShow = s.shows[0];
+
+    // People: split name → first/last, default type
+    s.people = s.people.map(p => {
+      const out = { ...p };
+      if (!out.firstName && !out.lastName && out.name) {
+        const parts = (out.name || "").trim().split(/\s+/);
+        out.firstName = parts.slice(0, -1).join(" ") || parts[0] || "";
+        out.lastName = parts.slice(-1)[0] || "";
+      }
+      if (typeof out.role === "string") {
+        // behouden; kan "danser" of "speler" zijn
+      } else if (!out.type && !out.role) {
+        out.role = "speler";
+      }
+      return out;
+    });
+
+    // Shows: headset/handheld defaults
+    s.shows = s.shows.map(sh => ({
+      ...sh,
+      headsetCount: Number.isInteger(sh?.headsetCount) ? sh.headsetCount : 0,
+      handheldCount: Number.isInteger(sh?.handheldCount) ? sh.handheldCount : 0,
+      name: sh.name || "Nieuwe show",
+      startTime: sh.startTime || "19:30",
+    }));
+
+    // Sketches: showId, kind, roles, micAssignments, order per show
+    s.sketches = s.sketches.map(sk => {
+      const out = { ...sk };
+      if (!out.showId && firstShow?.id) out.showId = firstShow.id;
+
+      // kind normaliseren: 'break' (pauze), 'waerse' (De Waerse Ku-j), anders 'sketch'
+      if (!out.kind) out.kind = "sketch";
+      if (typeof out.kind === "string") {
+        const k = out.kind.toLowerCase();
+        if (k.includes("break") || k.includes("pauze")) out.kind = "break";
+        else if (k.includes("waerse")) out.kind = "waerse";
+        else out.kind = "sketch";
+      }
+
+      // roles normaliseren
+      const roles = Array.isArray(out.roles) ? out.roles : [];
+      out.roles = roles.map((r, idx) => ({
+        name: r?.name || `Rol ${idx + 1}`,
+        personId: r?.personId || "",
+        needsMic: !!r?.needsMic,
+      }));
+
+      // micAssignments object garanderen
+      out.micAssignments = out.micAssignments && typeof out.micAssignments === "object"
+        ? out.micAssignments
+        : {};
+
+      // duration default
+      out.durationMin = Number.isFinite(out.durationMin) ? out.durationMin : 0;
+
+      // stagePlace default
+      out.stagePlace = out.stagePlace || "podium";
+
+      return out;
+    });
+
+    // order per show opnieuw 1..N
+    const byShow = {};
+    s.sketches.forEach(sk => {
+      if (!byShow[sk.showId]) byShow[sk.showId] = [];
+      byShow[sk.showId].push(sk);
+    });
+    Object.values(byShow).forEach(list => {
+      list.sort((a, b) => (a.order || 0) - (b.order || 0));
+      list.forEach((it, idx) => { it.order = idx + 1; });
+    });
+
+    // Rehearsals: defaults (type, location, absentees)
+    const DEFAULT_TYPE = "Repetitie";
+    s.rehearsals = s.rehearsals.map(r => ({
+      ...r,
+      date: r?.date || new Date().toISOString().slice(0, 10),
+      type: r?.type || DEFAULT_TYPE,
+      location: r?.location || "",
+      absentees: Array.isArray(r?.absentees) ? r.absentees : [],
+      comments: r?.comments || "",
+    }));
+
+    // versie taggen
+    s._version = STATE_VERSION;
+    return s;
+  } catch (e) {
+    console.error("migrateState error:", e);
+    return input; // laatste redmiddel: geen migratie toepassen
+  }
+}
+
+
 // ---------- Root Component ----------
 function App() {
-  const boot = React.useMemo(() => withDefaults(), []);
+  // (Stap 3) boot door de migrator laten gaan
+  const boot = React.useMemo(() => {
+    const fresh = { people: [], mics: [], shows: [newEmptyShow()], sketches: [], rehearsals: [] };
+    return migrateState(fresh);
+  }, []);
+
   const [state, setState] = React.useState(boot);
   const [activeShowId, setActiveShowId] = React.useState(boot.shows[0]?.id || null);
   const [tab, setTab] = React.useState("planner");
@@ -93,29 +208,24 @@ function App() {
   const restoreVersion = (id) => { const v = versions.find((x)=>x.id===id); if (!v) return; pushHistory(state); applyState(v.data); };
   const deleteVersion = (id) => { const next = versions.filter((v)=>v.id!==id); setVersions(next); localStorage.setItem(`sll-backstage-v2:versions`, JSON.stringify(next)); };
 
-  // Bij eerste keer laden uit Supabase + eenvoudige migratie naar root+showId
+  // (Stap 2) Bij eerste keer laden uit Supabase + MIGRATIE + terugschrijven
   React.useEffect(() => {
     (async () => {
       const remote = await loadState();
-      const merged = withDefaults(remote || {});
-      const firstShowId = merged.shows[0]?.id;
-
-      // MIGRATIE: als items geen showId hebben, zet ze op eerste show
-      const fix = (arr=[]) => arr.map(x => x && (x.showId ? x : { ...x, showId: firstShowId }));
-      const migrated = {
-        ...merged,
-        sketches: fix(merged.sketches),
-        people: fix(merged.people),
-        mics: fix(merged.mics),
-        rehearsals: fix(merged.rehearsals),
-      };
-
-      setState(migrated);
-      setActiveShowId((prev) => {
-        if (prev && migrated.shows.some(s => s.id === prev)) return prev;
-        return migrated.shows[0]?.id || null;
-      });
+      if (remote) {
+        const fixed = migrateState(remote);
+        setState(fixed);
+        setActiveShowId((prev) => {
+          if (prev && fixed.shows.some(s => s.id === prev)) return prev;
+          return fixed.shows[0]?.id || null;
+        });
+        try { await saveStateRemote(fixed); } catch {}
+      } else {
+        // niets remote → zorg dat boot staat bewaard als eerste snapshot
+        try { await saveStateRemote(state); } catch {}
+      }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Opslaan bij elke wijziging
