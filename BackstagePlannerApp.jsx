@@ -329,53 +329,35 @@ function App() {
 
   return (
     <div className="mx-auto max-w-7xl p-4">
-      <header className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div className="flex items-center gap-2">
-          <h1 className="text-2xl font-bold">Backstage Planner – Bonte Avond</h1>
-          <button className="rounded-full border px-3 py-1 text-sm" onClick={undo}>Undo</button>
-          <button className="rounded-full border px-3 py-1 text-sm" onClick={redo}>Redo</button>
-          <button className="rounded-full border px-3 py-1 text-sm" onClick={()=>{ const n = prompt('Naam voor versie:','Snapshot'); if(n!==null) saveVersion(n); }}>Save version</button>
-        </div>
-        <div className="flex flex-wrap gap-2 items-center">
-          <nav className="flex flex-wrap gap-2">
-  {[
-    { key: "planner",       label: "Programma maker" },
-    { key: "runsheet",      label: "Overzicht Programma" },
-    { key: "cast",          label: "Biggenconvent" },
-    { key: "mics",          label: "Microfoonschema" },
-    { key: "rolverdeling",  label: "Rolverdeling" },
-    { key: "scripts",       label: "Sketches" },
-    { key: "rehearsals",    label: "Repetitieschema" },
-    // people tab is verwijderd
-  ].map(({ key, label }) => (
-    <button
-      key={key}
-      className={`rounded-full px-4 py-2 text-sm ${tab === key ? "bg-black text-white" : "bg-gray-100"}`}
-      onClick={() => setTab(key)}
-    >
-      {label}
-    </button>
-  ))}
-</nav>
+      <header className="sticky top-0 z-40 w-full border-b bg-white/80 backdrop-blur">
+  <div className="mx-auto max-w-7xl px-4">
+    <div className="h-14 flex items-center justify-between gap-3">
+      <div className="text-lg font-bold tracking-wide">KnorPlanner</div>
+      <nav className="flex flex-wrap gap-2 overflow-x-auto">
+        {[
+          { key: "planner",       label: "Programma maker" },
+          { key: "runsheet",      label: "Overzicht Programma" },
+          { key: "cast",          label: "Biggenconvent" },
+          { key: "mics",          label: "Microfoonschema" },
+          { key: "rolverdeling",  label: "Rolverdeling" },
+          { key: "scripts",       label: "Sketches" },
+          { key: "rehearsals",    label: "Repetitieschema" },
+        ].map(({ key, label }) => (
+          <button
+            key={key}
+            className={`rounded-full px-4 py-2 text-sm transition ${
+              tab === key ? "bg-black text-white shadow" : "bg-gray-100 hover:bg-gray-200"
+            }`}
+            onClick={() => setTab(key)}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
+    </div>
+  </div>
+</header>
 
-          <button className="rounded-full border px-3 py-1 text-sm" onClick={()=>{ navigator.clipboard?.writeText(location.href); }}>Kopieer link</button>
-          <details className="rounded-xl border px-3 py-2">
-            <summary className="cursor-pointer text-sm">Versies</summary>
-            <ul className="mt-2 space-y-1 text-sm">
-              {versions.map(v=> (
-                <li key={v.id} className="flex items-center justify-between gap-2">
-                  <span>{v.name} <span className="text-gray-500">({new Date(v.ts).toLocaleString()})</span></span>
-                  <span className="flex gap-2">
-                    <button className="rounded-full border px-2 py-1" onClick={()=>restoreVersion(v.id)}>Herstel</button>
-                    <button className="rounded-full border px-2 py-1" onClick={()=>deleteVersion(v.id)}>Verwijder</button>
-                  </span>
-                </li>
-              ))}
-              {versions.length===0 && <li className="text-gray-500">Nog geen versies.</li>}
-            </ul>
-          </details>
-        </div>
-      </header>
 
       {/* Sync status */}
       <div className="text-xs text-gray-500 mt-1">{syncStatus}</div>
@@ -479,6 +461,58 @@ function App() {
           />
         )}
       </main>
+{/* Floating tools bottom-left */}
+<div className="fixed left-4 bottom-4 z-50">
+  <details className="group w-[min(92vw,360px)]">
+    <summary className="cursor-pointer inline-flex items-center gap-2 rounded-full bg-black text-white px-4 py-2 shadow-lg select-none">
+      ⚙️ Hulpmiddelen
+      <span className="text-xs opacity-80">{syncStatus}</span>
+    </summary>
+
+    <div className="mt-2 rounded-xl border bg-white/95 backdrop-blur p-3 shadow-xl space-y-3">
+      <div className="flex gap-2 flex-wrap">
+        <button className="rounded-full border px-3 py-1 text-sm" onClick={undo}>Undo</button>
+        <button className="rounded-full border px-3 py-1 text-sm" onClick={redo}>Redo</button>
+        <button
+          className="rounded-full border px-3 py-1 text-sm"
+          onClick={()=>{ const n = prompt('Naam voor versie:','Snapshot'); if(n!==null) saveVersion(n); }}
+        >
+          Save version
+        </button>
+        <button
+          className="rounded-full border px-3 py-1 text-sm"
+          onClick={()=>{ navigator.clipboard?.writeText(location.href); }}
+        >
+          Kopieer link
+        </button>
+      </div>
+
+      <div className="text-xs text-gray-600">
+        Sync: <span className="font-medium">{syncStatus}</span>
+      </div>
+
+      <div className="rounded-lg border p-2">
+        <div className="font-semibold text-sm mb-1">Versies</div>
+        <ul className="space-y-1 text-sm max-h-48 overflow-auto pr-1">
+          {versions.map(v=> (
+            <li key={v.id} className="flex items-center justify-between gap-2">
+              <span className="truncate">
+                {v.name} <span className="text-gray-500">({new Date(v.ts).toLocaleString()})</span>
+              </span>
+              <span className="flex gap-2 shrink-0">
+                <button className="rounded-full border px-2 py-0.5" onClick={()=>restoreVersion(v.id)}>Herstel</button>
+                <button className="rounded-full border px-2 py-0.5" onClick={()=>deleteVersion(v.id)}>Del</button>
+              </span>
+            </li>
+          ))}
+          {versions.length===0 && <li className="text-gray-500">Nog geen versies.</li>}
+        </ul>
+      </div>
+    </div>
+  </details>
+</div>
+
+      
     </div>
   );
 }
