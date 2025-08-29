@@ -1,19 +1,23 @@
 function PlannerMinimal({ state, setState, activeShowId, setActiveShowId }) {
   const activeShow = state.shows.find((s) => s.id === activeShowId) || state.shows[0];
 
-  // Sketches voor de huidige show (root-model met showId)
-  const showSketches = (state.sketches || [])
+  // Alle items (sketches + pauzes) voor deze show
+  const showItems = (state.sketches || [])
     .filter((s) => s.showId === activeShow?.id)
     .sort((a, b) => (a.order || 0) - (b.order || 0));
 
+  const nextOrder = () => (showItems.at(-1)?.order || 0) + 1;
+
+  // ---------- Sketch ----------
   const addSketch = () => {
     if (!activeShow) return;
     setState((prev) => {
       const newSketch = {
         id: uid(),
         showId: activeShow.id,
+        kind: "sketch",
         title: "Nieuwe sketch",
-        order: (showSketches.at(-1)?.order || 0) + 1,
+        order: nextOrder(),
         durationMin: 5,
         script: "",
         performers: [],
@@ -27,25 +31,42 @@ function PlannerMinimal({ state, setState, activeShowId, setActiveShowId }) {
     });
   };
 
-  const updateSketch = (id, u) =>
+  // ---------- Pauze ----------
+  const addPause = () => {
+    if (!activeShow) return;
+    setState((prev) => {
+      const pauseItem = {
+        id: uid(),
+        showId: activeShow.id,
+        kind: "break",         // <- markeer als pauze
+        title: "PAUZE",        // <- vaste benaming
+        order: nextOrder(),
+        durationMin: 10,       // standaard 10 min, aanpasbaar
+        performers: [],
+        mics: [],
+      };
+      return { ...prev, sketches: [...(prev.sketches || []), pauseItem] };
+    });
+  };
+
+  const updateItem = (id, u) =>
     setState((prev) => ({
       ...prev,
       sketches: prev.sketches.map((sk) => (sk.id === id ? { ...sk, ...u } : sk)),
     }));
 
-  const removeSketch = (id) =>
+  const removeItem = (id) =>
     setState((prev) => ({
       ...prev,
       sketches: prev.sketches.filter((sk) => sk.id !== id),
     }));
 
-  // Nieuwe show aanmaken (naam kun je meteen intypen in het veld eronder)
+  // ---------- Shows ----------
   const addShow = () => {
     const newId = uid();
     const newShow = {
       id: newId,
       name: "Nieuwe show",
-      // geen date/startTime velden meer — we tonen/editen alleen naam
     };
     setState((prev) => ({
       ...prev,
@@ -54,14 +75,12 @@ function PlannerMinimal({ state, setState, activeShowId, setActiveShowId }) {
     setActiveShowId(newId);
   };
 
-  // Show-naam wijzigen
   const updateShow = (patch) =>
     setState((prev) => ({
       ...prev,
       shows: prev.shows.map((s) => (s.id === activeShow.id ? { ...s, ...patch } : s)),
     }));
 
-  // Show verwijderen met bevestiging + gerelateerde data opruimen
   const removeShow = () => {
     if (!activeShow) return;
     if (state.shows.length <= 1) return; // minimaal 1 show houden
@@ -74,7 +93,6 @@ function PlannerMinimal({ state, setState, activeShowId, setActiveShowId }) {
 
     setState((prev) => {
       const restShows = prev.shows.filter((s) => s.id !== activeShow.id);
-      // alle root-data met showId opruimen
       const keepByShow = (arr = []) => arr.filter((x) => x.showId !== activeShow.id);
       const next = {
         ...prev,
@@ -84,7 +102,6 @@ function PlannerMinimal({ state, setState, activeShowId, setActiveShowId }) {
         mics: keepByShow(prev.mics),
         rehearsals: keepByShow(prev.rehearsals),
       };
-      // active show omschakelen naar de eerste overgebleven
       const newActive = restShows[0]?.id || null;
       setActiveShowId(newActive);
       return next;
@@ -93,10 +110,10 @@ function PlannerMinimal({ state, setState, activeShowId, setActiveShowId }) {
 
   return (
     <div className="grid gap-6 md:grid-cols-3">
+      {/* Show selector + beheer */}
       <section className="rounded-2xl border p-4">
         <h3 className="mb-2 font-semibold">Show</h3>
 
-        {/* Dropdown met ALLEEN de naam (geen datum) */}
         <select
           className="rounded border px-3 py-2 w-full"
           value={activeShow?.id}
@@ -109,7 +126,6 @@ function PlannerMinimal({ state, setState, activeShowId, setActiveShowId }) {
           ))}
         </select>
 
-        {/* Show beheren */}
         {activeShow && (
           <div className="mt-3 space-y-2">
             <div>
@@ -142,56 +158,72 @@ function PlannerMinimal({ state, setState, activeShowId, setActiveShowId }) {
         )}
       </section>
 
+      {/* Items (sketches + pauzes) */}
       <section className="md:col-span-2 rounded-2xl border p-4">
         <div className="mb-2 flex items-center justify-between">
-          <h3 className="font-semibold">Sketches</h3>
-          <button
-            className="rounded-xl border px-3 py-2"
-            onClick={addSketch}
-            disabled={!activeShow}
-          >
-            + Sketch
-          </button>
+          <h3 className="font-semibold">Show-items</h3>
+          <div className="flex gap-2">
+            <button className="rounded-xl border px-3 py-2" onClick={addSketch} disabled={!activeShow}>
+              + Sketch
+            </button>
+            <button className="rounded-xl border px-3 py-2" onClick={addPause} disabled={!activeShow}>
+              + Pauze
+            </button>
+          </div>
         </div>
+
         <ul className="space-y-2">
-          {showSketches.map((s) => (
-            <li
-              key={s.id}
-              className="rounded-xl bg-gray-50 p-3 flex items-center gap-2"
-            >
-              <input
-                className="w-16 rounded border px-2 py-1"
-                type="number"
-                value={s.order}
-                onChange={(e) =>
-                  updateSketch(s.id, { order: parseInt(e.target.value || 0, 10) })
-                }
-              />
-              <input
-                className="flex-1 rounded border px-2 py-1"
-                value={s.title}
-                onChange={(e) => updateSketch(s.id, { title: e.target.value })}
-              />
-              <input
-                className="w-20 rounded border px-2 py-1"
-                type="number"
-                value={s.durationMin || 0}
-                onChange={(e) =>
-                  updateSketch(s.id, {
-                    durationMin: parseInt(e.target.value || 0, 10),
-                  })
-                }
-              />
-              <button
-                className="rounded-full border px-3 py-1"
-                onClick={() => removeSketch(s.id)}
-              >
-                x
-              </button>
-            </li>
-          ))}
-          {showSketches.length === 0 && (
-            <li className="text-sm text-gray-500">Nog geen sketches.</li>
+          {showItems.map((it) => {
+            const isBreak = it.kind === "break";
+            return (
+              <li key={it.id} className="rounded-xl bg-gray-50 p-3 flex items-center gap-2">
+                {/* Volgorde */}
+                <input
+                  className="w-16 rounded border px-2 py-1"
+                  type="number"
+                  value={it.order || 0}
+                  onChange={(e) =>
+                    updateItem(it.id, { order: parseInt(e.target.value || 0, 10) })
+                  }
+                  title="Volgorde"
+                />
+
+                {/* Titel: alleen editbaar voor sketches; pauze is vaste naam */}
+                {isBreak ? (
+                  <span className="px-2 py-1 rounded bg-yellow-100 text-yellow-800 font-semibold">
+                    PAUZE
+                  </span>
+                ) : (
+                  <input
+                    className="flex-1 rounded border px-2 py-1"
+                    value={it.title || ""}
+                    onChange={(e) => updateItem(it.id, { title: e.target.value })}
+                    placeholder="Titel van sketch"
+                  />
+                )}
+
+                {/* Duur in minuten */}
+                <input
+                  className="w-24 rounded border px-2 py-1"
+                  type="number"
+                  value={it.durationMin || 0}
+                  onChange={(e) =>
+                    updateItem(it.id, {
+                      durationMin: parseInt(e.target.value || 0, 10),
+                    })
+                  }
+                  title="Duur (min)"
+                />
+
+                {/* Verwijder */}
+                <button className="rounded-full border px-3 py-1" onClick={() => removeItem(it.id)}>
+                  x
+                </button>
+              </li>
+            );
+          })}
+          {showItems.length === 0 && (
+            <li className="text-sm text-gray-500">Nog geen items.</li>
           )}
         </ul>
       </section>
