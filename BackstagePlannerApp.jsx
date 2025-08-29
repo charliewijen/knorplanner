@@ -333,11 +333,15 @@ function App() {
         )}
 
         {tab === "scripts" && (
-          <ScriptsView
-            sketches={showSketches}
-            onUpdate={updateSketch}
-          />
-        )}
+  <TabErrorBoundary>
+    <ScriptsView
+      sketches={showSketches}
+      people={showPeople}
+      onUpdate={updateSketch}
+    />
+  </TabErrorBoundary>
+)}
+
 
         {tab === "planner" && (
           <PlannerMinimal
