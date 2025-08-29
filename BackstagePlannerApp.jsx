@@ -1,4 +1,3 @@
-
 // GEEN: const { useEffect, useMemo, useState } = React;
 
 const {
@@ -7,10 +6,7 @@ const {
   detectMicConflicts,
   detectCastConflicts,
   RunSheetView,
-  TechPackView,
   PeopleAndResources,
-  CastMatrix,
-  MicMatrix,
   parseTimeToMin
 } = window;
 
@@ -64,6 +60,8 @@ function App() {
   const [activeShowId, setActiveShowId] = React.useState(boot.shows[0]?.id || null);
   const [tab, setTab] = React.useState("planner");
 
+  const [syncStatus, setSyncStatus] = React.useState("Nog niet gesynced");
+
   // ---- History (undo/redo) ----
   const [past, setPast] = React.useState([]);
   const [future, setFuture] = React.useState([]);
@@ -93,7 +91,14 @@ function App() {
 
   // Opslaan bij elke wijziging
   React.useEffect(() => {
-    const t = setTimeout(() => { saveStateRemote(state); }, 500);
+    const t = setTimeout(async () => {
+      try {
+        await saveStateRemote(state);
+        setSyncStatus("✅ Gesynced om " + new Date().toLocaleTimeString());
+      } catch {
+        setSyncStatus("⚠️ Opslaan mislukt");
+      }
+    }, 500);
     return () => clearTimeout(t);
   }, [state]);
 
@@ -164,6 +169,9 @@ function App() {
         </div>
       </header>
 
+      {/* Sync status balkje */}
+      <div className="text-xs text-gray-500 mt-1">{syncStatus}</div>
+
       <main className="mt-6">
         {tab === "runsheet" && (
           <div className="grid gap-4">
@@ -179,9 +187,9 @@ function App() {
             <RunSheetView runSheet={runSheet} show={activeShow} />
           </div>
         )}
-        {tab === "cast" && <CastMatrix sketches={showSketches} people={state.people} />}
-        {tab === "mics" && <MicMatrix sketches={showSketches} mics={state.mics} people={state.people} />}
-        {tab === "tech" && <TechPackView sketches={showSketches} micById={micById} personById={personById} show={activeShow} />}
+        {tab === "cast" && <CastMatrixView sketches={showSketches} people={state.people} />}
+        {tab === "mics" && <MicMatrixView sketches={showSketches} mics={state.mics} people={state.people} />}
+        {tab === "tech" && <TechPackViewPage sketches={showSketches} micById={micById} personById={personById} show={activeShow} />}
         {tab === "people" && <PeopleAndResources state={state} setState={(fn)=>{ pushHistory(state); setState(fn(state)); }} />}
         {tab === "rehearsals" && <RehearsalPlanner rehearsals={state.rehearsals} people={state.people} onAdd={addRehearsal} onUpdate={updateRehearsal} onRemove={removeRehearsal} />}
         {tab === "scripts" && <ScriptsView sketches={showSketches} onUpdate={updateSketch} />}
