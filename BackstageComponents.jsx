@@ -36,7 +36,7 @@ window.buildRunSheet = (show, sketches) => {
   return { items, totalMin };
 };
 
-/* ========= Conflict detection (simple) ========= */
+/* ========= Conflicts (basic) ========= */
 window.detectMicConflicts = (sketches) => {
   const warnings = [];
   const ordered = [...(sketches || [])].sort((a, b) => (a.order || 0) - (b.order || 0));
@@ -89,7 +89,7 @@ window.ListTable = function ListTable({ headers, rows }) {
   );
 };
 
-/* ========= RunSheetView ========= */
+/* ========= Views ========= */
 window.RunSheetView = function RunSheetView({ runSheet, show }) {
   if (!show) return null;
   return (
@@ -125,7 +125,6 @@ window.RunSheetView = function RunSheetView({ runSheet, show }) {
   );
 };
 
-/* ========= TechPack ========= */
 window.TechPackView = function TechPackView({ sketches, micById, personById, show }) {
   const propsAgg = [], costumesAgg = [], cuesLights = [], cuesSound = [], micsAgg = [];
   const ordered = [...(sketches || [])].sort((a,b)=>(a.order||0)-(b.order||0));
@@ -168,7 +167,6 @@ window.TechPackView = function TechPackView({ sketches, micById, personById, sho
   );
 };
 
-/* ========= People & Mics ========= */
 window.PeopleAndResources = function PeopleAndResources({ state, setState }) {
   const [newName, setNewName] = useState("");
   const [tags, setTags] = useState("");
@@ -240,7 +238,7 @@ window.PeopleAndResources = function PeopleAndResources({ state, setState }) {
   );
 };
 
-/* ========= Simple read-only matrices ========= */
+/* ========= Matrices ========= */
 window.CastMatrix = function CastMatrix({ sketches = [], people = [] }) {
   const ordered = [...sketches].sort((a,b)=>(a.order||0)-(b.order||0));
   return (
