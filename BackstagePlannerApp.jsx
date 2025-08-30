@@ -355,6 +355,26 @@ function App() {
     );
   }
 
+  if (shareTab === "rolverdeling") {
+    // readonly public view rolverdeling
+    return (
+      <div className="mx-auto max-w-6xl p-4">
+        <h1 className="text-2xl font-bold mb-4">Rolverdeling (live)</h1>
+        <RoleDistributionView
+          currentShowId={activeShow?.id}
+          sketches={showSketches}
+          people={showPeople}
+          // readonly → geen setState
+          setState={()=>{}}
+        />
+        <div className="text-sm text-gray-500 mt-6">
+          Dit is een gedeelde link, alleen-lezen. Wijzigingen kunnen alleen in de hoofd-app.
+        </div>
+      </div>
+    );
+  }
+
+  
   // ====== NORMALE APP ======
   return (
     <div className="mx-auto max-w-7xl p-4">
@@ -554,6 +574,22 @@ function App() {
     </div>
   );
 }
+
+{/* Handige share-link voor rolverdeling */}
+<div className="rounded-lg border p-2">
+  <div className="font-semibold text-sm mb-1">Deel link – Rolverdeling (alleen-lezen)</div>
+  <button
+    className="rounded-full border px-3 py-1 text-sm"
+    onClick={()=>{
+      const url = `${location.origin}${location.pathname}#share=rolverdeling`;
+      navigator.clipboard?.writeText(url);
+      alert("Gekopieerd:\n" + url);
+    }}
+  >
+    Kopieer share-link
+  </button>
+</div>
+
 
 // expose naar window zodat index.html kan mounten
 window.BackstagePlannerApp = App;
