@@ -39,11 +39,24 @@ function MicMatrixView({ currentShowId, sketches = [], people = [], shows = [], 
   };
 
   // Optielijst per cel: alle needed personen MIN degene die al zijn toegewezen in deze sketch
-  const optionsForCell = (sk) => {
+  const optionsForCell = (sk, current) => {
     const need = requiredForSketch(sk);
     const ass = sk.micAssignments && typeof sk.micAssignments === "object" ? sk.micAssignments : {};
     const already = new Set(Object.values(ass).filter(Boolean));
-    return need.filter(pid => !already.has(pid)).map(pid => ({ id: pid, label: fullName(personById[pid]) || pid }));
+
+    // vorige (werkende) aanpak: simpele lijst met filtering,
+    // maar als er al een waarde staat die door filtering zou verdwijnen,
+    // voegen we die bovenaan weer toe zodat je hem ziet.
+    const base = need.filter(pid => !already.has(pid) || pid === current);
+
+    // Maak objects met label
+    const opts = base.map(pid => ({ id: pid, label: fullName(personById[pid]) || pid }));
+
+    // Als current bestaat en niet in de base zat (zou zeldzaam moeten zijn), voeg alsnog toe
+    if (current && !base.includes(current)) {
+      opts.unshift({ id: current, label: fullName(personById[current]) || current });
+    }
+    return opts;
   };
 
   // Huidige waarde per kanaal
@@ -80,8 +93,26 @@ function MicMatrixView({ currentShowId, sketches = [], people = [], shows = [], 
 
   const printNow = () => window.print();
 
+  // Kleine, vaste cellen zodat >=12 kolommen passen zonder horizontaal scrollen
+  // (table-fixed + compacte padding + iets kleinere font-size)
   return (
     <section id="print-mics" className="rounded-2xl border p-4 bg-white">
+      {/* Compacte stijl alleen voor scherm */}
+      <style>{`
+        @media screen {
+          #mic-fixed-table { table-layout: fixed; width: 100%; }
+          #mic-fixed-table th, #mic-fixed-table td { padding: 6px 6px; }
+          #mic-fixed-table { font-size: 13px; }
+          /* eerste kolommen smal houden */
+          #mic-fixed-table th.col-idx, #mic-fixed-table td.col-idx { width: 36px; }
+          #mic-fixed-table th.col-title, #mic-fixed-table td.col-title { width: 220px; }
+          /* mic-kolommen delen de resterende ruimte gelijkmatig dankzij table-fixed */
+          #mic-fixed-table th, #mic-fixed-table td { word-wrap: break-word; white-space: normal; }
+          /* select compact */
+          #mic-fixed-table select { width: 100%; max-width: 100%; }
+        }
+      `}</style>
+
       <div className="mb-3 flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold">Microfoonschema</h2>
@@ -127,99 +158,81 @@ function MicMatrixView({ currentShowId, sketches = [], people = [], shows = [], 
         <span className="text-xs text-gray-500">Rij wordt groen zodra iedereen met mic een mic heeft.</span>
       </div>
 
-      {/* Full-bleed breedte + horizontale scroll waar nodig */}
-      <div className="-mx-4 md:mx-0">
-        <div className="w-[100vw] md:w-auto overflow-x-auto overflow-y-visible">
-          <table className="border text-sm w-max min-w-full">
-            <thead>
-              <tr className="bg-gray-100">
-                <th className="border px-2 py-1 text-left w-12">#</th>
-                <th className="border px-2 py-1 text-left">Sketch</th>
-                {headsetIds.map((id) => (
-                  <th key={id} className="border px-2 py-1 text-left whitespace-normal">Headset {id.replace("HS","")}</th>
-                ))}
-                {handheldIds.map((id) => (
-                  <th key={id} className="border px-2 py-1 text-left whitespace-normal">Handheld {id.replace("HH","")}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((sk, idx) => {
-                const isBreak = sk.kind === "break";
-                const isWaerse = sk.kind === "waerse";
-                const title = isBreak ? "PAUZE" : isWaerse ? (sk.title || "De Waerse Ku-j") : (sk.title || "");
+      {/* Full width, geen horizontale scroll nodig bij ~12 kolommen */}
+      <div className="mx-0">
+        <table id="mic-fixed-table" className="border text-sm">
+          <thead>
+            <tr className="bg-gray-100">
+              <th className="border px-2 py-1 text-left col-idx">#</th>
+              <th className="border px-2 py-1 text-left col-title">Sketch</th>
+              {headsetIds.map((id, i) => (
+                <th key={id} className="border px-2 py-1 text-left">Headset {i+1}</th>
+              ))}
+              {handheldIds.map((id, i) => (
+                <th key={id} className="border px-2 py-1 text-left">Handheld {i+1}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((sk, idx) => {
+              const isBreak = sk.kind === "break";
+              const isWaerse = sk.kind === "waerse";
+              const title = isBreak ? "PAUZE" : isWaerse ? (sk.title || "De Waerse Ku-j") : (sk.title || "");
 
-                // bereken options nog vóór render (voor elke cel gebruiken)
-                const opts = optionsForCell(sk);
+              const renderCell = (channelId) => {
+                const current = getAssigned(sk, channelId);
+                const disabledRow = isRowComplete(sk);
 
-                const renderCell = (channelId) => {
-                  const current = getAssigned(sk, channelId);
-                  const disabledRow = isRowComplete(sk); // in UI: grijs wanneer compleet
-                  const channelOpts = [
-                    // huidige keuze bovenaan houden (ook als die niet in opts zit)
-                    ...(!current ? [] : [{ id: current, label: fullName(personById[current]) || current }]),
-                    // overige kandidaten (excl. current)
-                    ...opts.filter(o => o.id !== current)
-                  ];
-
-                  return (
-                    <td key={channelId} className="border px-2 py-1 align-top">
-                      {/* PRINT: toon alleen naam of leeg */}
-                      {current ? (
-                        <span className="no-truncate">{fullName(personById[current]) || current}</span>
-                      ) : (
-                        <span className="print-only">&nbsp;</span>
-                      )}
-
-                      {/* SCHERM: select/clear knoppen */}
-                      <div className="print-hide">
-                        <div className={`flex items-center gap-2 ${disabledRow ? "opacity-50 pointer-events-none" : ""}`}>
-                          <select
-                            className="rounded border px-2 py-1 mic-select max-w-[220px]"
-                            value={current || ""}
-                            onChange={(e)=>assign(sk.id, channelId, e.target.value)}
-                          >
-                            <option value="">— kies speler —</option>
-                            {channelOpts.map(o => (
-                              <option key={o.id} value={o.id}>{o.label}</option>
-                            ))}
-                          </select>
-                          {current && (
-                            <button
-                              className="rounded-full border px-2 py-1 text-xs"
-                              onClick={()=>clearChannel(sk.id, channelId)}
-                              title="Leegmaken"
-                            >
-                              ×
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    </td>
-                  );
-                };
+                // vorige (werkende) dropdown: simpele lijst met filtering,
+                // geen extra flex/knoppen — strak en duidelijk.
+                const opts = optionsForCell(sk, current);
 
                 return (
-                  <tr key={sk.id} className={rowBg(sk)}>
-                    <td className="border px-2 py-1 align-top">{sk.order || idx+1}</td>
-                    <td className="border px-2 py-1 align-top whitespace-normal">
-                      <div className="no-truncate font-medium">{title}</div>
-                    </td>
-                    {headsetIds.map(renderCell)}
-                    {handheldIds.map(renderCell)}
-                  </tr>
-                );
-              })}
-              {items.length === 0 && (
-                <tr>
-                  <td className="border px-2 py-2 text-gray-500 text-center" colSpan={2 + allChannels.length}>
-                    Geen items in deze show.
+                  <td key={channelId} className="border px-2 py-1 align-top">
+                    {/* PRINT: toon alleen naam of leeg */}
+                    {current ? (
+                      <span className="no-truncate">{fullName(personById[current]) || current}</span>
+                    ) : (
+                      <span className="print-only">&nbsp;</span>
+                    )}
+
+                    {/* SCHERM: enkel de select (compact) */}
+                    <div className={`print-hide ${disabledRow ? "opacity-50 pointer-events-none" : ""}`}>
+                      <select
+                        className="rounded border px-2 py-1"
+                        value={current || ""}
+                        onChange={(e)=>assign(sk.id, channelId, e.target.value)}
+                      >
+                        <option value="">— kies speler —</option>
+                        {opts.map(o => (
+                          <option key={o.id} value={o.id}>{o.label}</option>
+                        ))}
+                      </select>
+                    </div>
                   </td>
+                );
+              };
+
+              return (
+                <tr key={sk.id} className={rowBg(sk)}>
+                  <td className="border px-2 py-1 align-top col-idx">{sk.order || idx+1}</td>
+                  <td className="border px-2 py-1 align-top col-title whitespace-normal">
+                    <div className="no-truncate font-medium">{title}</div>
+                  </td>
+                  {headsetIds.map(renderCell)}
+                  {handheldIds.map(renderCell)}
                 </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+              );
+            })}
+            {items.length === 0 && (
+              <tr>
+                <td className="border px-2 py-2 text-gray-500 text-center" colSpan={2 + allChannels.length}>
+                  Geen items in deze show.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
     </section>
   );
