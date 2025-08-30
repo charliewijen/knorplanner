@@ -40,17 +40,30 @@ const saveStateRemote = async (state) => {
   } catch {}
 };
 
-// ---- Veilige defaults ----
+// ---- Helpers ----
 const todayStr = () => new Date().toISOString().slice(0, 10);
 const newEmptyShow = () => ({ id: uid(), name: "Nieuwe show", date: todayStr(), startTime: "19:30" });
+
+// SHA-256 hash (voor wachtwoord)
+async function hashText(text) {
+  const enc = new TextEncoder().encode(text);
+  const buf = await crypto.subtle.digest("SHA-256", enc);
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,"0")).join("");
+}
+
 function withDefaults(s = {}) {
   return {
-    // Root-model met showId op items
     people: Array.isArray(s.people) ? s.people : [],
     mics: Array.isArray(s.mics) ? s.mics : [],
     shows: Array.isArray(s.shows) && s.shows.length ? s.shows : [newEmptyShow()],
     sketches: Array.isArray(s.sketches) ? s.sketches : [],
     rehearsals: Array.isArray(s.rehearsals) ? s.rehearsals : [],
+    // app-instellingen
+    settings: {
+      ...(s.settings || {}),
+      requirePassword: !!(s.settings?.requirePassword),      // standaard UIT (false)
+      appPasswordHash: s.settings?.appPasswordHash || null,  // SHA-256 hash
+    },
   };
 }
 
@@ -71,117 +84,47 @@ class TabErrorBoundary extends React.Component {
   }
 }
 
-// ===== Data Migratie =====
-const STATE_VERSION = 3;
+// ===== Password Gate (overlay) =====
+function PasswordGate({ onUnlock }) {
+  const [pw, setPw] = React.useState("");
+  const [err, setErr] = React.useState("");
 
-function migrateState(input) {
-  try {
-    const s = JSON.parse(JSON.stringify(input || {}));
+  const tryUnlock = async () => {
+    setErr("");
+    try {
+      const h = await hashText(pw || "");
+      // Het echte hashje komt uit state via onUnlock-check
+      const ok = await onUnlock(h);
+      if (!ok) setErr("Onjuist wachtwoord.");
+    } catch (e) {
+      setErr("Er ging iets mis.");
+    }
+  };
 
-    // basis containers
-    s.people = Array.isArray(s.people) ? s.people : [];
-    s.mics = Array.isArray(s.mics) ? s.mics : [];
-    s.shows = Array.isArray(s.shows) ? s.shows : [];
-    s.sketches = Array.isArray(s.sketches) ? s.sketches : [];
-    s.rehearsals = Array.isArray(s.rehearsals) ? s.rehearsals : [];
+  const onKey = (e) => { if (e.key === "Enter") tryUnlock(); };
 
-    // helpers
-    const byId = new Map((s.shows || []).map(sh => [sh.id, sh]));
-    const firstShow = s.shows[0];
-
-    // People: split name → first/last, default type
-    s.people = s.people.map(p => {
-      const out = { ...p };
-      if (!out.firstName && !out.lastName && out.name) {
-        const parts = (out.name || "").trim().split(/\s+/);
-        out.firstName = parts.slice(0, -1).join(" ") || parts[0] || "";
-        out.lastName = parts.slice(-1)[0] || "";
-      }
-      if (typeof out.role === "string") {
-        // behouden; kan "danser" of "speler" zijn
-      } else if (!out.type && !out.role) {
-        out.role = "speler";
-      }
-      return out;
-    });
-
-    // Shows: headset/handheld defaults
-    s.shows = s.shows.map(sh => ({
-      ...sh,
-      headsetCount: Number.isInteger(sh?.headsetCount) ? sh.headsetCount : 0,
-      handheldCount: Number.isInteger(sh?.handheldCount) ? sh.handheldCount : 0,
-      name: sh.name || "Nieuwe show",
-      startTime: sh.startTime || "19:30",
-    }));
-
-    // Sketches: showId, kind, roles, micAssignments, order per show
-    // 1) showId invullen als er precies 1 show is
-    s.sketches = s.sketches.map(sk => {
-      const out = { ...sk };
-      if (!out.showId && firstShow?.id) out.showId = firstShow.id;
-
-      // kind normaliseren: 'break' (pauze), 'waerse' (De Waerse Ku-j), anders 'sketch'
-      if (!out.kind) out.kind = "sketch";
-      if (typeof out.kind === "string") {
-        const k = out.kind.toLowerCase();
-        if (k.includes("break") || k.includes("pauze")) out.kind = "break";
-        else if (k.includes("waerse")) out.kind = "waerse";
-        else out.kind = "sketch";
-      }
-
-      // roles normaliseren
-      const roles = Array.isArray(out.roles) ? out.roles : [];
-      out.roles = roles.map((r, idx) => ({
-        name: r?.name || `Rol ${idx + 1}`,
-        personId: r?.personId || "",
-        needsMic: !!r?.needsMic,
-      }));
-
-      // micAssignments object garanderen
-      out.micAssignments = out.micAssignments && typeof out.micAssignments === "object"
-        ? out.micAssignments
-        : {};
-
-      // duration default
-      out.durationMin = Number.isFinite(out.durationMin) ? out.durationMin : 0;
-
-      // stagePlace default
-      out.stagePlace = out.stagePlace || "podium";
-
-      return out;
-    });
-
-    // 2) order per show opnieuw 1..N als er gaten/undefined zijn
-    const byShow = {};
-    s.sketches.forEach(sk => {
-      if (!byShow[sk.showId]) byShow[sk.showId] = [];
-      byShow[sk.showId].push(sk);
-    });
-    Object.values(byShow).forEach(list => {
-      list.sort((a, b) => (a.order || 0) - (b.order || 0));
-      list.forEach((it, idx) => { it.order = idx + 1; });
-    });
-
-    // Rehearsals: defaults (type, location, absentees)
-    const DEFAULT_TYPE = "Repetitie";
-    s.rehearsals = s.rehearsals.map(r => ({
-      ...r,
-      date: r?.date || new Date().toISOString().slice(0, 10),
-      type: r?.type || DEFAULT_TYPE,
-      location: r?.location || "",
-      absentees: Array.isArray(r?.absentees) ? r.absentees : [],
-      comments: r?.comments || "",
-    }));
-
-    // versie taggen
-    s._version = STATE_VERSION;
-    return s;
-  } catch (e) {
-    console.error("migrateState error:", e);
-    return input; // laatste redmiddel: geen migratie toepassen
-  }
+  return (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-white">
+      <div className="w-[min(92vw,380px)] rounded-2xl border p-6 shadow-xl">
+        <h1 className="text-xl font-bold mb-2">KnorPlanner</h1>
+        <p className="text-sm text-gray-600 mb-4">Voer het wachtwoord in om de planner te openen.</p>
+        <input
+          type="password"
+          className="w-full rounded border px-3 py-2 mb-2"
+          placeholder="Wachtwoord"
+          value={pw}
+          onChange={(e)=>setPw(e.target.value)}
+          onKeyDown={onKey}
+        />
+        {err && <div className="text-sm text-red-600 mb-2">{err}</div>}
+        <button className="w-full rounded-md bg-black text-white px-3 py-2" onClick={tryUnlock}>Ontgrendel</button>
+        <div className="mt-3 text-xs text-gray-500">
+          Tip: Deel-links (bijv. repetitieschema) werken zonder wachtwoord.
+        </div>
+      </div>
+    </div>
+  );
 }
-
 
 // ---------- Root Component ----------
 function App() {
@@ -205,14 +148,13 @@ function App() {
   const restoreVersion = (id) => { const v = versions.find((x)=>x.id===id); if (!v) return; pushHistory(state); applyState(v.data); };
   const deleteVersion = (id) => { const next = versions.filter((v)=>v.id!==id); setVersions(next); localStorage.setItem(`sll-backstage-v2:versions`, JSON.stringify(next)); };
 
-  // Bij eerste keer laden uit Supabase + eenvoudige migratie naar root+showId
+  // Bij eerste keer laden
   React.useEffect(() => {
     (async () => {
       const remote = await loadState();
       const merged = withDefaults(remote || {});
       const firstShowId = merged.shows[0]?.id;
 
-      // MIGRATIE: als items geen showId hebben, zet ze op eerste show
       const fix = (arr=[]) => arr.map(x => x && (x.showId ? x : { ...x, showId: firstShowId }));
       const migrated = {
         ...merged,
@@ -254,7 +196,7 @@ function App() {
     return found || arr[0] || null;
   }, [state.shows, activeShowId]);
 
-  // Filter per showId (root-model)
+  // Filter per showId
   const showSketches = React.useMemo(() => {
     if (!activeShow) return [];
     const all = Array.isArray(state.sketches) ? state.sketches : [];
@@ -319,7 +261,7 @@ function App() {
     }));
   };
 
-  // ---------- Show mutatie vanaf RunSheet (begintijd editen) ----------
+  // ---------- Show mutatie ----------
   const updateActiveShow = (patch) => {
     if (!activeShow) return;
     setState((prev) => ({
@@ -336,8 +278,55 @@ function App() {
     return p.get("share") || null;
   }, [location.hash]);
 
+  // ====== PASSWORD LOCK (alleen voor hoofd-app, niet voor share) ======
+  const [locked, setLocked] = React.useState(false);
+
+  React.useEffect(() => {
+    if (shareTab) { setLocked(false); return; } // share is altijd open
+    const req = !!(state.settings?.requirePassword);
+    if (!req) { setLocked(false); return; }
+    const token = localStorage.getItem("knor:auth") || "";
+    const ok = !!(token && state.settings?.appPasswordHash && token === state.settings.appPasswordHash);
+    setLocked(!ok);
+  }, [shareTab, state.settings]);
+
+  const handleUnlock = async (hash) => {
+    if (!state.settings?.appPasswordHash) return false;
+    const ok = (hash === state.settings.appPasswordHash);
+    if (ok) {
+      localStorage.setItem("knor:auth", hash);
+      setLocked(false);
+    }
+    return ok;
+  };
+
+  const setNewPassword = async () => {
+    const pw = prompt("Nieuw wachtwoord instellen:");
+    if (!pw) return;
+    const h = await hashText(pw);
+    setState(prev => ({
+      ...prev,
+      settings: { ...(prev.settings||{}), appPasswordHash: h, requirePassword: true }
+    }));
+    localStorage.setItem("knor:auth", h);
+    alert("Wachtwoord ingesteld en geactiveerd.");
+  };
+
+  const lockNow = () => {
+    setState(prev => ({ ...prev, settings: { ...(prev.settings||{}), requirePassword: true } }));
+    localStorage.removeItem("knor:auth");
+    alert("Vergrendeld. Vernieuw de pagina om te controleren.");
+  };
+
+  const unlockThisDevice = () => {
+    const h = state.settings?.appPasswordHash;
+    if (!h) { alert("Er is nog geen wachtwoord ingesteld."); return; }
+    localStorage.setItem("knor:auth", h);
+    setLocked(false);
+    alert("Dit apparaat is ontgrendeld.");
+  };
+
   if (shareTab === "rehearsals") {
-    // alleen-lezen publieke view van repetitieschema
     return (
       <div className="mx-auto max-w-4xl p-4">
         <h1 className="text-2xl font-bold mb-4">Repetitieschema (live)</h1>
@@ -356,7 +345,6 @@ function App() {
   }
 
   if (shareTab === "rolverdeling") {
-    // readonly public view rolverdeling
     return (
       <div className="mx-auto max-w-6xl p-4">
         <h1 className="text-2xl font-bold mb-4">Rolverdeling (live)</h1>
@@ -364,7 +352,6 @@ function App() {
           currentShowId={activeShow?.id}
           sketches={showSketches}
           people={showPeople}
-          // readonly → geen setState
           setState={()=>{}}
         />
         <div className="text-sm text-gray-500 mt-6">
@@ -374,7 +361,11 @@ function App() {
     );
   }
 
-  
+  // Toon wachtwoord-poort als vergrendeld
+  if (locked) {
+    return <PasswordGate onUnlock={handleUnlock} />;
+  }
+
   // ====== NORMALE APP ======
   return (
     <div className="mx-auto max-w-7xl p-4">
@@ -508,7 +499,7 @@ function App() {
 
       {/* Floating tools bottom-left */}
       <div className="fixed left-4 bottom-4 z-50">
-        <details className="group w-[min(92vw,360px)]">
+        <details className="group w-[min(92vw,380px)]">
           <summary className="cursor-pointer inline-flex items-center gap-2 rounded-full bg-black text-white px-4 py-2 shadow-lg select-none">
             ⚙️ Hulpmiddelen
             <span className="text-xs opacity-80">{syncStatus}</span>
@@ -554,45 +545,60 @@ function App() {
               </ul>
             </div>
 
-            {/* Handige share-link voor repetities */}
-            <div className="rounded-lg border p-2">
-              <div className="font-semibold text-sm mb-1">Deel link – Repetitieschema (alleen-lezen)</div>
-              <button
-                className="rounded-full border px-3 py-1 text-sm"
-                onClick={()=>{
-                  const url = `${location.origin}${location.pathname}#share=rehearsals`;
-                  navigator.clipboard?.writeText(url);
-                  alert("Gekopieerd:\n" + url);
-                }}
-              >
-                Kopieer share-link
-              </button>
+            {/* Deel-links */}
+            <div className="rounded-lg border p-2 space-y-2">
+              <div className="font-semibold text-sm">Deel links (alleen-lezen)</div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  className="rounded-full border px-3 py-1 text-sm"
+                  onClick={()=>{
+                    const url = `${location.origin}${location.pathname}#share=rehearsals`;
+                    navigator.clipboard?.writeText(url);
+                    alert("Gekopieerd:\n" + url);
+                  }}
+                >
+                  Repetitieschema
+                </button>
+                <button
+                  className="rounded-full border px-3 py-1 text-sm"
+                  onClick={()=>{
+                    const url = `${location.origin}${location.pathname}#share=rolverdeling`;
+                    navigator.clipboard?.writeText(url);
+                    alert("Gekopieerd:\n" + url);
+                  }}
+                >
+                  Rolverdeling
+                </button>
+              </div>
             </div>
 
-{/* Handige share-link voor rolverdeling */}
-<div className="rounded-lg border p-2">
-  <div className="font-semibold text-sm mb-1">Deel link – Rolverdeling (alleen-lezen)</div>
-  <button
-    className="rounded-full border px-3 py-1 text-sm"
-    onClick={()=>{
-      const url = `${location.origin}${location.pathname}#share=rolverdeling`;
-      navigator.clipboard?.writeText(url);
-      alert("Gekopieerd:\n" + url);
-    }}
-  >
-    Kopieer share-link
-  </button>
-</div>
-            
+            {/* Beveiliging */}
+            <div className="rounded-lg border p-2 space-y-2">
+              <div className="font-semibold text-sm">Beveiliging</div>
+              <div className="text-xs text-gray-600">
+                Status: {state.settings?.requirePassword ? "Aan" : "Uit"}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button className="rounded-full border px-3 py-1 text-sm" onClick={setNewPassword}>
+                  Wachtwoord instellen/wijzigen
+                </button>
+                <button className="rounded-full border px-3 py-1 text-sm" onClick={lockNow}>
+                  Vergrendel nu
+                </button>
+                <button className="rounded-full border px-3 py-1 text-sm" onClick={unlockThisDevice}>
+                  Ontgrendel dit apparaat
+                </button>
+              </div>
+              <div className="text-[11px] text-gray-500">
+                Simpele front-end beveiliging. Deel-links blijven werken zonder wachtwoord.
+              </div>
+            </div>
           </div>
         </details>
       </div>
     </div>
   );
 }
-
-
-
 
 // expose naar window zodat index.html kan mounten
 window.BackstagePlannerApp = App;
