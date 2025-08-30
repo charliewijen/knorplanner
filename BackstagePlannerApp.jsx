@@ -568,12 +568,6 @@ function App() {
                 Kopieer share-link
               </button>
             </div>
-          </div>
-        </details>
-      </div>
-    </div>
-  );
-}
 
 {/* Handige share-link voor rolverdeling */}
 <div className="rounded-lg border p-2">
@@ -589,6 +583,15 @@ function App() {
     Kopieer share-link
   </button>
 </div>
+            
+          </div>
+        </details>
+      </div>
+    </div>
+  );
+}
+
+
 
 
 // expose naar window zodat index.html kan mounten
