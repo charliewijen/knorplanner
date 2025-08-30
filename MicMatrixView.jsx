@@ -21,22 +21,20 @@ function MicMatrixView({ currentShowId, sketches = [], people = [], shows = [], 
   const handheldIds = Array.from({length: handheldCount}, (_,i) => `HH${i+1}`);
   const allChannels = [...headsetIds, ...handheldIds];
 
-  // Opties per sketch: alle rollen met needsMic=true en personId ingevuld
+  // Opties per sketch: alle rollen met needsMic=true en personId ingevuld (uniek per personId)
   const requiredForSketch = (sk) => {
     const roles = Array.isArray(sk.roles) ? sk.roles : [];
-    // unieke personen die mic nodig hebben
     return Array.from(new Set(
       roles.filter(r => r && r.needsMic && r.personId).map(r => r.personId)
     ));
   };
 
-  // Is rij (sketch) compleet? (alle mensen die mic nodig hebben hebben 1 mic)
+  // Rij compleet? (alle needed personen hebben precies één mic)
   const isRowComplete = (sk) => {
     const need = requiredForSketch(sk);
     if (need.length === 0) return true; // geen mics nodig => automatisch groen
     const ass = sk.micAssignments && typeof sk.micAssignments === "object" ? sk.micAssignments : {};
     const assigned = new Set(Object.values(ass).filter(Boolean));
-    // check dat elke needed persoon in assigned zit
     return need.every(pid => assigned.has(pid));
   };
 
@@ -45,7 +43,6 @@ function MicMatrixView({ currentShowId, sketches = [], people = [], shows = [], 
     const need = requiredForSketch(sk);
     const ass = sk.micAssignments && typeof sk.micAssignments === "object" ? sk.micAssignments : {};
     const already = new Set(Object.values(ass).filter(Boolean));
-    // kandidaten = need - already
     return need.filter(pid => !already.has(pid)).map(pid => ({ id: pid, label: fullName(personById[pid]) || pid }));
   };
 
@@ -97,7 +94,7 @@ function MicMatrixView({ currentShowId, sketches = [], people = [], shows = [], 
         </button>
       </div>
 
-      {/* Aantallen instellen */}
+      {/* Aantallen instellen (verborgen in print) */}
       <div className="mb-4 flex flex-wrap items-center gap-3 print-hide">
         <label className="text-sm">Headsets</label>
         <input
@@ -127,102 +124,102 @@ function MicMatrixView({ currentShowId, sketches = [], people = [], shows = [], 
             }));
           }}
         />
-        <span className="text-xs text-gray-500">Tip: rij wordt groen zodra iedereen met microfoon een mic heeft.</span>
+        <span className="text-xs text-gray-500">Rij wordt groen zodra iedereen met mic een mic heeft.</span>
       </div>
 
-      <div className="overflow-auto">
-        <table className="min-w-full border text-sm">
-          <thead>
-            <tr className="bg-gray-100">
-              <th className="border px-2 py-1 text-left w-12">#</th>
-              <th className="border px-2 py-1 text-left">Sketch</th>
-              {headsetIds.map((id) => (
-                <th key={id} className="border px-2 py-1 text-left whitespace-normal">Headset {id.replace("HS","")}</th>
-              ))}
-              {handheldIds.map((id) => (
-                <th key={id} className="border px-2 py-1 text-left whitespace-normal">Handheld {id.replace("HH","")}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((sk, idx) => {
-              const isBreak = sk.kind === "break";
-              const isWaerse = sk.kind === "waerse";
-              const title = isBreak ? "PAUZE" : isWaerse ? (sk.title || "De Waerse Ku-j") : (sk.title || "");
+      {/* Full-bleed breedte + horizontale scroll waar nodig */}
+      <div className="-mx-4 md:mx-0">
+        <div className="w-[100vw] md:w-auto overflow-x-auto overflow-y-visible">
+          <table className="border text-sm w-max min-w-full">
+            <thead>
+              <tr className="bg-gray-100">
+                <th className="border px-2 py-1 text-left w-12">#</th>
+                <th className="border px-2 py-1 text-left">Sketch</th>
+                {headsetIds.map((id) => (
+                  <th key={id} className="border px-2 py-1 text-left whitespace-normal">Headset {id.replace("HS","")}</th>
+                ))}
+                {handheldIds.map((id) => (
+                  <th key={id} className="border px-2 py-1 text-left whitespace-normal">Handheld {id.replace("HH","")}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((sk, idx) => {
+                const isBreak = sk.kind === "break";
+                const isWaerse = sk.kind === "waerse";
+                const title = isBreak ? "PAUZE" : isWaerse ? (sk.title || "De Waerse Ku-j") : (sk.title || "");
 
-              // bereken options nog vóór render (voor elke cel gebruiken)
-              const opts = optionsForCell(sk);
-              const optsMap = Object.fromEntries(opts.map(o => [o.id, o]));
+                // bereken options nog vóór render (voor elke cel gebruiken)
+                const opts = optionsForCell(sk);
 
-              const renderCell = (channelId) => {
-                const current = getAssigned(sk, channelId);
-                const disabledRow = isRowComplete(sk); // in UI: grijs wanneer compleet
-                const channelOpts = [
-                  // als er al een waarde staat, toon die bovenaan (ook al is het iemand die niet meer in opts zit door filtering)
-                  ...(!current ? [] : [{ id: current, label: fullName(personById[current]) || current }]),
-                  // daarna de overige kandidaten (excl. current)
-                  ...opts.filter(o => o.id !== current)
-                ];
+                const renderCell = (channelId) => {
+                  const current = getAssigned(sk, channelId);
+                  const disabledRow = isRowComplete(sk); // in UI: grijs wanneer compleet
+                  const channelOpts = [
+                    // huidige keuze bovenaan houden (ook als die niet in opts zit)
+                    ...(!current ? [] : [{ id: current, label: fullName(personById[current]) || current }]),
+                    // overige kandidaten (excl. current)
+                    ...opts.filter(o => o.id !== current)
+                  ];
+
+                  return (
+                    <td key={channelId} className="border px-2 py-1 align-top">
+                      {/* PRINT: toon alleen naam of leeg */}
+                      {current ? (
+                        <span className="no-truncate">{fullName(personById[current]) || current}</span>
+                      ) : (
+                        <span className="print-only">&nbsp;</span>
+                      )}
+
+                      {/* SCHERM: select/clear knoppen */}
+                      <div className="print-hide">
+                        <div className={`flex items-center gap-2 ${disabledRow ? "opacity-50 pointer-events-none" : ""}`}>
+                          <select
+                            className="rounded border px-2 py-1 mic-select max-w-[220px]"
+                            value={current || ""}
+                            onChange={(e)=>assign(sk.id, channelId, e.target.value)}
+                          >
+                            <option value="">— kies speler —</option>
+                            {channelOpts.map(o => (
+                              <option key={o.id} value={o.id}>{o.label}</option>
+                            ))}
+                          </select>
+                          {current && (
+                            <button
+                              className="rounded-full border px-2 py-1 text-xs"
+                              onClick={()=>clearChannel(sk.id, channelId)}
+                              title="Leegmaken"
+                            >
+                              ×
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                  );
+                };
 
                 return (
-                  <td key={channelId} className="border px-2 py-1 align-top">
-                    {/* PRINT: toon alleen naam of leeg */}
-                    {current ? (
-                      <span className="no-truncate">{fullName(personById[current]) || current}</span>
-                    ) : (
-                      <span className="print-only">&nbsp;</span>
-                    )}
-
-                    {/* SCHERM: select/clear knoppen */}
-                    <div className="print-hide">
-                      <div className={`flex items-center gap-2 ${disabledRow ? "opacity-50 pointer-events-none" : ""}`}>
-                        <select
-                          className="rounded border px-2 py-1 mic-select max-w-[220px]"
-                          value={current || ""}
-                          onChange={(e)=>assign(sk.id, channelId, e.target.value)}
-                        >
-                          <option value="">— kies speler —</option>
-                          {channelOpts.map(o => (
-                            <option key={o.id} value={o.id}>{o.label}</option>
-                          ))}
-                        </select>
-                        {current && (
-                          <button
-                            className="rounded-full border px-2 py-1 text-xs"
-                            onClick={()=>clearChannel(sk.id, channelId)}
-                            title="Leegmaken"
-                          >
-                            ×
-                          </button>
-                        )}
-                      </div>
-                      {/* Validatie-melding als iemand dubbel gekozen zou worden (komt vrijwel niet meer voor door filtering) */}
-                      {/* Geen popup, UI voorkomt het al. */}
-                    </div>
-                  </td>
+                  <tr key={sk.id} className={rowBg(sk)}>
+                    <td className="border px-2 py-1 align-top">{sk.order || idx+1}</td>
+                    <td className="border px-2 py-1 align-top whitespace-normal">
+                      <div className="no-truncate font-medium">{title}</div>
+                    </td>
+                    {headsetIds.map(renderCell)}
+                    {handheldIds.map(renderCell)}
+                  </tr>
                 );
-              };
-
-              return (
-                <tr key={sk.id} className={rowBg(sk)}>
-                  <td className="border px-2 py-1 align-top">{sk.order || idx+1}</td>
-                  <td className="border px-2 py-1 align-top whitespace-normal">
-                    <div className="no-truncate font-medium">{title}</div>
+              })}
+              {items.length === 0 && (
+                <tr>
+                  <td className="border px-2 py-2 text-gray-500 text-center" colSpan={2 + allChannels.length}>
+                    Geen items in deze show.
                   </td>
-                  {headsetIds.map(renderCell)}
-                  {handheldIds.map(renderCell)}
                 </tr>
-              );
-            })}
-            {items.length === 0 && (
-              <tr>
-                <td className="border px-2 py-2 text-gray-500 text-center" colSpan={2 + allChannels.length}>
-                  Geen items in deze show.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </section>
   );
