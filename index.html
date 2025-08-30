@@ -35,25 +35,39 @@
 </style>
 
   <style>
-  /* Helpers voor print */
+  /* Helpers algemeen */
   .print-hide { display: inline; }
   .print-only { display: none; }
   .no-truncate { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; }
 
+  /* Zet standaard landscape + nette marges voor PDF */
+  @page {
+    size: A4 landscape;
+    margin: 12mm;
+  }
+
   @media print {
-    /* Toon alléén het microfoonblok (#print-mics) */
+    /* toon alléén het microfoonblok */
     body * { visibility: hidden !important; }
     #print-mics, #print-mics * { visibility: visible !important; }
     #print-mics { position: absolute; inset: 0 auto auto 0; width: 100%; }
 
-    /* Verberg header, floating tools, e.d. */
+    /* verberg header/floating tools */
     header, .fixed { display: none !important; }
 
-    /* Verberg selects + andere UI in print */
+    /* verberg interactieve UI in print */
     .print-hide { display: none !important; }
     .print-only { display: inline !important; }
+
+    /* compactere tabel voor breedte */
+    #print-mics table { font-size: 11px; border-collapse: collapse; width: 100%; table-layout: fixed; }
+    #print-mics th, #print-mics td { padding: 4px 6px; word-wrap: break-word; }
+    #print-mics th { white-space: nowrap; }
+    /* namen nooit afkappen */
+    #print-mics .no-truncate { white-space: normal !important; }
   }
 </style>
+
 
   
 </head>
