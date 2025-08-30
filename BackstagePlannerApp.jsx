@@ -1,11 +1,12 @@
 // GEEN: const { useEffect, useMemo, useState } = React;
+
 const {
   uid,
   buildRunSheet,
   detectMicConflicts,
   detectCastConflicts,
   RunSheetView,
-  PeopleAndResources, // (niet gebruikt, mag blijven staan)
+  PeopleAndResources,
   parseTimeToMin
 } = window;
 
@@ -85,6 +86,7 @@ function migrateState(input) {
     s.rehearsals = Array.isArray(s.rehearsals) ? s.rehearsals : [];
 
     // helpers
+    const byId = new Map((s.shows || []).map(sh => [sh.id, sh]));
     const firstShow = s.shows[0];
 
     // People: split name → first/last, default type
@@ -113,6 +115,7 @@ function migrateState(input) {
     }));
 
     // Sketches: showId, kind, roles, micAssignments, order per show
+    // 1) showId invullen als er precies 1 show is
     s.sketches = s.sketches.map(sk => {
       const out = { ...sk };
       if (!out.showId && firstShow?.id) out.showId = firstShow.id;
@@ -148,7 +151,7 @@ function migrateState(input) {
       return out;
     });
 
-    // order per show opnieuw 1..N
+    // 2) order per show opnieuw 1..N als er gaten/undefined zijn
     const byShow = {};
     s.sketches.forEach(sk => {
       if (!byShow[sk.showId]) byShow[sk.showId] = [];
@@ -182,12 +185,7 @@ function migrateState(input) {
 
 // ---------- Root Component ----------
 function App() {
-  // (Stap 3) boot door de migrator laten gaan
-  const boot = React.useMemo(() => {
-    const fresh = { people: [], mics: [], shows: [newEmptyShow()], sketches: [], rehearsals: [] };
-    return migrateState(fresh);
-  }, []);
-
+  const boot = React.useMemo(() => withDefaults(), []);
   const [state, setState] = React.useState(boot);
   const [activeShowId, setActiveShowId] = React.useState(boot.shows[0]?.id || null);
   const [tab, setTab] = React.useState("planner");
@@ -207,24 +205,29 @@ function App() {
   const restoreVersion = (id) => { const v = versions.find((x)=>x.id===id); if (!v) return; pushHistory(state); applyState(v.data); };
   const deleteVersion = (id) => { const next = versions.filter((v)=>v.id!==id); setVersions(next); localStorage.setItem(`sll-backstage-v2:versions`, JSON.stringify(next)); };
 
-  // (Stap 2) Bij eerste keer laden uit Supabase + MIGRATIE + terugschrijven
+  // Bij eerste keer laden uit Supabase + eenvoudige migratie naar root+showId
   React.useEffect(() => {
     (async () => {
       const remote = await loadState();
-      if (remote) {
-        const fixed = migrateState(remote);
-        setState(fixed);
-        setActiveShowId((prev) => {
-          if (prev && fixed.shows.some(s => s.id === prev)) return prev;
-          return fixed.shows[0]?.id || null;
-        });
-        try { await saveStateRemote(fixed); } catch {}
-      } else {
-        // niets remote → zorg dat boot staat bewaard als eerste snapshot
-        try { await saveStateRemote(state); } catch {}
-      }
+      const merged = withDefaults(remote || {});
+      const firstShowId = merged.shows[0]?.id;
+
+      // MIGRATIE: als items geen showId hebben, zet ze op eerste show
+      const fix = (arr=[]) => arr.map(x => x && (x.showId ? x : { ...x, showId: firstShowId }));
+      const migrated = {
+        ...merged,
+        sketches: fix(merged.sketches),
+        people: fix(merged.people),
+        mics: fix(merged.mics),
+        rehearsals: fix(merged.rehearsals),
+      };
+
+      setState(migrated);
+      setActiveShowId((prev) => {
+        if (prev && migrated.shows.some(s => s.id === prev)) return prev;
+        return migrated.shows[0]?.id || null;
+      });
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Opslaan bij elke wijziging
@@ -270,7 +273,8 @@ function App() {
 
   const showRehearsals = React.useMemo(() => {
     if (!activeShow) return [];
-    return (state.rehearsals || []).filter(r => r.showId === activeShow.id);
+    return (state.rehearsals || []).filter(r => r.showId === activeShow.id)
+      .sort((a,b)=> String(a.date).localeCompare(String(b.date)));
   }, [state.rehearsals, activeShow]);
 
   const micById = Object.fromEntries(showMics.map((m) => [m.id, m]));
@@ -287,7 +291,7 @@ function App() {
       ...prev,
       rehearsals: [
         ...(prev.rehearsals || []),
-        { id: uid(), showId: activeShow.id, date: todayStr(), location: "", comments: "", absentees: [] }
+        { id: uid(), showId: activeShow.id, date: todayStr(), location: "", comments: "", absentees: [], type: "Repetitie" }
       ]
     }));
   };
@@ -326,37 +330,63 @@ function App() {
     }));
   };
 
+  // ====== READONLY SHARE-MODE ======
+  const shareTab = React.useMemo(() => {
+    const p = new URLSearchParams((location.hash || "").replace("#",""));
+    return p.get("share") || null;
+  }, [location.hash]);
+
+  if (shareTab === "rehearsals") {
+    // alleen-lezen publieke view van repetitieschema
+    return (
+      <div className="mx-auto max-w-4xl p-4">
+        <h1 className="text-2xl font-bold mb-4">Repetitieschema (live)</h1>
+        <RehearsalPlanner
+          rehearsals={showRehearsals}
+          people={showPeople}
+          onAdd={()=>{}}
+          onUpdate={()=>{}}
+          onRemove={()=>{}}
+        />
+        <div className="text-sm text-gray-500 mt-6">
+          Dit is een gedeelde link, alleen-lezen. Wijzigingen kunnen alleen in de hoofd-app.
+        </div>
+      </div>
+    );
+  }
+
+  // ====== NORMALE APP ======
   return (
     <div className="mx-auto max-w-7xl p-4">
+      {/* Topbar (sticky) */}
       <header className="sticky top-0 z-40 w-full border-b bg-white/80 backdrop-blur">
-  <div className="mx-auto max-w-7xl px-4">
-    <div className="h-14 flex items-center justify-between gap-3">
-      <div className="text-lg font-bold tracking-wide">KnorPlanner</div>
-      <nav className="flex flex-wrap gap-2 overflow-x-auto">
-        {[
-          { key: "planner",       label: "Programma maker" },
-          { key: "runsheet",      label: "Overzicht Programma" },
-          { key: "cast",          label: "Biggenconvent" },
-          { key: "mics",          label: "Microfoonschema" },
-          { key: "rolverdeling",  label: "Rolverdeling" },
-          { key: "scripts",       label: "Sketches" },
-          { key: "rehearsals",    label: "Repetitieschema" },
-        ].map(({ key, label }) => (
-          <button
-            key={key}
-            className={`rounded-full px-4 py-2 text-sm transition ${
-              tab === key ? "bg-black text-white shadow" : "bg-gray-100 hover:bg-gray-200"
-            }`}
-            onClick={() => setTab(key)}
-          >
-            {label}
-          </button>
-        ))}
-      </nav>
-    </div>
-  </div>
-</header>
-
+        <div className="mx-auto max-w-7xl px-4">
+          <div className="h-14 flex items-center justify-between gap-3">
+            <div className="text-lg font-bold tracking-wide">KnorPlanner</div>
+            <nav className="flex flex-wrap gap-2 overflow-x-auto">
+              {[
+                { key: "planner",       label: "Programma maker" },
+                { key: "runsheet",      label: "Overzicht Programma" },
+                { key: "cast",          label: "Biggenconvent" },
+                { key: "mics",          label: "Microfoonschema" },
+                { key: "rolverdeling",  label: "Rolverdeling" },
+                { key: "scripts",       label: "Sketches" },
+                { key: "rehearsals",    label: "Repetitieschema" },
+              ].map(({ key, label }) => (
+                <button
+                  key={key}
+                  className={`rounded-full px-4 py-2 text-sm transition ${
+                    tab === key ? "bg-black text-white shadow" : "bg-gray-100 hover:bg-gray-200"
+                  }`}
+                  onClick={() => setTab(key)}
+                >
+                  {label}
+                </button>
+              ))}
+            </nav>
+          </div>
+        </div>
+      </header>
 
       {/* Sync status */}
       <div className="text-xs text-gray-500 mt-1">{syncStatus}</div>
@@ -404,31 +434,27 @@ function App() {
         )}
 
         {tab === "mics" && (
-  <TabErrorBoundary>
-    <MicMatrixView
-      currentShowId={activeShow?.id}
-      sketches={showSketches}
-      people={showPeople}
-      shows={state.shows}
-      setState={(fn) => { pushHistory(state); setState(fn(state)); }}
-    />
-  </TabErrorBoundary>
-)}
-
+          <TabErrorBoundary>
+            <MicMatrixView
+              currentShowId={activeShow?.id}
+              sketches={showSketches}
+              people={showPeople}
+              shows={state.shows}
+              setState={(fn) => { pushHistory(state); setState(fn(state)); }}
+            />
+          </TabErrorBoundary>
+        )}
 
         {tab === "rolverdeling" && (
-  <TabErrorBoundary>
-    <RoleDistributionView
-      currentShowId={activeShow?.id}
-      sketches={showSketches}
-      people={showPeople}
-      setState={(fn) => { pushHistory(state); setState(fn(state)); }}
-    />
-  </TabErrorBoundary>
-)}
-
-
-  
+          <TabErrorBoundary>
+            <RoleDistributionView
+              currentShowId={activeShow?.id}
+              sketches={showSketches}
+              people={showPeople}
+              setState={(fn) => { pushHistory(state); setState(fn(state)); }}
+            />
+          </TabErrorBoundary>
+        )}
 
         {tab === "rehearsals" && (
           <RehearsalPlanner
@@ -441,15 +467,14 @@ function App() {
         )}
 
         {tab === "scripts" && (
-  <TabErrorBoundary>
-    <ScriptsView
-      sketches={showSketches}
-      people={showPeople}
-      onUpdate={updateSketch}
-    />
-  </TabErrorBoundary>
-)}
-
+          <TabErrorBoundary>
+            <ScriptsView
+              sketches={showSketches}
+              people={showPeople}
+              onUpdate={updateSketch}
+            />
+          </TabErrorBoundary>
+        )}
 
         {tab === "planner" && (
           <PlannerMinimal
@@ -460,58 +485,72 @@ function App() {
           />
         )}
       </main>
-{/* Floating tools bottom-left */}
-<div className="fixed left-4 bottom-4 z-50">
-  <details className="group w-[min(92vw,360px)]">
-    <summary className="cursor-pointer inline-flex items-center gap-2 rounded-full bg-black text-white px-4 py-2 shadow-lg select-none">
-      ⚙️ Hulpmiddelen
-      <span className="text-xs opacity-80">{syncStatus}</span>
-    </summary>
 
-    <div className="mt-2 rounded-xl border bg-white/95 backdrop-blur p-3 shadow-xl space-y-3">
-      <div className="flex gap-2 flex-wrap">
-        <button className="rounded-full border px-3 py-1 text-sm" onClick={undo}>Undo</button>
-        <button className="rounded-full border px-3 py-1 text-sm" onClick={redo}>Redo</button>
-        <button
-          className="rounded-full border px-3 py-1 text-sm"
-          onClick={()=>{ const n = prompt('Naam voor versie:','Snapshot'); if(n!==null) saveVersion(n); }}
-        >
-          Save version
-        </button>
-        <button
-          className="rounded-full border px-3 py-1 text-sm"
-          onClick={()=>{ navigator.clipboard?.writeText(location.href); }}
-        >
-          Kopieer link
-        </button>
+      {/* Floating tools bottom-left */}
+      <div className="fixed left-4 bottom-4 z-50">
+        <details className="group w-[min(92vw,360px)]">
+          <summary className="cursor-pointer inline-flex items-center gap-2 rounded-full bg-black text-white px-4 py-2 shadow-lg select-none">
+            ⚙️ Hulpmiddelen
+            <span className="text-xs opacity-80">{syncStatus}</span>
+          </summary>
+
+          <div className="mt-2 rounded-xl border bg-white/95 backdrop-blur p-3 shadow-xl space-y-3">
+            <div className="flex gap-2 flex-wrap">
+              <button className="rounded-full border px-3 py-1 text-sm" onClick={undo}>Undo</button>
+              <button className="rounded-full border px-3 py-1 text-sm" onClick={redo}>Redo</button>
+              <button
+                className="rounded-full border px-3 py-1 text-sm"
+                onClick={()=>{ const n = prompt('Naam voor versie:','Snapshot'); if(n!==null) saveVersion(n); }}
+              >
+                Save version
+              </button>
+              <button
+                className="rounded-full border px-3 py-1 text-sm"
+                onClick={()=>{ navigator.clipboard?.writeText(location.href); }}
+              >
+                Kopieer link
+              </button>
+            </div>
+
+            <div className="text-xs text-gray-600">
+              Sync: <span className="font-medium">{syncStatus}</span>
+            </div>
+
+            <div className="rounded-lg border p-2">
+              <div className="font-semibold text-sm mb-1">Versies</div>
+              <ul className="space-y-1 text-sm max-h-48 overflow-auto pr-1">
+                {versions.map(v=> (
+                  <li key={v.id} className="flex items-center justify-between gap-2">
+                    <span className="truncate">
+                      {v.name} <span className="text-gray-500">({new Date(v.ts).toLocaleString()})</span>
+                    </span>
+                    <span className="flex gap-2 shrink-0">
+                      <button className="rounded-full border px-2 py-0.5" onClick={()=>restoreVersion(v.id)}>Herstel</button>
+                      <button className="rounded-full border px-2 py-0.5" onClick={()=>deleteVersion(v.id)}>Del</button>
+                    </span>
+                  </li>
+                ))}
+                {versions.length===0 && <li className="text-gray-500">Nog geen versies.</li>}
+              </ul>
+            </div>
+
+            {/* Handige share-link voor repetities */}
+            <div className="rounded-lg border p-2">
+              <div className="font-semibold text-sm mb-1">Deel link – Repetitieschema (alleen-lezen)</div>
+              <button
+                className="rounded-full border px-3 py-1 text-sm"
+                onClick={()=>{
+                  const url = `${location.origin}${location.pathname}#share=rehearsals`;
+                  navigator.clipboard?.writeText(url);
+                  alert("Gekopieerd:\n" + url);
+                }}
+              >
+                Kopieer share-link
+              </button>
+            </div>
+          </div>
+        </details>
       </div>
-
-      <div className="text-xs text-gray-600">
-        Sync: <span className="font-medium">{syncStatus}</span>
-      </div>
-
-      <div className="rounded-lg border p-2">
-        <div className="font-semibold text-sm mb-1">Versies</div>
-        <ul className="space-y-1 text-sm max-h-48 overflow-auto pr-1">
-          {versions.map(v=> (
-            <li key={v.id} className="flex items-center justify-between gap-2">
-              <span className="truncate">
-                {v.name} <span className="text-gray-500">({new Date(v.ts).toLocaleString()})</span>
-              </span>
-              <span className="flex gap-2 shrink-0">
-                <button className="rounded-full border px-2 py-0.5" onClick={()=>restoreVersion(v.id)}>Herstel</button>
-                <button className="rounded-full border px-2 py-0.5" onClick={()=>deleteVersion(v.id)}>Del</button>
-              </span>
-            </li>
-          ))}
-          {versions.length===0 && <li className="text-gray-500">Nog geen versies.</li>}
-        </ul>
-      </div>
-    </div>
-  </details>
-</div>
-
-      
     </div>
   );
 }
