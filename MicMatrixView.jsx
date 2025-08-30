@@ -197,7 +197,7 @@ function MicMatrixView({ currentShowId, sketches = [], people = [], shows = [], 
                     )}
 
                     {/* SCHERM: enkel de select (compact) */}
-                    <div className={`print-hide ${disabledRow ? "opacity-50 pointer-events-none" : ""}`}>
+<div className={`print-hide ${disabledRow ? "opacity-70" : ""}`} title={disabledRow ? "Rij is compleet, maar je kunt nog wijzigen." : ""}>
                       <select
                         className="rounded border px-2 py-1"
                         value={current || ""}
