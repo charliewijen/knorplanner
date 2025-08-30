@@ -35,14 +35,16 @@ window.buildRunSheet = (show, sketches) => {
     const outTime = inTime + dur;
 
     items.push({
-      type: kind,
-      order: s.order,
-      title,
-      duration: dur,
-      in: minToTime(inTime),
-      out: minToTime(outTime),
-      isMusic: kind === "waerse",
-    });
+  type: kind,
+  order: s.order,
+  title,
+  stagePlace: s.stagePlace || "podium", // <-- nieuw
+  duration: dur,
+  in: minToTime(inTime),
+  out: minToTime(outTime),
+  isMusic: kind === "waerse",
+});
+
 
     // géén automatische 2-minuten extra
     cur = outTime;
@@ -139,44 +141,51 @@ window.RunSheetView = function RunSheetView({ runSheet, show }) {
       <div className="overflow-auto">
         <table className="min-w-full border text-sm">
           <thead>
-            <tr className="bg-gray-100">
-              <th className="border px-2 py-1 text-left w-12">#</th>
-              <th className="border px-2 py-1 text-left">Item</th>
-              <th className="border px-2 py-1 text-left w-28">In</th>
-              <th className="border px-2 py-1 text-left w-28">Uit</th>
-              <th className="border px-2 py-1 text-left w-24">Duur</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((it, idx) => (
-              <tr key={idx} className={rowClass(it.type)}>
-                <td className="border px-2 py-1">{it.order ?? idx + 1}</td>
-                <td className="border px-2 py-1">
-                  {it.title}
-                  {it.isMusic && (
-                    <span className="ml-2 inline-block rounded-full bg-blue-100 text-blue-700 text-xs px-2 py-0.5 align-middle">
-                      muziek
-                    </span>
-                  )}
-                  {it.type === "break" && (
-                    <span className="ml-2 inline-block rounded-full bg-yellow-100 text-yellow-800 text-xs px-2 py-0.5 align-middle">
-                      pauze
-                    </span>
-                  )}
-                </td>
-                <td className="border px-2 py-1">{it.in}</td>
-                <td className="border px-2 py-1">{it.out}</td>
-                <td className="border px-2 py-1">{it.duration} min</td>
-              </tr>
-            ))}
-            {items.length === 0 && (
-              <tr>
-                <td className="border px-2 py-2 text-gray-500 text-center" colSpan={5}>
-                  Nog geen items.
-                </td>
-              </tr>
-            )}
-          </tbody>
+  <tr className="bg-gray-100">
+    <th className="border px-2 py-1 text-left w-12">#</th>
+    <th className="border px-2 py-1 text-left">Item</th>
+    <th className="border px-2 py-1 text-left w-40">Podium / Gordijn</th>
+    <th className="border px-2 py-1 text-left w-28">In</th>
+    <th className="border px-2 py-1 text-left w-28">Uit</th>
+    <th className="border px-2 py-1 text-left w-24">Duur</th>
+  </tr>
+</thead>
+<tbody>
+  {items.map((it, idx) => (
+    <tr key={idx} className={rowClass(it.type)}>
+      <td className="border px-2 py-1">{it.order ?? idx + 1}</td>
+      <td className="border px-2 py-1">
+        {it.title}
+        {it.isMusic && (
+          <span className="ml-2 inline-block rounded-full bg-blue-100 text-blue-700 text-xs px-2 py-0.5 align-middle">
+            muziek
+          </span>
+        )}
+        {it.type === "break" && (
+          <span className="ml-2 inline-block rounded-full bg-yellow-100 text-yellow-800 text-xs px-2 py-0.5 align-middle">
+            pauze
+          </span>
+        )}
+      </td>
+      <td className="border px-2 py-1">
+        {it.type !== "sketch"
+          ? "—"
+          : (it.stagePlace === "voor" ? "Voor de gordijn" : "Podium")}
+      </td>
+      <td className="border px-2 py-1">{it.in}</td>
+      <td className="border px-2 py-1">{it.out}</td>
+      <td className="border px-2 py-1">{it.duration} min</td>
+    </tr>
+  ))}
+  {items.length === 0 && (
+    <tr>
+      <td className="border px-2 py-2 text-gray-500 text-center" colSpan={6}>
+        Nog geen items.
+      </td>
+    </tr>
+  )}
+</tbody>
+
         </table>
       </div>
     </section>
