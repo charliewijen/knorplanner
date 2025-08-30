@@ -1,197 +1,367 @@
-function ScriptsView({ sketches = [], onUpdate, people = [] }) {
-  // Altijd veilige arrays
-  const selectable = Array.isArray(sketches)
-  ? sketches
-      .filter((s) => s?.kind !== "break" && s?.kind !== "waerse")
-      .sort((a, b) => (a.order || 0) - (b.order || 0))
-  : [];
-const peopleSafe = Array.isArray(people) ? people : [];
+function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
+  const uid = window.uid;
 
+  // ====== Helpers ======
+  const onlySketches = (Array.isArray(sketches) ? sketches : [])
+    .filter(s => (s?.kind || "sketch") === "sketch")
+    .sort((a,b) => (a.order||0) - (b.order||0));
 
-  // Geselecteerde sketch id
-  const [sel, setSel] = React.useState(selectable[0]?.id || "");
-  // Corrigeer 'sel' als de lijst verandert (bv. show wissel)
+  const [sel, setSel] = React.useState(onlySketches[0]?.id || "");
   React.useEffect(() => {
-  if (!selectable.some((s) => s.id === sel)) {
-    setSel(selectable[0]?.id || "");
-  }
-}, [selectable, sel]);
-
-
-  // Actieve sketch
-const active = selectable.find((s) => s.id === sel);
-
-  // Helpers: alleen uitvoeren als er een actieve sketch is
-  const update = React.useCallback(
-    (patch) => {
-      if (!active) return;
-      onUpdate(active.id, { ...active, ...patch });
-    },
-    [active, onUpdate]
-  );
-
-  const roles = React.useMemo(
-    () => (Array.isArray(active?.roles) ? active.roles : []),
-    [active]
-  );
-
-  const updateRole = (idx, patch) => {
-    if (!active) return;
-    const next = roles.map((r, i) => (i === idx ? { ...r, ...patch } : r));
-    update({ roles: next });
-  };
-
-  const addRoles = (count) => {
-    if (!active) return;
-    const n = Math.max(0, parseInt(count || 0, 10));
-    const base = Array.isArray(active.roles) ? active.roles : [];
-    let next = base.slice(0, n);
-    if (n > base.length) {
-      const toAdd = Array.from({ length: n - base.length }, (_, i) => ({
-        name: `Rol ${base.length + i + 1}`,
-        personId: "",
-        needsMic: false,
-      }));
-      next = [...base, ...toAdd];
+    // als selectie niet meer bestaat (b.v. na delete), kies eerste
+    if (sel && !onlySketches.some(s => s.id === sel)) {
+      setSel(onlySketches[0]?.id || "");
     }
-    update({ roles: next });
+  }, [sel, onlySketches]);
+
+  const active = onlySketches.find(s => s.id === sel);
+
+  const personById = Object.fromEntries((people || []).map(p => [p.id, p]));
+  const fullName = (p) => {
+    if (!p) return "";
+    const fn = (p.firstName || "").trim();
+    const ln = (p.lastName || p.name || "").trim();
+    return [fn, ln].filter(Boolean).join(" ");
   };
+
+  // ====== Edit helpers ======
+  const patch = (id, p) => onUpdate(id, p);
+
+  const ensureDefaults = (s) => {
+    const clean = { ...s };
+    clean.stagePlace = clean.stagePlace || "podium"; // podium | voor
+    clean.durationMin = Number.isFinite(clean.durationMin) ? clean.durationMin : 0;
+    clean.roles = Array.isArray(clean.roles) ? clean.roles : [];
+    clean.links = clean.links && typeof clean.links === "object" ? clean.links : { text: "", tech: "" };
+    clean.sounds = Array.isArray(clean.sounds) ? clean.sounds : []; // [{id,label,url}]
+    clean.decor = clean.decor || "";
+    return clean;
+  };
+
+  if (active) Object.assign(active, ensureDefaults(active));
+
+  const addRole = () => {
+    if (!active) return;
+    patch(active.id, {
+      roles: [...active.roles, { name: `Rol ${active.roles.length + 1}`, personId: "", needsMic: false }]
+    });
+  };
+  const updateRole = (idx, p) => {
+    const roles = active.roles.map((r,i) => i===idx ? { ...r, ...p } : r);
+    patch(active.id, { roles });
+  };
+  const removeRole = (idx) => {
+    const roles = active.roles.filter((_,i)=> i!==idx);
+    patch(active.id, { roles });
+  };
+
+  const addSound = () => {
+    patch(active.id, { sounds: [...active.sounds, { id: uid(), label: "", url: "" }] });
+  };
+  const updateSound = (idx, p) => {
+    const sounds = active.sounds.map((x,i)=> i===idx ? { ...x, ...p } : x);
+    patch(active.id, { sounds });
+  };
+  const removeSound = (idx) => {
+    const sounds = active.sounds.filter((_,i)=> i!==idx);
+    patch(active.id, { sounds });
+  };
+
+  const printAll = () => window.print();
 
   return (
-    <div className="rounded-2xl border p-4">
-      {/* Sketch selector */}
-      <div className="flex gap-2 mb-3 items-center">
+    <section className="rounded-2xl border p-4 bg-white">
+      {/* Sterke, lokale print-CSS die ALLEEN #print-scripts toont */}
+      <style>{`
+        @media print {
+          body * { visibility: hidden !important; }
+          #print-scripts, #print-scripts * { visibility: visible !important; }
+          #print-scripts { position: absolute; inset: 0 auto auto 0; width: 100%; }
+          header, .fixed { display: none !important; }
+          /* nette print-typografie */
+          #print-scripts h2 { margin: 0 0 8px 0; padding: 0; }
+          #print-scripts .block { margin-bottom: 10px; }
+          #print-scripts table { width: 100%; border-collapse: collapse; font-size: 12px; }
+          #print-scripts th, #print-scripts td { border: 1px solid #ddd; padding: 6px; vertical-align: top; }
+          #print-scripts .muted { color: #666; }
+          /* pagina-breaks per sketch */
+          .sketch-print + .sketch-print { page-break-before: always; }
+        }
+      `}</style>
+
+      <div className="mb-3 flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold">Sketches</h2>
+          <div className="text-xs text-gray-600">Beheer per sketch; print toont alle sketches onder elkaar.</div>
+        </div>
+        <button className="rounded-full border px-3 py-1 text-sm" onClick={printAll}>
+          Print alle sketches / PDF
+        </button>
+      </div>
+
+      {/* Selectie — alleen echte sketches (geen pauzes/waerse) */}
+      <div className="mb-4 flex items-center gap-2">
+        <label className="text-sm text-gray-700">Selecteer sketch</label>
         <select
           className="rounded border px-3 py-2"
           value={sel}
-          onChange={(e) => setSel(e.target.value)}
+          onChange={(e)=>setSel(e.target.value)}
         >
-          {selectable.map((s) => (
-  <option key={s.id} value={s.id}>
-    #{s.order || "?"} {s.title} ({s.durationMin || 0} min)
-  </option>
-))}
-
+          {onlySketches.map(s => (
+            <option key={s.id} value={s.id}>
+              {`#${s.order||"?"} ${s.title || "(zonder titel)"}`}
+            </option>
+          ))}
         </select>
       </div>
 
-      {!active ? (
-        <div className="text-sm text-gray-500">
-          Geen selecteerbare sketches. (Pauzes en “De Waerse Ku-j” worden hier verborgen.)
+      {/* Editor voor actieve sketch */}
+      {active ? (
+        <div className="grid gap-6 md:grid-cols-3">
+          {/* Linkerkolom: basis info */}
+          <div className="rounded-xl border p-3 space-y-3">
+            <div>
+              <label className="block text-sm text-gray-700">Sketch titel</label>
+              <input
+                className="w-full rounded border px-2 py-1"
+                value={active.title || ""}
+                onChange={(e)=>patch(active.id, { title: e.target.value })}
+                placeholder="Naam van de sketch"
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-gray-700">Duur (minuten)</label>
+              <input
+                type="number"
+                className="w-28 rounded border px-2 py-1"
+                value={active.durationMin || 0}
+                onChange={(e)=>patch(active.id, { durationMin: parseInt(e.target.value||"0",10) })}
+              />
+            </div>
+            <div>
+              <label className="block text-sm text-gray-700">Plek</label>
+              <select
+                className="w-full rounded border px-2 py-1"
+                value={active.stagePlace || "podium"}
+                onChange={(e)=>patch(active.id, { stagePlace: e.target.value })}
+              >
+                <option value="podium">Podium</option>
+                <option value="voor">Voor de gordijn</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm text-gray-700">Links</label>
+              <div className="mt-2 grid grid-cols-1 gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="w-40 text-sm">Link naar tekst</span>
+                  <input
+                    className="flex-1 rounded border px-2 py-1"
+                    placeholder="https://..."
+                    value={active.links?.text || ""}
+                    onChange={(e)=>patch(active.id, { links: { ...(active.links||{}), text: e.target.value } })}
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="w-40 text-sm">Link naar licht/geluid</span>
+                  <input
+                    className="flex-1 rounded border px-2 py-1"
+                    placeholder="https://..."
+                    value={active.links?.tech || ""}
+                    onChange={(e)=>patch(active.id, { links: { ...(active.links||{}), tech: e.target.value } })}
+                  />
+                </div>
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm text-gray-700">Decor & set</label>
+              <textarea
+                className="w-full h-24 rounded border p-2"
+                placeholder="Korte beschrijving van decor/decorstukken"
+                value={active.decor || ""}
+                onChange={(e)=>patch(active.id, { decor: e.target.value })}
+              />
+            </div>
+          </div>
+
+          {/* Middenkolom: Rollen */}
+          <div className="rounded-xl border p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <h3 className="font-semibold">Rollen</h3>
+              <button className="rounded-xl border px-3 py-2" onClick={addRole}>+ Rol</button>
+            </div>
+            <table className="min-w-full border text-sm">
+              <thead>
+                <tr className="bg-gray-100">
+                  <th className="border px-2 py-1 text-left">Rolnaam</th>
+                  <th className="border px-2 py-1 text-left">Cast</th>
+                  <th className="border px-2 py-1 text-left w-28">Mic nodig?</th>
+                  <th className="border px-2 py-1 w-10"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {active.roles.map((r, idx) => (
+                  <tr key={idx} className="odd:bg-gray-50">
+                    <td className="border px-2 py-1">
+                      <input
+                        className="w-full rounded border px-2 py-1"
+                        value={r.name || ""}
+                        onChange={(e)=>updateRole(idx, { name: e.target.value })}
+                        placeholder="Naam van rol"
+                      />
+                    </td>
+                    <td className="border px-2 py-1">
+                      <select
+                        className="w-full rounded border px-2 py-1"
+                        value={r.personId || ""}
+                        onChange={(e)=>updateRole(idx, { personId: e.target.value })}
+                      >
+                        <option value="">— kies speler/danser —</option>
+                        {(people || []).map(p => (
+                          <option key={p.id} value={p.id}>
+                            {fullName(p)}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="border px-2 py-1">
+                      <label className="inline-flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={!!r.needsMic}
+                          onChange={(e)=>updateRole(idx, { needsMic: e.target.checked })}
+                        />
+                        <span className="text-sm">Ja</span>
+                      </label>
+                    </td>
+                    <td className="border px-2 py-1">
+                      <button className="rounded-full border px-2 py-1" onClick={()=>removeRole(idx)}>x</button>
+                    </td>
+                  </tr>
+                ))}
+                {active.roles.length === 0 && (
+                  <tr>
+                    <td className="border px-2 py-2 text-gray-500 text-center" colSpan={4}>
+                      Nog geen rollen.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Rechterkolom: Geluiden & muziek */}
+          <div className="rounded-xl border p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <h3 className="font-semibold">Geluiden & muziek</h3>
+              <button className="rounded-xl border px-3 py-2" onClick={addSound}>+ Item</button>
+            </div>
+            {active.sounds.length === 0 && (
+              <div className="text-sm text-gray-500">Nog geen items.</div>
+            )}
+            <div className="space-y-2">
+              {active.sounds.map((s, idx) => (
+                <div key={s.id || idx} className="grid grid-cols-12 gap-2 items-center">
+                  <input
+                    className="col-span-5 rounded border px-2 py-1"
+                    placeholder="Omschrijving (bijv. 'VAR on! fluit')"
+                    value={s.label || ""}
+                    onChange={(e)=>updateSound(idx, { label: e.target.value })}
+                  />
+                  <input
+                    className="col-span-6 rounded border px-2 py-1"
+                    placeholder="URL of bestandslink"
+                    value={s.url || ""}
+                    onChange={(e)=>updateSound(idx, { url: e.target.value })}
+                  />
+                  <button className="col-span-1 rounded border px-2 py-1" onClick={()=>removeSound(idx)}>x</button>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       ) : (
-        <>
-          {/* Header met titel + duur */}
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-bold">{active.title}</h2>
-            <span className="text-gray-600">{active.durationMin || 0} min</span>
-          </div>
-
-          {/* Locatiekeuze */}
-          <div className="mb-3">
-            <label className="text-sm block">Locatie</label>
-            <select
-              className="rounded border px-3 py-2"
-              value={active.stagePlace || "podium"}
-              onChange={(e) => update({ stagePlace: e.target.value })}
-            >
-              <option value="podium">Podium</option>
-              <option value="voorgordijn">Voor de gordijn</option>
-            </select>
-          </div>
-
-          {/* Rollen */}
-          <div className="mb-3">
-            <label className="text-sm block">Aantal rollen</label>
-            <input
-              type="number"
-              min={0}
-              className="rounded border px-3 py-2 w-24"
-              value={roles.length}
-              onChange={(e) => addRoles(e.target.value)}
-            />
-          </div>
-
-          <div className="space-y-2 mb-4">
-            {roles.map((r, idx) => (
-              <div key={idx} className="flex gap-2 items-center">
-                <input
-                  className="flex-1 rounded border px-2 py-1"
-                  placeholder="Naam van de rol"
-                  value={r.name || ""}
-                  onChange={(e) => updateRole(idx, { name: e.target.value })}
-                />
-                <select
-                  className="rounded border px-2 py-1"
-                  value={r.personId || ""}
-                  onChange={(e) => updateRole(idx, { personId: e.target.value })}
-                >
-                  <option value="">— kies speler —</option>
-                  {peopleSafe.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {(p.firstName || "") + " " + (p.lastName || "")}
-                    </option>
-                  ))}
-                </select>
-                <label className="flex items-center gap-1 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={!!r.needsMic}
-                    onChange={(e) => updateRole(idx, { needsMic: e.target.checked })}
-                  />
-                  Mic
-                </label>
-              </div>
-            ))}
-          </div>
-
-          {/* Vaste links */}
-          <div className="mb-4 space-y-2">
-            <div>
-              <label className="text-sm block">Link naar tekst</label>
-              <input
-                className="w-full rounded border px-2 py-1"
-                value={active.linkText || ""}
-                onChange={(e) => update({ linkText: e.target.value })}
-                placeholder="https://..."
-              />
-            </div>
-            <div>
-              <label className="text-sm block">Link naar licht/geluid schema</label>
-              <input
-                className="w-full rounded border px-2 py-1"
-                value={active.linkTech || ""}
-                onChange={(e) => update({ linkTech: e.target.value })}
-                placeholder="https://..."
-              />
-            </div>
-          </div>
-
-          {/* Extra sectie voor geluiden/muziek */}
-          <div className="mb-4">
-            <label className="text-sm font-semibold block mb-1">Geluiden en muziek</label>
-            <textarea
-              className="w-full rounded border px-2 py-1"
-              rows={3}
-              value={active.sounds || ""}
-              onChange={(e) => update({ sounds: e.target.value })}
-              placeholder="Beschrijf of plak links naar geluiden/muziek"
-            />
-          </div>
-
-          {/* Decor beschrijving */}
-          <div className="mb-4">
-            <label className="text-sm font-semibold block mb-1">Decor</label>
-            <textarea
-              className="w-full rounded border px-2 py-1"
-              rows={3}
-              value={active.decor || ""}
-              onChange={(e) => update({ decor: e.target.value })}
-              placeholder="Beschrijving van decor en decorstukken"
-            />
-          </div>
-        </>
+        <div className="text-sm text-gray-500">Geen sketch geselecteerd</div>
       )}
-    </div>
+
+      {/* PRINT-ONLY: alle sketches onder elkaar */}
+      <div id="print-scripts" className="hidden print:block">
+        <h2 className="text-xl font-bold">Sketches – print</h2>
+        <div className="muted text-sm mb-4">Alle sketches onder elkaar (pauzes en muziek niet inbegrepen).</div>
+
+        {onlySketches.map((sk, i) => {
+          const s = ensureDefaults(sk);
+          return (
+            <div key={s.id || i} className="sketch-print">
+              <h2 className="text-lg font-semibold">{s.title || "(zonder titel)"} <span className="muted">• {s.durationMin || 0} min</span></h2>
+              <div className="block"><strong>Plek:</strong> {s.stagePlace === "voor" ? "Voor de gordijn" : "Podium"}</div>
+
+              <div className="block">
+                <strong>Rollen</strong>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Rolnaam</th>
+                      <th>Cast</th>
+                      <th>Mic?</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(s.roles || []).map((r, idx) => (
+                      <tr key={idx}>
+                        <td>{r?.name || ""}</td>
+                        <td>{fullName(personById[r?.personId]) || ""}</td>
+                        <td>{r?.needsMic ? "Ja" : "Nee"}</td>
+                      </tr>
+                    ))}
+                    {(s.roles || []).length === 0 && (
+                      <tr><td colSpan="3" className="muted">Geen rollen.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="block">
+                <strong>Links</strong>
+                <div className="muted">
+                  Tekst: {s.links?.text ? s.links.text : <em>—</em>}
+                </div>
+                <div className="muted">
+                  Licht/geluid: {s.links?.tech ? s.links.tech : <em>—</em>}
+                </div>
+              </div>
+
+              <div className="block">
+                <strong>Geluiden & muziek</strong>
+                {(s.sounds || []).length > 0 ? (
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Omschrijving</th>
+                        <th>Link</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {s.sounds.map((x, idx2) => (
+                        <tr key={x.id || idx2}>
+                          <td>{x.label || ""}</td>
+                          <td>{x.url || ""}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <div className="muted">—</div>
+                )}
+              </div>
+
+              <div className="block">
+                <strong>Decor</strong>
+                <div>{s.decor ? s.decor : <span className="muted">—</span>}</div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
