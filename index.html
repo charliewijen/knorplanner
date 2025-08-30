@@ -34,6 +34,27 @@
   }
 </style>
 
+  <style>
+  /* Helpers voor print */
+  .print-hide { display: inline; }
+  .print-only { display: none; }
+  .no-truncate { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; }
+
+  @media print {
+    /* Toon alléén het microfoonblok (#print-mics) */
+    body * { visibility: hidden !important; }
+    #print-mics, #print-mics * { visibility: visible !important; }
+    #print-mics { position: absolute; inset: 0 auto auto 0; width: 100%; }
+
+    /* Verberg header, floating tools, e.d. */
+    header, .fixed { display: none !important; }
+
+    /* Verberg selects + andere UI in print */
+    .print-hide { display: none !important; }
+    .print-only { display: inline !important; }
+  }
+</style>
+
   
 </head>
 <body class="bg-white text-gray-900">
