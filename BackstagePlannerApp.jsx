@@ -199,7 +199,7 @@ function App() {
     return p.get("share") || null;
   }, [location.hash]);
 
-  // >>> NIEUW: show-id uit de hash zodat de ontvanger altijd de bedoelde show ziet
+  // show-id uit de hash (= pinnen naar juiste show)
   const shareShowId = React.useMemo(() => {
     const p = new URLSearchParams((location.hash || "").replace("#",""));
     return p.get("show") || null;
@@ -439,6 +439,8 @@ function App() {
   }, [shareTab, state.settings?.appPasswordHash]); // lockNow is stabiel genoeg in deze context
 
   // ====== SHARE ROUTES ======
+
+  // Agenda (read-only)
   if (shareTab === "rehearsals") {
     return (
       <div className="mx-auto max-w-6xl p-4 share-only">
@@ -457,6 +459,7 @@ function App() {
     );
   }
 
+  // Rolverdeling (read-only)
   if (shareTab === "rolverdeling") {
     return (
       <div className="mx-auto max-w-6xl p-4">
@@ -474,6 +477,7 @@ function App() {
     );
   }
 
+  // PR-Kit (read-only)
   if (shareTab === "prkit") {
     return (
       <div className="mx-auto max-w-6xl p-4">
@@ -491,6 +495,7 @@ function App() {
     );
   }
 
+  // Programma (read-only)
   if (shareTab === "runsheet") {
     return (
       <div className="mx-auto max-w-6xl p-4 share-only">
@@ -503,6 +508,7 @@ function App() {
     );
   }
 
+  // Microfoons (read-only)
   if (shareTab === "mics") {
     return (
       <div className="mx-auto max-w-6xl p-4 share-only">
@@ -531,7 +537,183 @@ function App() {
     );
   }
 
-  // (optioneel heb je ook een share=scripts route; die kun je hier laten staan als je die gebruikt.)
+  // Sketches (read-only, alles onder elkaar) – zodat de link hieronder werkt
+  if (shareTab === "scripts") {
+    const nameFor = (pid) => {
+      const p = personById[pid];
+      if (!p) return "";
+      const fn = (p.firstName || "").trim();
+      const ln = (p.lastName || p.name || "").trim();
+      return [fn, ln].filter(Boolean).join(" ");
+    };
+
+    const onlySketches = (showSketches || [])
+      .filter(s => (s?.kind || "sketch") === "sketch")
+      .sort((a,b) => (a.order||0) - (b.order||0));
+
+    return (
+      <div className="mx-auto max-w-6xl p-4 share-only">
+        <h1 className="text-2xl font-bold mb-4">Sketches (live)</h1>
+
+        <div className="space-y-8">
+          {onlySketches.map((sk, i) => {
+            const roles  = Array.isArray(sk.roles) ? sk.roles : [];
+            const links  = (sk.links && typeof sk.links === "object") ? sk.links : {};
+            const sounds = Array.isArray(sk.sounds) ? sk.sounds : [];
+            const place  = sk.stagePlace === "voor" ? "Voor de gordijn" : "Podium";
+
+            return (
+              <section key={sk.id || i} className="rounded-xl border p-4">
+                <h2 className="text-lg font-semibold">
+                  {sk.title || "(zonder titel)"}{" "}
+                  <span className="text-gray-500 font-normal">• {sk.durationMin || 0} min</span>
+                </h2>
+
+                <div className="mt-2 text-sm">
+                  <div className="mb-2"><strong>Plek:</strong> {place}</div>
+
+                  <div className="mb-3">
+                    <strong>Rollen</strong>
+                    {roles.length ? (
+                      <table className="w-full border-collapse text-sm mt-1">
+                        <thead>
+                          <tr className="bg-gray-100">
+                            <th className="border px-2 py-1 text-left">Rolnaam</th>
+                            <th className="border px-2 py-1 text-left">Cast</th>
+                            <th className="border px-2 py-1 text-left">Mic?</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {roles.map((r, idx) => (
+                            <tr key={idx} className="odd:bg-gray-50">
+                              <td className="border px-2 py-1">{r?.name || ""}</td>
+                              <td className="border px-2 py-1">{nameFor(r?.personId)}</td>
+                              <td className="border px-2 py-1">{r?.needsMic ? "Ja" : "Nee"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    ) : (
+                      <div className="text-gray-500">— Geen rollen —</div>
+                    )}
+                  </div>
+
+                  <div className="mb-3">
+                    <strong>Links</strong>
+                    <div className="text-gray-700">
+                      Tekst: {links?.text ? (
+                        <a className="underline" href={links.text} target="_blank" rel="noopener noreferrer">{links.text}</a>
+                      ) : <em className="text-gray-500">—</em>}
+                    </div>
+                    <div className="text-gray-700">
+                      Licht/geluid: {links?.tech ? (
+                        <a className="underline" href={links.tech} target="_blank" rel="noopener noreferrer">{links.tech}</a>
+                      ) : <em className="text-gray-500">—</em>}
+                    </div>
+                  </div>
+
+                  <div className="mb-3">
+                    <strong>Geluiden & muziek</strong>
+                    {sounds.length ? (
+                      <table className="w-full border-collapse text-sm mt-1">
+                        <thead>
+                          <tr className="bg-gray-100">
+                            <th className="border px-2 py-1 text-left">Omschrijving</th>
+                            <th className="border px-2 py-1 text-left">Link</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {sounds.map((x, j) => (
+                            <tr key={x.id || j} className="odd:bg-gray-50">
+                              <td className="border px-2 py-1">{x.label || ""}</td>
+                              <td className="border px-2 py-1">
+                                {x.url ? (
+                                  <a className="underline" href={x.url} target="_blank" rel="noopener noreferrer">{x.url}</a>
+                                ) : <span className="text-gray-500">—</span>}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    ) : (
+                      <div className="text-gray-500">—</div>
+                    )}
+                  </div>
+
+                  <div>
+                    <strong>Decor</strong>
+                    <div>{sk.decor ? sk.decor : <span className="text-gray-500">—</span>}</div>
+                  </div>
+                </div>
+              </section>
+            );
+          })}
+
+          {!onlySketches.length && (
+            <div className="text-sm text-gray-500">Geen sketches voor deze show.</div>
+          )}
+        </div>
+
+        <div className="text-sm text-gray-500 mt-6">
+          Dit is een gedeelde link, alleen-lezen. Wijzigingen kunnen alleen in de hoofd-app.
+        </div>
+      </div>
+    );
+  }
+
+  // >>> NIEUW: DRAAIBOEK – publieke overzichtspagina met ALLE deel-links voor deze show
+  if (shareTab === "draaiboek") {
+    const base = `${location.origin}${location.pathname}`;
+    const sid = activeShow?.id || "";
+    const mk = (k) => `${base}#share=${k}&show=${sid}`;
+    const showTitle = activeShow?.name || "Onbekende show";
+    const pig = "https://cdn-icons-png.flaticon.com/512/616/616584.png";
+
+    const links = [
+      { key: "runsheet",     label: "Programma (live)" },
+      { key: "mics",         label: "Microfoons (live)" },
+      { key: "rehearsals",   label: "Agenda (live)" },
+      { key: "rolverdeling", label: "Rolverdeling (live)" },
+      { key: "scripts",      label: "Sketches (live)" },
+      { key: "prkit",        label: "PR-Kit (live)" },
+    ];
+
+    return (
+      <div className="mx-auto max-w-3xl md:max-w-5xl p-4">
+        <div className="flex items-center gap-3 mb-2">
+          <img src={pig} alt="" className="w-7 h-7 md:w-9 md:h-9" aria-hidden="true" />
+          <h1 className="text-2xl md:text-3xl font-extrabold">
+            Draaiboek: {showTitle}
+          </h1>
+        </div>
+        <p className="text-sm text-gray-600 mb-6">
+          Beste artiesten en medewerkers,<br />
+          hieronder vind je alle links die nodig zijn voor deze show.
+        </p>
+
+        <div className="grid sm:grid-cols-2 gap-3">
+          {links.map(({key,label}) => (
+            <a
+              key={key}
+              href={mk(key)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group flex items-center gap-3 rounded-xl border p-3 hover:shadow transition"
+              title={`${label} openen in nieuw tabblad`}
+            >
+              <img src={pig} alt="" className="w-5 h-5 opacity-70 group-hover:opacity-100" aria-hidden="true" />
+              <div className="font-medium">{label}</div>
+              <span className="ml-auto text-xs text-gray-500 group-hover:underline">open</span>
+            </a>
+          ))}
+        </div>
+
+        <div className="text-xs text-gray-500 mt-6">
+          Deze pagina is openbaar en alleen-lezen. Elk item opent in een nieuw tabblad.
+        </div>
+      </div>
+    );
+  }
 
   // Toon wachtwoord-poort als vergrendeld
   if (locked) {
@@ -716,11 +898,10 @@ function App() {
       <div className="fixed left-4 bottom-4 z-50">
         <details className="group w-[min(92vw,380px)]">
           <summary className="cursor-pointer inline-flex items-center gap-2 rounded-full bg-black text-white px-4 py-2 shadow-lg select-none">
-  <img src="https://cdn-icons-png.flaticon.com/512/616/616584.png" alt="" className="w-4 h-4" aria-hidden="true" />
-  Hulpmiddelen
-  <span className="text-xs opacity-80">{syncStatus}</span>
-</summary>
-
+            <img src="https://cdn-icons-png.flaticon.com/512/616/616584.png" alt="" className="w-4 h-4" aria-hidden="true" />
+            Hulpmiddelen
+            <span className="text-xs opacity-80">{syncStatus}</span>
+          </summary>
 
           <div className="mt-2 rounded-xl border bg-white/95 backdrop-blur p-3 shadow-xl space-y-3">
             <div className="flex gap-2 flex-wrap">
@@ -765,7 +946,22 @@ function App() {
             {/* Deel-links */}
             <div className="rounded-lg border p-2 space-y-2">
               <div className="font-semibold text-sm">Deel links (alleen-lezen)</div>
-              <div className="flex flex-wrap gap-2">
+
+              {/* >>> Opvallende 'deel alles' knop */}
+              <button
+                className="inline-flex items-center gap-2 rounded-full bg-black text-white px-4 py-1.5 text-sm shadow hover:opacity-90"
+                onClick={()=>{
+                  const url = `${location.origin}${location.pathname}#share=draaiboek&show=${activeShow?.id || ""}`;
+                  navigator.clipboard?.writeText(url);
+                  alert("Gekopieerd:\n" + url);
+                }}
+                title="Draaiboek (alle links) kopiëren"
+              >
+                <img src="https://cdn-icons-png.flaticon.com/512/616/616584.png" alt="" className="w-4 h-4" aria-hidden="true" />
+                Draaiboek (alle links)
+              </button>
+
+              <div className="flex flex-wrap gap-2 pt-1">
                 <button
                   className="rounded-full border px-3 py-1 text-sm"
                   onClick={()=>{
@@ -821,7 +1017,6 @@ function App() {
                   PR-Kit
                 </button>
 
-                {/* (optioneel) Sketches share:
                 <button
                   className="rounded-full border px-3 py-1 text-sm"
                   onClick={()=>{
@@ -832,7 +1027,6 @@ function App() {
                 >
                   Sketches
                 </button>
-                */}
               </div>
             </div>
 
