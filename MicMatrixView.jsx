@@ -146,12 +146,10 @@ function MicMatrixView({ currentShowId, sketches = [], people = [], shows = [], 
 
   return (
     <section className="rounded-2xl border p-4">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <h2 className="text-lg font-semibold">Microfoonschema</h2>
-        <div className="flex gap-2">
-          <button className="rounded-xl border px-3 py-2" onClick={doPrint}>Print / PDF</button>
-        </div>
-      </div>
+      <<div className="mb-3 flex items-center justify-between gap-2">
+  <h2 className="text-lg font-semibold">Microfoonschema</h2>
+</div>
+
 
       {/* tellers */}
       <div className="mb-3 flex flex-wrap items-center gap-3">
