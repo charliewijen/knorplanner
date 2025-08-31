@@ -532,35 +532,57 @@ function App() {
   return (
     <div className="mx-auto max-w-7xl p-4">
       {/* Topbar (sticky) */}
-      <header className="sticky top-0 z-40 w-full border-b bg-white/80 backdrop-blur">
-        <div className="mx-auto max-w-7xl px-4">
-          <div className="h-14 flex items-center justify-between gap-3">
-            <div className="text-lg font-bold tracking-wide">KnorPlanner</div>
-            <nav className="flex flex-wrap gap-2 overflow-x-auto">
-              {[
-                { key: "planner",       label: "Voorstellingen" },
-                { key: "runsheet",      label: "Programma" },
-                { key: "cast",          label: "Biggenconvent" },
-                { key: "mics",          label: "Microfoons" },
-                { key: "rolverdeling",  label: "Rolverdeling" },
-                { key: "scripts",       label: "Sketches" },
-                { key: "rehearsals",    label: "Agenda" },
-                { key: "prkit",         label: "PR-Kit" },
-              ].map(({ key, label }) => (
-                <button
-                  key={key}
-                  className={`rounded-full px-4 py-2 text-sm transition ${
-                    tab === key ? "bg-black text-white shadow" : "bg-gray-100 hover:bg-gray-200"
-                  }`}
-                  onClick={() => setTab(key)}
-                >
-                  {label}
-                </button>
-              ))}
-            </nav>
-          </div>
-        </div>
-      </header>
+     <header className="sticky top-0 z-40 w-full border-b bg-white/80 backdrop-blur brand-header">
+  <div className="mx-auto max-w-7xl px-4">
+    <div className="h-14 flex items-center gap-3">
+      {/* BRAND: logo + titel (neemt alleen eigen breedte) */}
+      <div className="brand flex items-center gap-2 flex-none">
+        <img
+          src="https://cdn-icons-png.flaticon.com/512/616/616584.png"
+          alt=""
+          className="brand-logo w-7 h-7 md:w-8 md:h-8"
+          aria-hidden="true"
+        />
+        <div className="brand-title font-extrabold tracking-wide">KnorPlanner</div>
+      </div>
+
+      {/* MENU: krijgt ALLE resterende ruimte */}
+      <nav className="flex gap-2 overflow-x-auto flex-1">
+        {[
+          { key: "planner",       label: "Voorstellingen" },
+          { key: "runsheet",      label: "Programma" },
+          { key: "cast",          label: "Biggenconvent" },
+          { key: "mics",          label: "Microfoons" },
+          { key: "rolverdeling",  label: "Rolverdeling" },
+          { key: "scripts",       label: "Sketches" },
+          { key: "rehearsals",    label: "Agenda" },
+          { key: "prkit",         label: "PR-Kit" },
+        ].map(({ key, label }) => (
+          <button
+            key={key}
+            className={`rounded-full px-4 py-2 text-sm transition ${
+              tab === key ? "bg-black text-white shadow" : "bg-gray-100 hover:bg-gray-200"
+            }`}
+            onClick={() => setTab(key)}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
+
+      {/* Extra: subtiel logo rechts (alleen op md+) */}
+      <div className="hidden md:flex items-center gap-2 flex-none">
+        <img
+          src="https://cdn-icons-png.flaticon.com/512/616/616584.png"
+          alt=""
+          className="w-6 h-6 opacity-70"
+          aria-hidden="true"
+        />
+      </div>
+    </div>
+  </div>
+</header>
+
 
       {/* Sync status */}
       <div className="text-xs text-gray-500 mt-1">{syncStatus}</div>
