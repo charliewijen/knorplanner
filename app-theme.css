@@ -175,4 +175,82 @@ body::after{
   header nav a { white-space: nowrap; }
 }
 
+/* =========================================================
+   1) READ-ONLY PAGES (/#share=...) - breder en ademruimte
+   ========================================================= */
+@media (min-width: 1024px){
+  /* Jouw share-views gebruiken wrappers met .mx-auto.max-w-6xl
+     → maak ze lekker breed maar toch responsief */
+  .mx-auto.max-w-6xl{
+    max-width: min(95vw, 90rem) !important; /* ~1440px */
+    padding-left: clamp(12px, 2vw, 24px);
+    padding-right: clamp(12px, 2vw, 24px);
+  }
+}
 
+/* Als content in kaarten breder is, laat horizontaal scrollen i.p.v. layout breken */
+.share-only,
+.mx-auto.max-w-6xl,
+.mx-auto.max-w-6xl > *,
+section.rounded-2xl.border,
+.rounded-xl.border,
+.pr-card{
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ================================================
+   2) MOBIEL – “sexy” full-width & geen overflow
+   ================================================ */
+@media (max-width: 768px){
+  /* Kaarten mogen altijd de volle breedte pakken */
+  section.rounded-2xl.border,
+  .rounded-xl.border,
+  .pr-card{
+    width: 100%;
+  }
+
+  /* Lange tabellen/listen: liever scroll dan uit het scherm duwen */
+  table{
+    display: block;           /* non-destructief: browsers tonen nog steeds cellen */
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Inputs en flex-items moeten echt mogen krimpen */
+  input, select, textarea{
+    min-width: 0 !important;
+    max-width: 100%;
+  }
+  .flex-1, .grow{
+    min-width: 0 !important;  /* voorkomt dat knoppen/inputs elkaar duwen */
+  }
+
+  /* Lange URLs/woorden mogen breken */
+  a, .break-anywhere, input[type="url"]{
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+}
+
+/* ======================================================
+   3) SPECIFIEKE QUALITY-OF-LIFE fixes (desktop & mobiel)
+   ====================================================== */
+
+/* In rijen met input + "Open"-knop: zorg dat input krimpt, knop niet overschrijft */
+.pr-card .flex-1.min-w-0,
+.pr-card .flex-1{
+  min-width: 0;               /* essentieel bij flex-rijen */
+}
+.pr-card a[href].whitespace-nowrap{
+  flex: 0 0 auto;             /* knop blijft compact */
+}
+
+/* Afbeeldingen in kaarten nooit buiten kader laten komen */
+.pr-card img{ max-width: 100%; height: auto; display: block; }
+
+/* Kleine detail: URL-velden mogen kleiner font hebben als het krap is */
+@media (max-width: 480px){
+  input[type="url"]{ font-size: 0.9rem; }
+}
