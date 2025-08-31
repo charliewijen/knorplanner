@@ -1,0 +1,274 @@
+/* ===============================
+   KnorPlanner — app-theme.css
+   Doel:
+   - Frissere look & feel
+   - Ruimtelijker, zachter
+   - Mobile first verbeteringen
+   - Subtiele humor (piglet vibes 🐷)
+   - Niets in JS aanpassen nodig
+   =============================== */
+
+/* ----- CSS Variables (thematische kleuren) ----- */
+:root{
+  --kp-bg: #fafafa;
+  --kp-card: #ffffff;
+  --kp-border: #e8e8ef;
+  --kp-text: #111827;
+  --kp-muted: #6b7280;
+  --kp-accent: #ff5a76;      /* speels accent (knor) */
+  --kp-accent-2: #5c7cfa;    /* secundair accent */
+  --kp-ok: #e7f7ee;
+  --kp-warn: #fff7e6;
+  --kp-bad: #ffe9ea;
+
+  --kp-radius-xl: 1.25rem;
+  --kp-radius: 0.75rem;
+  --kp-shadow: 0 10px 30px rgba(0,0,0,.05);
+}
+
+/* ----- Baseline ----- */
+html, body {
+  background: var(--kp-bg);
+  color: var(--kp-text);
+  font-synthesis-weight: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Apple Color Emoji","Segoe UI Emoji";
+}
+
+/* Maak standaard kaarten mooier, zonder je JS-klassen te wijzigen */
+.rounded-2xl {
+  border-radius: var(--kp-radius-xl) !important;
+  background: var(--kp-card);
+  box-shadow: var(--kp-shadow);
+  border: 1px solid var(--kp-border) !important;
+}
+.rounded-xl {
+  border-radius: var(--kp-radius) !important;
+  background: var(--kp-card);
+  border: 1px solid var(--kp-border) !important;
+}
+
+/* Spacing-boost in kaarten */
+.rounded-2xl.p-4, .rounded-xl.p-4, .rounded-xl.p-3, .rounded-2xl.p-3 {
+  padding: 1.25rem !important;
+}
+
+/* ----- Header / Navigatie-balk ----- */
+header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: linear-gradient(180deg, #fff 0%, rgba(255,255,255,.92) 100%);
+  backdrop-filter: saturate(1.2) blur(6px);
+  border-bottom: 1px solid var(--kp-border);
+  padding: 0.75rem 1rem !important;
+}
+
+/* App-titel */
+header h1 {
+  font-size: 1.6rem !important;
+  letter-spacing: .2px;
+}
+
+/* Nav knoppen – pill style */
+header nav button {
+  border: 1px solid var(--kp-border) !important;
+  background: #fff !important;
+  transition: all .15s ease;
+}
+header nav button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 12px rgba(0,0,0,.04);
+}
+header nav button.bg-black {
+  background: var(--kp-accent) !important;
+  border-color: transparent !important;
+}
+header nav button.bg-black.text-white {
+  color: #fff !important;
+}
+
+/* Nav horizontaal scrollbaar op mobiel */
+header nav {
+  display: flex;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  gap: .5rem;
+  padding-bottom: .25rem;
+}
+header nav::-webkit-scrollbar { display: none; }
+
+/* Link kopiëren + Versies compact */
+header details {
+  background: #fff;
+  border: 1px solid var(--kp-border);
+  border-radius: var(--kp-radius);
+}
+header details summary {
+  list-style: none;
+}
+header details summary::-webkit-details-marker { display:none; }
+
+/* ----- Universele controls ----- */
+button, .rounded-full {
+  transition: all .15s ease;
+}
+button:hover, .rounded-full:hover {
+  transform: translateY(-1px);
+}
+
+input[type="text"],
+input[type="number"],
+input[type="time"],
+input[type="date"],
+select, textarea {
+  background: #fff;
+  border: 1px solid var(--kp-border);
+  border-radius: .65rem;
+  padding: .55rem .7rem;
+  outline: none;
+  transition: box-shadow .2s ease, border-color .2s ease;
+}
+input:focus, select:focus, textarea:focus {
+  border-color: var(--kp-accent-2);
+  box-shadow: 0 0 0 4px rgba(92,124,250,.15);
+}
+
+/* Primaire actie */
+button.kp-primary,
+button.bg-black.text-white {
+  background: var(--kp-accent);
+  border-color: var(--kp-accent) !important;
+  color: #fff !important;
+}
+button.kp-primary:hover {
+  filter: brightness(.95);
+}
+
+/* Subtiele badge-stijl (muziek / pauze etc.) */
+.kp-badge {
+  display: inline-block;
+  padding: .15rem .5rem;
+  border-radius: 999px;
+  font-size: .72rem;
+  line-height: 1rem;
+  font-weight: 600;
+}
+
+/* ----- Tabellen mooier + mobielvriendelijk ----- */
+table {
+  border-collapse: separate !important;
+  border-spacing: 0 !important;
+  width: 100%;
+  background: #fff;
+  border-radius: var(--kp-radius);
+  overflow: hidden;
+  border: 1px solid var(--kp-border);
+}
+thead tr {
+  background: #f6f7fb !important;
+}
+th, td {
+  border-bottom: 1px solid var(--kp-border) !important;
+  padding: .6rem .65rem !important;
+  vertical-align: middle;
+}
+tbody tr:last-child td {
+  border-bottom: none !important;
+}
+
+/* Rijkleuren */
+.bg-yellow-50 { background: var(--kp-warn) !important; }
+.bg-blue-50   { background: #eef3ff !important; }
+.bg-green-50  { background: var(--kp-ok) !important; }
+.bg-red-50    { background: var(--kp-bad) !important; }
+
+/* ----- Kaart met humoristische leegte (subtiel) ----- */
+.text-gray-500:empty::after,
+td:empty::after {
+  content: "— niks te zien, doorlopen —";
+  color: #9aa0a6;
+  font-style: italic;
+  opacity: .7;
+}
+
+/* ----- Fixed bottom banner voor “Undo / Redo / Save / Link / Versies” ----- */
+/* (Zonder JS-wijziging: style alles binnen footer.fixed-tools als je die later toevoegt)
+   TIP: als je het al links-onder wil, geef het element class="fixed-tools" in je HTML. */
+.fixed-tools {
+  position: fixed;
+  left: 1rem;
+  bottom: 1rem;
+  z-index: 60;
+  background: #ffffffcc;
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--kp-border);
+  border-radius: 14px;
+  box-shadow: var(--kp-shadow);
+  padding: .5rem;
+  display: flex;
+  gap: .4rem;
+  flex-wrap: wrap;
+}
+.fixed-tools button {
+  font-size: .85rem;
+}
+
+/* ----- Programma en Tijden (RunSheet) labels netter ----- */
+#print-program .kp-badge--music {
+  background: #e8f1ff;
+  color: #3566ff;
+}
+#print-program .kp-badge--break {
+  background: #fff2c2;
+  color: #8a6200;
+}
+
+/* ----- MicMatrix: brede kolommen & responsive hint ----- */
+.min-w-\[140px\] { min-width: 140px !important; }
+@media (max-width: 900px) {
+  .min-w-\[140px\] { min-width: 120px !important; }
+  th.w-56, td.w-56, .w-56 { width: 12rem !important; }
+}
+
+/* Altijd horizontaal scrollbaar containers waar nodig */
+.overflow-auto { overflow: auto; }
+
+/* ----- Kaarten spacing boven/onder main ----- */
+main { padding-bottom: 5rem; }
+
+/* ----- Mobile helpers ----- */
+@media (max-width: 700px) {
+  header h1 { font-size: 1.25rem !important; }
+  .md\:grid-cols-3 { grid-template-columns: 1fr !important; }
+  .md\:col-span-2 { grid-column: span 1 / span 1 !important; }
+  .w-20 { width: 5.5rem !important; }
+  .w-24 { width: 6rem !important; }
+  .w-16 { width: 4.5rem !important; }
+  .flex { gap: .5rem; }
+  .px-4.py-2 { padding: .5rem .75rem !important; }
+}
+
+/* ----- Humor: kleine “oink” hugging corner (heel subtiel) ----- */
+body::after{
+  content: "oink";
+  position: fixed;
+  right: 8px;
+  bottom: 8px;
+  font-size: 10px;
+  background: var(--kp-accent);
+  color: white;
+  padding: 2px 6px;
+  border-radius: 999px;
+  opacity: .65;
+  pointer-events: none;
+}
+
+/* ----- Print verfijningen (we laten jouw bestaande printregels uit JS met rust) ----- */
+@media print {
+  header, .fixed-tools { display: none !important; }
+  body { background: #fff !important; }
+  table { box-shadow: none !important; border-color: #ccc !important; }
+}
