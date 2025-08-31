@@ -478,13 +478,13 @@ const showPRKit = React.useMemo(() => {
             <div className="text-lg font-bold tracking-wide">KnorPlanner</div>
             <nav className="flex flex-wrap gap-2 overflow-x-auto">
               {[
-                { key: "planner",       label: "Programma maker" },
-                { key: "runsheet",      label: "Overzicht Programma" },
+                { key: "planner",       label: "Voorstellingen" },
+                { key: "runsheet",      label: "Programma" },
                 { key: "cast",          label: "Biggenconvent" },
-                { key: "mics",          label: "Microfoonschema" },
+                { key: "mics",          label: "Microfoons" },
                 { key: "rolverdeling",  label: "Rolverdeling" },
                 { key: "scripts",       label: "Sketches" },
-                { key: "rehearsals",    label: "Repetitieschema" },
+                { key: "rehearsals",    label: "Agenda" },
                 { key: "prkit",         label: "PR-Kit" },
               ].map(({ key, label }) => (
                 <button
