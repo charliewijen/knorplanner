@@ -446,6 +446,23 @@ const showPRKit = React.useMemo(() => {
     );
   }
 
+  if (shareTab === "prkit") {
+  return (
+    <div className="mx-auto max-w-6xl p-4">
+      <h1 className="text-2xl font-bold mb-4">PR-Kit (live)</h1>
+      <PRKitView
+        items={showPRKit}
+        showId={activeShow?.id}
+        readOnly={true}
+        onChange={()=>{}}
+      />
+      <div className="text-sm text-gray-500 mt-6">
+        Dit is een gedeelde link, alleen-lezen. Wijzigingen kunnen alleen in de hoofd-app.
+      </div>
+    </div>
+  );
+}
+
   // Toon wachtwoord-poort als vergrendeld
   if (locked) {
     return <PasswordGate onUnlock={handleUnlock} />;
@@ -656,31 +673,44 @@ const showPRKit = React.useMemo(() => {
             </div>
 
             {/* Deel-links */}
-            <div className="rounded-lg border p-2 space-y-2">
-              <div className="font-semibold text-sm">Deel links (alleen-lezen)</div>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  className="rounded-full border px-3 py-1 text-sm"
-                  onClick={()=>{
-                    const url = `${location.origin}${location.pathname}#share=rehearsals`;
-                    navigator.clipboard?.writeText(url);
-                    alert("Gekopieerd:\n" + url);
-                  }}
-                >
-                  Repetitieschema
-                </button>
-                <button
-                  className="rounded-full border px-3 py-1 text-sm"
-                  onClick={()=>{
-                    const url = `${location.origin}${location.pathname}#share=rolverdeling`;
-                    navigator.clipboard?.writeText(url);
-                    alert("Gekopieerd:\n" + url);
-                  }}
-                >
-                  Rolverdeling
-                </button>
-              </div>
-            </div>
+<div className="rounded-lg border p-2 space-y-2">
+  <div className="font-semibold text-sm">Deel links (alleen-lezen)</div>
+  <div className="flex flex-wrap gap-2">
+    <button
+      className="rounded-full border px-3 py-1 text-sm"
+      onClick={()=>{
+        const url = `${location.origin}${location.pathname}#share=rehearsals`;
+        navigator.clipboard?.writeText(url);
+        alert("Gekopieerd:\n" + url);
+      }}
+    >
+      Repetitieschema
+    </button>
+
+    <button
+      className="rounded-full border px-3 py-1 text-sm"
+      onClick={()=>{
+        const url = `${location.origin}${location.pathname}#share=rolverdeling`;
+        navigator.clipboard?.writeText(url);
+        alert("Gekopieerd:\n" + url);
+      }}
+    >
+      Rolverdeling
+    </button>
+
+    <button
+      className="rounded-full border px-3 py-1 text-sm"
+      onClick={()=>{
+        const url = `${location.origin}${location.pathname}#share=prkit`;
+        navigator.clipboard?.writeText(url);
+        alert("Gekopieerd:\n" + url);
+      }}
+    >
+      PR-Kit
+    </button>
+  </div>
+</div>
+
 
             {/* Show acties */}
             <div className="rounded-lg border p-2">
