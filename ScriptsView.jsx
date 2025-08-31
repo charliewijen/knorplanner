@@ -24,6 +24,9 @@ function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
     return [fn, ln].filter(Boolean).join(" ");
   };
 
+  // Eenvoudige URL-check: toon open-knop alleen voor http(s) links
+  const hasHttpUrl = (v) => /^https?:\/\//i.test((v || "").trim());
+
   // ====== Edit helpers ======
   const patch = (id, p) => onUpdate(id, p);
 
@@ -149,9 +152,12 @@ function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
                 <option value="voor">Voor de gordijn</option>
               </select>
             </div>
+
+            {/* LINKS met Open-knop als er een URL is */}
             <div>
               <label className="block text-sm text-gray-700">Links</label>
               <div className="mt-2 grid grid-cols-1 gap-2">
+                {/* Link naar tekst */}
                 <div className="flex items-center gap-2">
                   <span className="w-40 text-sm">Link naar tekst</span>
                   <input
@@ -160,7 +166,21 @@ function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
                     value={active.links?.text || ""}
                     onChange={(e)=>patch(active.id, { links: { ...(active.links||{}), text: e.target.value } })}
                   />
+                  {hasHttpUrl(active.links?.text) && (
+                    <a
+                      href={active.links.text}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="shrink-0 rounded border px-3 py-1 text-sm hover:bg-gray-50"
+                      aria-label="Open link naar tekst (nieuwe tab)"
+                      title="Open link (nieuwe tab)"
+                    >
+                      Open
+                    </a>
+                  )}
                 </div>
+
+                {/* Link naar licht/geluid */}
                 <div className="flex items-center gap-2">
                   <span className="w-40 text-sm">Link naar licht/geluid</span>
                   <input
@@ -169,9 +189,22 @@ function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
                     value={active.links?.tech || ""}
                     onChange={(e)=>patch(active.id, { links: { ...(active.links||{}), tech: e.target.value } })}
                   />
+                  {hasHttpUrl(active.links?.tech) && (
+                    <a
+                      href={active.links.tech}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="shrink-0 rounded border px-3 py-1 text-sm hover:bg-gray-50"
+                      aria-label="Open link naar licht/geluid (nieuwe tab)"
+                      title="Open link (nieuwe tab)"
+                    >
+                      Open
+                    </a>
+                  )}
                 </div>
               </div>
             </div>
+
             <div>
               <label className="block text-sm text-gray-700">Decor & set</label>
               <textarea
@@ -261,19 +294,44 @@ function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
             <div className="space-y-2">
               {active.sounds.map((s, idx) => (
                 <div key={s.id || idx} className="grid grid-cols-12 gap-2 items-center">
+                  {/* Omschrijving */}
                   <input
                     className="col-span-5 rounded border px-2 py-1"
                     placeholder="Omschrijving (bijv. 'VAR on! fluit')"
                     value={s.label || ""}
                     onChange={(e)=>updateSound(idx, { label: e.target.value })}
                   />
+                  {/* URL */}
                   <input
-                    className="col-span-6 rounded border px-2 py-1"
+                    className="col-span-5 rounded border px-2 py-1"
                     placeholder="URL of bestandslink"
                     value={s.url || ""}
                     onChange={(e)=>updateSound(idx, { url: e.target.value })}
                   />
-                  <button className="col-span-1 rounded border px-2 py-1" onClick={()=>removeSound(idx)}>x</button>
+                  {/* Open-knop (als er een geldige http(s)-link is) */}
+                  <div className="col-span-1">
+                    {hasHttpUrl(s.url) && (
+                      <a
+                        href={s.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block text-center rounded border px-2 py-1 text-sm hover:bg-gray-50"
+                        aria-label={`Open ${s.label || "geluid"} (nieuwe tab)`}
+                        title="Open link (nieuwe tab)"
+                      >
+                        Open
+                      </a>
+                    )}
+                  </div>
+                  {/* Verwijderen */}
+                  <button
+                    className="col-span-1 rounded border px-2 py-1"
+                    onClick={()=>removeSound(idx)}
+                    aria-label="Verwijder item"
+                    title="Verwijder item"
+                  >
+                    x
+                  </button>
                 </div>
               ))}
             </div>
