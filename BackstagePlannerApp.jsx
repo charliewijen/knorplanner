@@ -463,6 +463,48 @@ const showPRKit = React.useMemo(() => {
   );
 }
 
+  if (shareTab === "runsheet") {
+  return (
+    <div className="mx-auto max-w-6xl p-4 share-only">
+      <h1 className="text-2xl font-bold mb-4">Programma (live)</h1>
+      <RunSheetView runSheet={runSheet} show={activeShow} />
+      <div className="text-sm text-gray-500 mt-6">
+        Dit is een gedeelde link, alleen-lezen.
+      </div>
+    </div>
+  );
+}
+
+if (shareTab === "mics") {
+  return (
+    <div className="mx-auto max-w-6xl p-4 share-only">
+      <h1 className="text-2xl font-bold mb-4">Microfoons (live)</h1>
+
+      {/* forceer read-only gedrag binnen deze wrapper */}
+      <style>{`
+        .share-only select,
+        .share-only input,
+        .share-only button {
+          pointer-events: none !important;
+        }
+      `}</style>
+
+      <MicMatrixView
+        currentShowId={activeShow?.id}
+        sketches={showSketches}
+        people={showPeople}
+        shows={state.shows}
+        setState={() => { /* no-op in share */ }}
+      />
+      <div className="text-sm text-gray-500 mt-6">
+        Dit is een gedeelde link, alleen-lezen.
+      </div>
+    </div>
+  );
+}
+
+  
+
   // Toon wachtwoord-poort als vergrendeld
   if (locked) {
     return <PasswordGate onUnlock={handleUnlock} />;
@@ -679,12 +721,34 @@ const showPRKit = React.useMemo(() => {
     <button
       className="rounded-full border px-3 py-1 text-sm"
       onClick={()=>{
+        const url = `${location.origin}${location.pathname}#share=runsheet`;
+        navigator.clipboard?.writeText(url);
+        alert("Gekopieerd:\n" + url);
+      }}
+    >
+      Programma
+    </button>
+
+    <button
+      className="rounded-full border px-3 py-1 text-sm"
+      onClick={()=>{
+        const url = `${location.origin}${location.pathname}#share=mics`;
+        navigator.clipboard?.writeText(url);
+        alert("Gekopieerd:\n" + url);
+      }}
+    >
+      Microfoons
+    </button>
+
+    <button
+      className="rounded-full border px-3 py-1 text-sm"
+      onClick={()=>{
         const url = `${location.origin}${location.pathname}#share=rehearsals`;
         navigator.clipboard?.writeText(url);
         alert("Gekopieerd:\n" + url);
       }}
     >
-      Repetitieschema
+      Agenda
     </button>
 
     <button
@@ -712,19 +776,8 @@ const showPRKit = React.useMemo(() => {
 </div>
 
 
-            {/* Show acties */}
-            <div className="rounded-lg border p-2">
-              <div className="font-semibold text-sm mb-1">Show acties</div>
-              <button
-                className="rounded-full border px-3 py-1 text-sm"
-                onClick={duplicateCurrentShow}
-              >
-                Dupliceer huidige show
-              </button>
-              <div className="text-[11px] text-gray-500 mt-1">
-                Kopieert spelers, sketches (incl. rollen & microfoon-koppelingen) en repetities naar een nieuwe show.
-              </div>
-            </div>
+
+           
 
             {/* Beveiliging */}
             <div className="rounded-lg border p-2 space-y-2">
