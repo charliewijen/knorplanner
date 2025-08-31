@@ -119,3 +119,43 @@ body::after{
   body{background:#fff!important;}
   table{box-shadow:none!important;border-color:#ccc!important;}
 }
+
+/* === Mobile fixed header + horizontal chips === */
+@media (max-width: 768px) {
+  :root { --topbar-h: 56px; } /* h-14 uit je JSX */
+
+  /* 1) Header weer 'fixed' bovenaan, override vorige !important */
+  header {
+    position: fixed !important;
+    top: 0; left: 0; right: 0;
+    z-index: 1000;
+    background: #fff; /* match met je huidige stijl */
+    border-bottom: 1px solid var(--kp-border);
+    padding: .75rem 1rem !important;
+    /* optioneel: kleine blur zoals Tailwind 'backdrop-blur' */
+    backdrop-filter: blur(6px);
+  }
+
+  /* 2) Body krijgt ruimte zodat content niet onder header verdwijnt */
+  body { padding-top: var(--topbar-h); }
+
+  /* 3) De binnenste bar met vaste hoogte (h-14) blijft 56px */
+  header .h-14 { height: var(--topbar-h); }
+
+  /* 4) Nav: niet meer wrappen -> 1 rij met horizontale scroll */
+  header nav {
+    display: flex;
+    flex-wrap: nowrap !important;   /* override jouw wrap */
+    overflow-x: auto !important;    /* i.p.v. visible */
+    overflow-y: hidden;
+    gap: .5rem;                     /* iets ruimer voor touch */
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    padding-bottom: .25rem;         /* kleine buffer onder chips */
+  }
+
+  /* (optioneel) scrollbar subtieler op iOS/Chrome */
+  header nav::-webkit-scrollbar { height: 6px; }
+  header nav::-webkit-scrollbar-thumb { background: #ddd; border-radius: 4px; }
+}
+
