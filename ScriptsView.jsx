@@ -293,49 +293,47 @@ function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
             )}
             <div className="space-y-2">
               {active.sounds.map((s, idx) => (
-  <div key={s.id || idx} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center">
-    {/* Omschrijving */}
-    <input
-      className="md:col-span-5 rounded border px-2 py-1"
-      placeholder="Omschrijving (bijv. 'VAR on! fluit')"
-      value={s.label || ""}
-      onChange={(e)=>updateSound(idx, { label: e.target.value })}
-    />
-
-    {/* URL */}
-    <input
-      className="md:col-span-6 rounded border px-2 py-1"
-      placeholder="URL of bestandslink"
-      value={s.url || ""}
-      onChange={(e)=>updateSound(idx, { url: e.target.value })}
-    />
-
-    {/* Acties: Open + Verwijderen (één kolom, geen overlap) */}
-    <div className="md:col-span-1 flex items-center gap-2 md:justify-end">
-      {hasHttpUrl(s.url) && (
-        <a
-          href={s.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="shrink-0 w-[72px] text-center rounded border px-2 py-1 text-sm hover:bg-gray-50"
-          aria-label={`Open ${s.label || "geluid"} (nieuwe tab)`}
-          title="Open link (nieuwe tab)"
-        >
-          Open
-        </a>
-      )}
-      <button
-        className="shrink-0 w-9 rounded border px-0 py-1"
-        onClick={()=>removeSound(idx)}
-        aria-label="Verwijder item"
-        title="Verwijder item"
-      >
-        x
-      </button>
-    </div>
-  </div>
-))}
-
+                <div key={s.id || idx} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center">
+                  {/* Omschrijving */}
+                  <input
+                    className="md:col-span-5 rounded border px-2 py-1"
+                    placeholder="Omschrijving (bijv. 'VAR on! fluit')"
+                    value={s.label || ""}
+                    onChange={(e)=>updateSound(idx, { label: e.target.value })}
+                  />
+                  {/* URL */}
+                  <input
+                    className="md:col-span-6 rounded border px-2 py-1"
+                    placeholder="URL of bestandslink"
+                    value={s.url || ""}
+                    onChange={(e)=>updateSound(idx, { url: e.target.value })}
+                  />
+                  {/* Acties: Open + Verwijderen (één kolom, geen overlap) */}
+                  <div className="md:col-span-1 flex items-center gap-2 md:justify-end">
+                    {hasHttpUrl(s.url) && (
+                      <a
+                        href={s.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="shrink-0 w-[72px] text-center rounded border px-2 py-1 text-sm hover:bg-gray-50"
+                        aria-label={`Open ${s.label || "geluid"} (nieuwe tab)`}
+                        title="Open link (nieuwe tab)"
+                      >
+                        Open
+                      </a>
+                    )}
+                    <button
+                      className="shrink-0 w-9 rounded border px-0 py-1"
+                      onClick={()=>removeSound(idx)}
+                      aria-label="Verwijder item"
+                      title="Verwijder item"
+                    >
+                      x
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       ) : (
@@ -351,7 +349,9 @@ function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
           const s = ensureDefaults(sk);
           return (
             <div key={s.id || i} className="sketch-print">
-              <h2 className="text-lg font-semibold">{s.title || "(zonder titel)"} <span className="muted">• {s.durationMin || 0} min</span></h2>
+              <h2 className="text-lg font-semibold">
+                {s.title || "(zonder titel)"} <span className="muted">• {s.durationMin || 0} min</span>
+              </h2>
               <div className="block"><strong>Plek:</strong> {s.stagePlace === "voor" ? "Voor de gordijn" : "Podium"}</div>
 
               <div className="block">
