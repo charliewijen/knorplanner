@@ -9,13 +9,10 @@ const PLACEHOLDER = `data:image/svg+xml;utf8,
 const isHttpUrl = (v) => /^https?:\/\//i.test((v || "").trim());
 const isImgUrl  = (v) => /\.(png|jpe?g|gif|webp|svg)$/i.test((v || "").trim());
 
-// Heel simpele YouTube-thumb detectie
 function youtubeThumb(u) {
   const m = (u || "").match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([A-Za-z0-9_-]{6,})/i);
   return m ? `https://i.ytimg.com/vi/${m[1]}/hqdefault.jpg` : null;
 }
-
-// Kies preview bron per itemtype
 function previewSrc(item) {
   if (item.type === "image") {
     if (isImgUrl(item.link)) return item.link;
@@ -31,8 +28,6 @@ function previewSrc(item) {
   if (isImgUrl(item.photosLink)) return item.photosLink;
   return PLACEHOLDER;
 }
-
-// Datum helpers
 function labelDate({ dateStart, dateEnd }) {
   if (!dateStart && !dateEnd) return "—";
   if (dateStart && !dateEnd) return dateStart;
@@ -40,36 +35,25 @@ function labelDate({ dateStart, dateEnd }) {
   return `${dateStart} – ${dateEnd}`;
 }
 
-export default function PRKitView({ items = [], onChange = () => {} }) {
-
+function PRKitView({ items = [], onChange = () => {}, showId }) {
   const addItem = (type) => {
     const blank = {
-      id: crypto.randomUUID(),
+      id: window.uid(),
       type,               // "image" | "article" | "video"
       name: "",
       link: "",
       textLink: "",       // alleen voor article
       photosLink: "",     // alleen voor article
       dateStart: "",
-      dateEnd: ""
+      dateEnd: "",
+      showId: showId || null
     };
     onChange([blank, ...items]);
   };
+  const patchItem = (id, p) => onChange(items.map(it => it.id === id ? { ...it, ...p } : it));
+  const removeItem = (id)   => onChange(items.filter(it => it.id !== id));
 
-  const patchItem = (id, p) => {
-    onChange(items.map(it => it.id === id ? { ...it, ...p } : it));
-  };
-
-  const removeItem = (id) => {
-    onChange(items.filter(it => it.id !== id));
-  };
-
-  // sorteren op startdatum (leeg = onderaan)
-  const sorted = [...items].sort((a,b) => {
-    const A = a.dateStart || "9999-12-31";
-    const B = b.dateStart || "9999-12-31";
-    return A.localeCompare(B);
-  });
+  const sorted = [...items].sort((a,b) => String(a.dateStart||"").localeCompare(String(b.dateStart||"")));
 
   return (
     <section className="rounded-2xl border p-4 bg-white">
@@ -114,7 +98,7 @@ export default function PRKitView({ items = [], onChange = () => {} }) {
                 <button className="rounded border px-2 py-1 text-sm" onClick={()=>removeItem(it.id)}>x</button>
               </div>
 
-              {/* Datum: start + optionele einddatum (periodes voelen logisch, 2e veld is optioneel) */}
+              {/* Datum: dag óf periode (einddatum leeg = dag) */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div className="flex items-center gap-2">
                   <span className="w-28 text-sm text-gray-700">Startdatum</span>
@@ -215,3 +199,6 @@ export default function PRKitView({ items = [], onChange = () => {} }) {
     </section>
   );
 }
+
+window.PRKitView = PRKitView;
+export default PRKitView;
