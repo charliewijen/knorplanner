@@ -1,174 +1,163 @@
-function RehearsalPlanner({ rehearsals = [], people = [], onAdd, onUpdate, onRemove }) {
-  // Altijd gesorteerd op datum (oud → nieuw)
-  const sorted = [...(rehearsals || [])].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
-  const today = new Date().toISOString().slice(0, 10);
-
-  // Locatie-opties (vast)
-  const LOCATIONS = [
-    "Buurthuis - Grote zaal",
-    "Buurthuis - Dart ruimte",
-    "Buurthuis - Vergaderruimte",
-  ];
-
-  // Type bijeenkomst opties
-  const TYPES = [
-    "Vergadering",
-    "Evaluatie",
-    "Lees Repetitie",
-    "Repetitie",
-    "Generale voorstelling",
-    "Voorstelling",
-    "Bonte Avond dag",
-    "BBQ",
-    "anders (zie comment)",
-  ];
-
-  // Afwezig-opties: alle spelers + vaste posten
-  const crewOptions = [
-    { id: "crew-tech", label: "Licht/geluid" },
-    { id: "crew-director", label: "Regie" },
-  ];
-  const playerOptions = (Array.isArray(people) ? people : []).map(p => ({
-    id: p.id,
-    label: `${p.firstName || ""} ${p.lastName || p.name || ""}`.trim(),
-  }));
-  const ABSENCE_OPTIONS = [...playerOptions, ...crewOptions];
-
-  const addAbsentee = (r, value) => {
-    if (!value) return;
-    const cur = Array.isArray(r.absentees) ? r.absentees : [];
-    if (cur.includes(value)) return;
-    onUpdate(r.id, { absentees: [...cur, value] });
-  };
-  const removeAbsentee = (r, value) => {
-    const cur = Array.isArray(r.absentees) ? r.absentees : [];
-    onUpdate(r.id, { absentees: cur.filter(x => x !== value) });
+function RehearsalPlanner({
+  rehearsals = [],
+  people = [],
+  onAdd = () => {},
+  onUpdate = () => {},
+  onRemove = () => {},
+}) {
+  const fullName = (p) => {
+    if (!p) return "";
+    const fn = (p.firstName || "").trim();
+    const ln = (p.lastName || p.name || "").trim();
+    return [fn, ln].filter(Boolean).join(" ");
   };
 
-  const nameForId = (id) => {
-    const found = ABSENCE_OPTIONS.find(o => o.id === id);
-    return found ? found.label : id;
+  // Sorteer op datum + tijd (leeg tijdveld sorteert als '00:00')
+  const safeTime = (t) => (typeof t === "string" && t.match(/^\d{2}:\d{2}$/)) ? t : "00:00";
+  const sorted = [...(Array.isArray(rehearsals) ? rehearsals : [])].sort((a,b) => {
+    const da = String(a.date || "");
+    const db = String(b.date || "");
+    if (da !== db) return da.localeCompare(db);
+    return safeTime(a.time).localeCompare(safeTime(b.time));
+  });
+
+  const handleAbsenteesChange = (id, evt) => {
+    const opts = Array.from(evt.target.selectedOptions || []);
+    const ids = opts.map(o => o.value);
+    onUpdate(id, { absentees: ids });
   };
 
   return (
-    <div className="rounded-2xl border p-4">
-      <div className="flex justify-between mb-3">
-        <h2 className="text-lg font-semibold">Agenda</h2>
-        <button className="rounded-xl border px-3 py-2" onClick={onAdd}>+ Activiteit</button>
+    <section className="rounded-2xl border p-3 bg-white">
+      <div className="mb-3 flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold">Agenda</h2>
+          <div className="text-xs text-gray-600">Beheer repetities en afspraken. Tijd is nu beschikbaar.</div>
+        </div>
+        <button
+          className="rounded-full border px-3 py-1 text-sm"
+          onClick={onAdd}
+        >
+          + Repetitie
+        </button>
       </div>
 
-      <table className="min-w-full border-separate border-spacing-y-2">
-        <thead>
-          <tr className="text-left text-sm text-gray-600">
-            <th className="px-3">Datum</th>
-            <th className="px-3">Type bijeenkomst</th>
-            <th className="px-3">Locatie</th>
-            <th className="px-3">Afwezig</th>
-            <th className="px-3">Opmerkingen</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {sorted.map((r) => {
-            const past = (r.date || "") < today;
-            const abs = Array.isArray(r.absentees) ? r.absentees : [];
-            return (
-              <tr key={r.id} className={`rounded-xl ${past ? "bg-gray-100 text-gray-400" : "bg-gray-50"}`}>
+      <div className="overflow-x-auto">
+        <table className="min-w-full border text-sm">
+          <thead>
+            <tr className="bg-gray-100">
+              <th className="border px-2 py-1 text-left w-[10rem]">Datum</th>
+              <th className="border px-2 py-1 text-left w-[6.5rem]">Tijd</th>
+              <th className="border px-2 py-1 text-left w-[10rem]">Type</th>
+              <th className="border px-2 py-1 text-left">Locatie</th>
+              <th className="border px-2 py-1 text-left w-[14rem]">Afwezigen</th>
+              <th className="border px-2 py-1 text-left">Notities</th>
+              <th className="border px-2 py-1 w-12"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((r) => (
+              <tr key={r.id} className="odd:bg-gray-50 align-top">
                 {/* Datum */}
-                <td className="px-3 py-2">
+                <td className="border px-2 py-1">
                   <input
                     type="date"
+                    className="rounded border px-2 py-1 w-[10rem]"
                     value={r.date || ""}
-                    onChange={(e) => onUpdate(r.id, { date: e.target.value })}
+                    onChange={(e)=>onUpdate(r.id, { date: e.target.value })}
                   />
                 </td>
 
-                {/* Type bijeenkomst */}
-                <td className="px-3 py-2">
+                {/* Tijd */}
+                <td className="border px-2 py-1">
+                  <input
+                    type="time"
+                    className="rounded border px-2 py-1 w-[6.5rem]"
+                    value={(typeof r.time === "string" ? r.time : "")}
+                    onChange={(e)=>onUpdate(r.id, { time: e.target.value })}
+                  />
+                </td>
+
+                {/* Type */}
+                <td className="border px-2 py-1">
                   <select
-                    className="rounded border px-2 py-1"
-                    value={r.type || ""}
-                    onChange={(e) => onUpdate(r.id, { type: e.target.value })}
+                    className="rounded border px-2 py-1 w-full"
+                    value={r.type || "Repetitie"}
+                    onChange={(e)=>onUpdate(r.id, { type: e.target.value })}
                   >
-                    <option value="">— kies type —</option>
-                    {TYPES.map(t => (
-                      <option key={t} value={t}>{t}</option>
-                    ))}
+                    <option>Repetitie</option>
+                    <option>Doorloop</option>
+                    <option>Techniek</option>
+                    <option>Showdag</option>
+                    <option>Overig</option>
                   </select>
                 </td>
 
-                {/* Locatie (dropdown met vaste opties) */}
-                <td className="px-3 py-2">
-                  <select
-                    className="rounded border px-2 py-1"
+                {/* Locatie */}
+                <td className="border px-2 py-1">
+                  <input
+                    className="rounded border px-2 py-1 w-full"
+                    placeholder="Locatie"
                     value={r.location || ""}
-                    onChange={(e) => onUpdate(r.id, { location: e.target.value })}
-                  >
-                    <option value="">— kies locatie —</option>
-                    {LOCATIONS.map(loc => (
-                      <option key={loc} value={loc}>{loc}</option>
-                    ))}
-                  </select>
+                    onChange={(e)=>onUpdate(r.id, { location: e.target.value })}
+                  />
                 </td>
 
-                {/* Afwezig: chips + +knop met dropdown */}
-                <td className="px-3 py-2">
-                  <div className="flex flex-wrap gap-2 items-center">
-                    {abs.map(id => (
-                      <span key={id} className="inline-flex items-center gap-1 rounded-full bg-gray-200 px-2 py-0.5">
-                        <span className="text-xs">{nameForId(id)}</span>
-                        <button
-                          className="text-xs px-1"
-                          onClick={() => removeAbsentee(r, id)}
-                          title="Verwijder"
-                        >
-                          ×
-                        </button>
-                      </span>
+                {/* Afwezigen */}
+                <td className="border px-2 py-1">
+                  <select
+                    multiple
+                    className="rounded border p-1 w-full h-[80px]"
+                    value={Array.isArray(r.absentees) ? r.absentees : []}
+                    onChange={(e)=>handleAbsenteesChange(r.id, e)}
+                  >
+                    {(people || []).map(p => (
+                      <option key={p.id} value={p.id}>{fullName(p)}</option>
                     ))}
-
-                    {/* + toevoegen */}
-                    <div className="flex items-center gap-1">
-                      <span className="text-sm">+</span>
-                      <select
-                        className="rounded border px-2 py-1"
-                        value=""
-                        onChange={(e) => { addAbsentee(r, e.target.value); }}
-                        title="Voeg afwezige toe"
-                      >
-                        <option value="">— voeg toe —</option>
-                        {ABSENCE_OPTIONS.map(opt => (
-                          <option key={opt.id} value={opt.id}>{opt.label}</option>
-                        ))}
-                      </select>
-                    </div>
+                  </select>
+                  <div className="text-[11px] text-gray-500 mt-1">
+                    {Array.isArray(r.absentees) && r.absentees.length
+                      ? `${r.absentees.length} geselecteerd`
+                      : "Geen afwezigen"}
                   </div>
                 </td>
 
-                {/* Opmerkingen */}
-                <td className="px-3 py-2">
-                  <input
-                    className="rounded border px-2 py-1 w-full"
+                {/* Notities */}
+                <td className="border px-2 py-1">
+                  <textarea
+                    className="rounded border p-2 w-full h-[80px]"
+                    placeholder="Notities"
                     value={r.comments || ""}
-                    onChange={(e) => onUpdate(r.id, { comments: e.target.value })}
-                    placeholder="Comment"
+                    onChange={(e)=>onUpdate(r.id, { comments: e.target.value })}
                   />
                 </td>
 
-                {/* Verwijder */}
-                <td className="px-3 py-2">
-                  <button className="rounded-full border px-3 py-1" onClick={() => onRemove(r.id)}>x</button>
+                {/* Acties */}
+                <td className="border px-2 py-1">
+                  <button
+                    className="rounded-full border px-2 py-1"
+                    onClick={()=>onRemove(r.id)}
+                    title="Verwijder"
+                    aria-label="Verwijder"
+                  >
+                    x
+                  </button>
                 </td>
               </tr>
-            );
-          })}
-          {sorted.length === 0 && (
-            <tr className="rounded-xl bg-gray-50">
-              <td className="px-3 py-2 text-sm text-gray-500" colSpan={6}>Nog geen repetities.</td>
-            </tr>
-          )}
-        </tbody>
-      </table>
-    </div>
+            ))}
+            {sorted.length === 0 && (
+              <tr>
+                <td className="border px-2 py-3 text-center text-gray-500" colSpan={7}>
+                  Nog geen items in de agenda.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
+
+// expose voor buiten
+window.RehearsalPlanner = RehearsalPlanner;
