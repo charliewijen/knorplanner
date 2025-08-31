@@ -313,10 +313,15 @@ function App() {
   };
 
   const lockNow = () => {
-    setState(prev => ({ ...prev, settings: { ...(prev.settings||{}), requirePassword: true } }));
-    localStorage.removeItem("knor:auth");
-    alert("Vergrendeld. Vernieuw de pagina om te controleren.");
-  };
+  if (!state.settings?.appPasswordHash) {
+    alert("Eerst een wachtwoord instellen bij ‘Wachtwoord instellen/wijzigen’.");
+    return;
+  }
+  setState(prev => ({ ...prev, settings: { ...(prev.settings||{}), requirePassword: true } }));
+  localStorage.removeItem("knor:auth");
+  alert("Vergrendeld. Vernieuw de pagina om te controleren.");
+};
+
 
   const unlockThisDevice = () => {
     const h = state.settings?.appPasswordHash;
