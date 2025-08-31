@@ -160,13 +160,17 @@ function App() {
 
       const fix = (arr=[]) => arr.map(x => x && (x.showId ? x : { ...x, showId: firstShowId }));
       const migrated = {
-        ...merged,
-        sketches: fix(merged.sketches),
-        people: fix(merged.people),
-        mics: fix(merged.mics),
-        rehearsals: fix(merged.rehearsals),
-        prKit: fix(merged.prKit),               // <<<<< NIEUW
-      };
+  ...merged,
+  sketches: fix(merged.sketches),
+  people: fix(merged.people),
+  mics: fix(merged.mics),
+  rehearsals: fix(merged.rehearsals).map(r => ({
+    ...r,
+    // alleen toevoegen als het nog niet bestaat -> GEEN data verlies
+    time: typeof r.time === "string" ? r.time : "",
+  })),
+  prKit: fix(merged.prKit),               // <<<<< NIEUW
+};
 
       setState(migrated);
       setActiveShowId((prev) => {
@@ -258,7 +262,7 @@ function App() {
       ...prev,
       rehearsals: [
         ...(prev.rehearsals || []),
-        { id: uid(), showId: activeShow.id, date: todayStr(), location: "", comments: "", absentees: [], type: "Repetitie" }
+        { id: uid(), showId: activeShow.id, date: todayStr(), time: "", location: "", comments: "", absentees: [], type: "Repetitie" }
       ]
     }));
   };
