@@ -159,3 +159,20 @@ body::after{
   header nav::-webkit-scrollbar-thumb { background: #ddd; border-radius: 4px; }
 }
 
+/* === DESKTOP: topbar altijd 1 rij, horizontaal scrollbaar === */
+@media (min-width: 769px) {
+  header nav {
+    display: flex;
+    flex-wrap: nowrap !important;     /* overschrijft je wrap */
+    overflow-x: auto !important;      /* scroll als het niet past */
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    gap: .5rem;                       /* chips blijven luchtig */
+  }
+  /* voorkom dat chips zelf afbreken of krimpen */
+  header nav > * { flex: 0 0 auto; }
+  header nav button,
+  header nav a { white-space: nowrap; }
+}
+
+
