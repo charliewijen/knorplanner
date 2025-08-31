@@ -51,14 +51,19 @@ function RehearsalPlanner({
         <table className="min-w-full border text-sm table-auto">
           <thead>
             <tr className="bg-gray-100">
-              {/* compacter: datum/tijd smaller */}
-              <th className="border px-2 py-1 text-left w-[8.5rem] sm:w-[9.5rem] md:w-[10rem]">Datum</th>
-              <th className="border px-2 py-1 text-left w-[5.25rem] sm:w-[5.75rem] md:w-[6rem]">Tijd</th>
-              <th className="border px-2 py-1 text-left w-[9rem]">Type</th>
-              {/* locatie krijgt extra minimum-breedte en mag niet “afgekapt” voelen */}
-              <th className="border px-2 py-1 text-left min-w-[12rem] sm:min-w-[16rem] md:min-w-[20rem]">Locatie</th>
+              {/* Samengevoegd: datum & tijd */}
+              <th className="border px-2 py-1 text-left min-w-[11rem] sm:min-w-[12rem] md:min-w-[12.5rem]">
+                Datum &amp; tijd
+              </th>
+              {/* Type mag ruimer en leesbaar */}
+              <th className="border px-2 py-1 text-left w-[9.5rem] sm:w-[10.5rem]">Type</th>
+              {/* Locatie krijgt extra minimum-breedte */}
+              <th className="border px-2 py-1 text-left min-w-[12rem] sm:min-w-[16rem] md:min-w-[20rem]">
+                Locatie
+              </th>
               <th className="border px-2 py-1 text-left min-w-[14rem]">Afwezigen</th>
-              <th className="border px-2 py-1 text-left">Notities</th>
+              {/* Notities ruimer + leesbaarder */}
+              <th className="border px-2 py-1 text-left min-w-[14rem]">Notities</th>
               <th className="border px-2 py-1 w-12"></th>
             </tr>
           </thead>
@@ -66,37 +71,33 @@ function RehearsalPlanner({
           <tbody>
             {sorted.map((r) => {
               const selectedNames = Array.isArray(r.absentees)
-                ? r.absentees
-                    .map(id => fullName(personById[id]))
-                    .filter(Boolean)
+                ? r.absentees.map(id => fullName(personById[id])).filter(Boolean)
                 : [];
 
               return (
                 <tr key={r.id} className="odd:bg-gray-50 align-top">
-                  {/* Datum */}
+                  {/* Datum & tijd (stacked) */}
                   <td className="border px-2 py-1">
-                    <input
-                      type="date"
-                      className="rounded border px-2 py-1 w-[8.5rem] sm:w-[9.5rem] md:w-[10rem]"
-                      value={r.date || ""}
-                      onChange={(e)=>onUpdate(r.id, { date: e.target.value })}
-                    />
+                    <div className="flex flex-col gap-1">
+                      <input
+                        type="date"
+                        className="rounded border px-2 py-1 w-full text-[13px]"
+                        value={r.date || ""}
+                        onChange={(e)=>onUpdate(r.id, { date: e.target.value })}
+                      />
+                      <input
+                        type="time"
+                        className="rounded border px-2 py-1 w-full text-[13px]"
+                        value={(typeof r.time === "string" ? r.time : "")}
+                        onChange={(e)=>onUpdate(r.id, { time: e.target.value })}
+                      />
+                    </div>
                   </td>
 
-                  {/* Tijd */}
-                  <td className="border px-2 py-1">
-                    <input
-                      type="time"
-                      className="rounded border px-2 py-1 w-[5.25rem] sm:w-[5.75rem] md:w-[6rem]"
-                      value={(typeof r.time === "string" ? r.time : "")}
-                      onChange={(e)=>onUpdate(r.id, { time: e.target.value })}
-                    />
-                  </td>
-
-                  {/* Type */}
+                  {/* Type (leesbaar) */}
                   <td className="border px-2 py-1">
                     <select
-                      className="rounded border px-2 py-1 w-full"
+                      className="rounded border px-2 py-1 w-full text-[14px]"
                       value={r.type || "Repetitie"}
                       onChange={(e)=>onUpdate(r.id, { type: e.target.value })}
                     >
@@ -108,10 +109,10 @@ function RehearsalPlanner({
                     </select>
                   </td>
 
-                  {/* Locatie: meer ruimte + geen “afknippen” gevoel + tooltip met volledige tekst */}
+                  {/* Locatie: meer ruimte + tooltip met volledige tekst */}
                   <td className="border px-2 py-1">
                     <input
-                      className="rounded border px-2 py-1 w-full min-w-[12rem] sm:min-w-[16rem] md:min-w-[20rem] text-[13px]"
+                      className="rounded border px-2 py-1 w-full min-w-[12rem] sm:min-w-[16rem] md:min-w-[20rem] text-[14px]"
                       placeholder="Locatie"
                       value={r.location || ""}
                       title={r.location || ""}
@@ -119,11 +120,11 @@ function RehearsalPlanner({
                     />
                   </td>
 
-                  {/* Afwezigen: multiselect + zichtbare namen als chips (i.p.v. “3 geselecteerd”) */}
+                  {/* Afwezigen: multiselect + chips */}
                   <td className="border px-2 py-1">
                     <select
                       multiple
-                      className="rounded border p-1 w-full h-[88px]"
+                      className="rounded border p-1 w-full h-[88px] text-[13px]"
                       value={Array.isArray(r.absentees) ? r.absentees : []}
                       onChange={(e)=>handleAbsenteesChange(r.id, e)}
                     >
@@ -132,7 +133,6 @@ function RehearsalPlanner({
                       ))}
                     </select>
 
-                    {/* Namen zichtbaar */}
                     <div className="mt-2 flex flex-wrap gap-1">
                       {selectedNames.length > 0 ? (
                         selectedNames.map((nm, i) => (
@@ -149,10 +149,10 @@ function RehearsalPlanner({
                     </div>
                   </td>
 
-                  {/* Notities */}
+                  {/* Notities (leesbaarder) */}
                   <td className="border px-2 py-1">
                     <textarea
-                      className="rounded border p-2 w-full h-[88px]"
+                      className="rounded border p-2 w-full h-[104px] text-[14px]"
                       placeholder="Notities"
                       value={r.comments || ""}
                       onChange={(e)=>onUpdate(r.id, { comments: e.target.value })}
@@ -176,7 +176,7 @@ function RehearsalPlanner({
 
             {sorted.length === 0 && (
               <tr>
-                <td className="border px-2 py-3 text-center text-gray-500" colSpan={7}>
+                <td className="border px-2 py-3 text-center text-gray-500" colSpan={6}>
                   Nog geen items in de agenda.
                 </td>
               </tr>
