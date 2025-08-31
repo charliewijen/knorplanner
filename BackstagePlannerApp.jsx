@@ -58,6 +58,7 @@ function withDefaults(s = {}) {
     shows: Array.isArray(s.shows) && s.shows.length ? s.shows : [newEmptyShow()],
     sketches: Array.isArray(s.sketches) ? s.sketches : [],
     rehearsals: Array.isArray(s.rehearsals) ? s.rehearsals : [],
+    prKit: Array.isArray(s.prKit) ? s.prKit : [],               // <<<<< NIEUW
     // app-instellingen
     settings: {
       ...(s.settings || {}),
@@ -66,6 +67,7 @@ function withDefaults(s = {}) {
     },
   };
 }
+
 
 // ---------- ErrorBoundary voor tabs ----------
 class TabErrorBoundary extends React.Component {
@@ -155,13 +157,15 @@ function App() {
       const firstShowId = merged.shows[0]?.id;
 
       const fix = (arr=[]) => arr.map(x => x && (x.showId ? x : { ...x, showId: firstShowId }));
-      const migrated = {
-        ...merged,
-        sketches: fix(merged.sketches),
-        people: fix(merged.people),
-        mics: fix(merged.mics),
-        rehearsals: fix(merged.rehearsals),
-      };
+const migrated = {
+  ...merged,
+  sketches: fix(merged.sketches),
+  people: fix(merged.people),
+  mics: fix(merged.mics),
+  rehearsals: fix(merged.rehearsals),
+  prKit: fix(merged.prKit),               // <<<<< NIEUW
+};
+
 
       setState(migrated);
       setActiveShowId((prev) => {
@@ -218,6 +222,13 @@ function App() {
       .sort((a,b)=> String(a.date).localeCompare(String(b.date)));
   }, [state.rehearsals, activeShow]);
 
+const showPRKit = React.useMemo(() => {
+  if (!activeShow) return [];
+  return (state.prKit || [])
+    .filter(i => i.showId === activeShow.id)
+    .sort((a,b)=> String(a.dateStart || "").localeCompare(String(b.dateStart || "")));
+}, [state.prKit, activeShow]);
+  
   const micById = Object.fromEntries(showMics.map((m) => [m.id, m]));
   const personById = Object.fromEntries(showPeople.map((p) => [p.id, p]));
   const runSheet = React.useMemo(() => activeShow ? buildRunSheet(activeShow, showSketches) : {items:[],totalMin:0}, [activeShow, showSketches]);
@@ -457,6 +468,7 @@ function App() {
                 { key: "rolverdeling",  label: "Rolverdeling" },
                 { key: "scripts",       label: "Sketches" },
                 { key: "rehearsals",    label: "Repetitieschema" },
+                { key: "prkit",         label: "PR-Kit" },
               ].map(({ key, label }) => (
                 <button
                   key={key}
@@ -570,6 +582,26 @@ function App() {
     onDuplicateShow={duplicateCurrentShow} // ← nieuw
   />
 )}
+
+        {tab === "prkit" && (
+  <PRKitView
+    items={showPRKit}
+    showId={activeShow?.id}
+    onChange={(itemsForShow) => {
+      // Zorgt dat we alleen de items voor de actieve show overschrijven
+      pushHistory(state);
+      setState((prev) => {
+        const currentShowId = activeShow?.id;
+        if (!currentShowId) return prev;
+
+        const others = (prev.prKit || []).filter(x => x.showId !== currentShowId);
+        const normalized = (itemsForShow || []).map(x => ({ ...x, showId: currentShowId }));
+        return { ...prev, prKit: [...others, ...normalized] };
+      });
+    }}
+  />
+)}
+
 
       </main>
 
