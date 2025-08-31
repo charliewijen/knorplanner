@@ -17,6 +17,7 @@ function RehearsalPlanner({
     return [fn, ln].filter(Boolean).join(" ");
   };
 
+  // Crew extra keuzes naast Biggenconvent
   const STAFF_OPTIONS = [
     { id: "__staff:regie",  name: "Regie"  },
     { id: "__staff:licht",  name: "Licht"  },
@@ -29,6 +30,7 @@ function RehearsalPlanner({
     return s ? s.name : "";
   };
 
+  // Locatieopties
   const LOCATION_OPTIONS = [
     "Grote zaal - Buurthuis",
     "Dart ruimte - Buurthuis",
@@ -38,6 +40,19 @@ function RehearsalPlanner({
   ];
   const normalizeLocationValue = (val) =>
     LOCATION_OPTIONS.includes(String(val)) ? String(val) : "Anders (zie comments)";
+
+  // Type-opties (zoals gevraagd)
+  const TYPE_OPTIONS = [
+    "Lees Repetitie",
+    "Reguliere Repetitie",
+    "Generale repetitie",
+    "Voorstelling",
+    "Bonte Avond Dag",
+    "BBQ",
+    "Anders (zie comments)",
+  ];
+  const normalizeTypeValue = (val) =>
+    TYPE_OPTIONS.includes(String(val)) ? String(val) : "Anders (zie comments)";
 
   // sort helpers
   const safeTime = (t) => (typeof t === "string" && /^\d{2}:\d{2}$/.test(t)) ? t : "00:00";
@@ -90,18 +105,16 @@ function RehearsalPlanner({
           </div>
         </td>
 
-        {/* Type: ruimer en goed leesbaar */}
-        <td className="border px-2 py-1 w-[10rem] min-w-[10rem]">
+        {/* Type volgens lijst */}
+        <td className="border px-2 py-1 w-[11.5rem] min-w-[11.5rem]">
           <select
             className="rounded border px-2 py-2 w-full text-[14px]"
-            value={r.type || "Repetitie"}
+            value={normalizeTypeValue(r.type)}
             onChange={(e)=>onUpdate(r.id, { type: e.target.value })}
           >
-            <option>Repetitie</option>
-            <option>Doorloop</option>
-            <option>Techniek</option>
-            <option>Showdag</option>
-            <option>Overig</option>
+            {TYPE_OPTIONS.map(opt => (
+              <option key={opt} value={opt}>{opt}</option>
+            ))}
           </select>
         </td>
 
@@ -202,7 +215,7 @@ function RehearsalPlanner({
           <thead>
             <tr className="bg-gray-100">
               <th className="border px-2 py-1 text-left w-[10.5rem]">Datum &amp; tijd</th>
-              <th className="border px-2 py-1 text-left w-[10rem]">Type</th>
+              <th className="border px-2 py-1 text-left w-[11.5rem]">Type</th>
               <th className="border px-2 py-1 text-left">Locatie</th>
               <th className="border px-2 py-1 text-left">Afwezigen</th>
               <th className="border px-2 py-1 text-left">Notities</th>
@@ -230,7 +243,7 @@ function RehearsalPlanner({
           <thead>
             <tr className="bg-gray-100">
               <th className="border px-2 py-1 text-left w-[10.5rem]">Datum &amp; tijd</th>
-              <th className="border px-2 py-1 text-left w-[10rem]">Type</th>
+              <th className="border px-2 py-1 text-left w-[11.5rem]">Type</th>
               <th className="border px-2 py-1 text-left">Locatie</th>
               <th className="border px-2 py-1 text-left">Afwezigen</th>
               <th className="border px-2 py-1 text-left">Notities</th>
