@@ -193,12 +193,26 @@ function App() {
   React.useEffect(()=>{ const fromHash = new URLSearchParams((location.hash||'').replace('#','')).get('tab'); if (fromHash) setTab(fromHash); },[]);
   React.useEffect(()=>{ const sp = new URLSearchParams((location.hash||'').replace('#','')); sp.set('tab', tab); history.replaceState(null, '', `#${sp.toString()}`); },[tab]);
 
+  // ====== SHARE PARAMS ======
+  const shareTab = React.useMemo(() => {
+    const p = new URLSearchParams((location.hash || "").replace("#",""));
+    return p.get("share") || null;
+  }, [location.hash]);
+
+  // >>> NIEUW: show-id uit de hash zodat de ontvanger altijd de bedoelde show ziet
+  const shareShowId = React.useMemo(() => {
+    const p = new URLSearchParams((location.hash || "").replace("#",""));
+    return p.get("show") || null;
+  }, [location.hash]);
+
   const activeShow = React.useMemo(() => {
     const arr = state.shows || [];
     if (!arr.length) return null;
-    const found = activeShowId ? arr.find(s => s.id === activeShowId) : null;
+    // in share-modus: prefer show-id uit link; anders de lokale selectie
+    const preferId = (shareTab && shareShowId) ? shareShowId : activeShowId;
+    const found = preferId ? arr.find(s => s.id === preferId) : null;
     return found || arr[0] || null;
-  }, [state.shows, activeShowId]);
+  }, [state.shows, activeShowId, shareTab, shareShowId]);
 
   // Filter per showId
   const showSketches = React.useMemo(() => {
@@ -353,12 +367,6 @@ function App() {
     setActiveShowId(newShowId);
     alert("Show gedupliceerd. Je kijkt nu naar de kopie.");
   };
-
-  // ====== READONLY SHARE-MODE ======
-  const shareTab = React.useMemo(() => {
-    const p = new URLSearchParams((location.hash || "").replace("#",""));
-    return p.get("share") || null;
-  }, [location.hash]);
 
   // ====== PASSWORD LOCK (alleen voor hoofd-app, niet voor share) ======
   const [locked, setLocked] = React.useState(false);
@@ -523,129 +531,7 @@ function App() {
     );
   }
 
-  // >>> NIEUW: SKETCHES SHARE (alle sketches onder elkaar, view-only)
-  if (shareTab === "scripts") {
-    const nameFor = (pid) => {
-      const p = personById[pid];
-      if (!p) return "";
-      const fn = (p.firstName || "").trim();
-      const ln = (p.lastName || p.name || "").trim();
-      return [fn, ln].filter(Boolean).join(" ");
-    };
-
-    const onlySketches = (showSketches || [])
-      .filter(s => (s?.kind || "sketch") === "sketch")
-      .sort((a,b) => (a.order||0) - (b.order||0));
-
-    return (
-      <div className="mx-auto max-w-6xl p-4 share-only">
-        <h1 className="text-2xl font-bold mb-4">Sketches (live)</h1>
-
-        <div className="space-y-8">
-          {onlySketches.map((sk, i) => {
-            const roles  = Array.isArray(sk.roles) ? sk.roles : [];
-            const links  = (sk.links && typeof sk.links === "object") ? sk.links : {};
-            const sounds = Array.isArray(sk.sounds) ? sk.sounds : [];
-            const place  = sk.stagePlace === "voor" ? "Voor de gordijn" : "Podium";
-
-            return (
-              <section key={sk.id || i} className="rounded-xl border p-4">
-                <h2 className="text-lg font-semibold">
-                  {sk.title || "(zonder titel)"}{" "}
-                  <span className="text-gray-500 font-normal">• {sk.durationMin || 0} min</span>
-                </h2>
-
-                <div className="mt-2 text-sm">
-                  <div className="mb-2"><strong>Plek:</strong> {place}</div>
-
-                  <div className="mb-3">
-                    <strong>Rollen</strong>
-                    {roles.length ? (
-                      <table className="w-full border-collapse text-sm mt-1">
-                        <thead>
-                          <tr className="bg-gray-100">
-                            <th className="border px-2 py-1 text-left">Rolnaam</th>
-                            <th className="border px-2 py-1 text-left">Cast</th>
-                            <th className="border px-2 py-1 text-left">Mic?</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {roles.map((r, idx) => (
-                            <tr key={idx} className="odd:bg-gray-50">
-                              <td className="border px-2 py-1">{r?.name || ""}</td>
-                              <td className="border px-2 py-1">{nameFor(r?.personId)}</td>
-                              <td className="border px-2 py-1">{r?.needsMic ? "Ja" : "Nee"}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    ) : (
-                      <div className="text-gray-500">— Geen rollen —</div>
-                    )}
-                  </div>
-
-                  <div className="mb-3">
-                    <strong>Links</strong>
-                    <div className="text-gray-700">
-                      Tekst: {links?.text ? (
-                        <a className="underline" href={links.text} target="_blank" rel="noopener noreferrer">{links.text}</a>
-                      ) : <em className="text-gray-500">—</em>}
-                    </div>
-                    <div className="text-gray-700">
-                      Licht/geluid: {links?.tech ? (
-                        <a className="underline" href={links.tech} target="_blank" rel="noopener noreferrer">{links.tech}</a>
-                      ) : <em className="text-gray-500">—</em>}
-                    </div>
-                  </div>
-
-                  <div className="mb-3">
-                    <strong>Geluiden & muziek</strong>
-                    {sounds.length ? (
-                      <table className="w-full border-collapse text-sm mt-1">
-                        <thead>
-                          <tr className="bg-gray-100">
-                            <th className="border px-2 py-1 text-left">Omschrijving</th>
-                            <th className="border px-2 py-1 text-left">Link</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {sounds.map((x, j) => (
-                            <tr key={x.id || j} className="odd:bg-gray-50">
-                              <td className="border px-2 py-1">{x.label || ""}</td>
-                              <td className="border px-2 py-1">
-                                {x.url ? (
-                                  <a className="underline" href={x.url} target="_blank" rel="noopener noreferrer">{x.url}</a>
-                                ) : <span className="text-gray-500">—</span>}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    ) : (
-                      <div className="text-gray-500">—</div>
-                    )}
-                  </div>
-
-                  <div>
-                    <strong>Decor</strong>
-                    <div>{sk.decor ? sk.decor : <span className="text-gray-500">—</span>}</div>
-                  </div>
-                </div>
-              </section>
-            );
-          })}
-
-          {!onlySketches.length && (
-            <div className="text-sm text-gray-500">Geen sketches voor deze show.</div>
-          )}
-        </div>
-
-        <div className="text-sm text-gray-500 mt-6">
-          Dit is een gedeelde link, alleen-lezen. Wijzigingen kunnen alleen in de hoofd-app.
-        </div>
-      </div>
-    );
-  }
+  // (optioneel heb je ook een share=scripts route; die kun je hier laten staan als je die gebruikt.)
 
   // Toon wachtwoord-poort als vergrendeld
   if (locked) {
@@ -883,7 +769,7 @@ function App() {
                 <button
                   className="rounded-full border px-3 py-1 text-sm"
                   onClick={()=>{
-                    const url = `${location.origin}${location.pathname}#share=runsheet`;
+                    const url = `${location.origin}${location.pathname}#share=runsheet&show=${activeShow?.id || ""}`;
                     navigator.clipboard?.writeText(url);
                     alert("Gekopieerd:\n" + url);
                   }}
@@ -894,7 +780,7 @@ function App() {
                 <button
                   className="rounded-full border px-3 py-1 text-sm"
                   onClick={()=>{
-                    const url = `${location.origin}${location.pathname}#share=mics`;
+                    const url = `${location.origin}${location.pathname}#share=mics&show=${activeShow?.id || ""}`;
                     navigator.clipboard?.writeText(url);
                     alert("Gekopieerd:\n" + url);
                   }}
@@ -905,7 +791,7 @@ function App() {
                 <button
                   className="rounded-full border px-3 py-1 text-sm"
                   onClick={()=>{
-                    const url = `${location.origin}${location.pathname}#share=rehearsals`;
+                    const url = `${location.origin}${location.pathname}#share=rehearsals&show=${activeShow?.id || ""}`;
                     navigator.clipboard?.writeText(url);
                     alert("Gekopieerd:\n" + url);
                   }}
@@ -916,7 +802,7 @@ function App() {
                 <button
                   className="rounded-full border px-3 py-1 text-sm"
                   onClick={()=>{
-                    const url = `${location.origin}${location.pathname}#share=rolverdeling`;
+                    const url = `${location.origin}${location.pathname}#share=rolverdeling&show=${activeShow?.id || ""}`;
                     navigator.clipboard?.writeText(url);
                     alert("Gekopieerd:\n" + url);
                   }}
@@ -927,7 +813,7 @@ function App() {
                 <button
                   className="rounded-full border px-3 py-1 text-sm"
                   onClick={()=>{
-                    const url = `${location.origin}${location.pathname}#share=prkit`;
+                    const url = `${location.origin}${location.pathname}#share=prkit&show=${activeShow?.id || ""}`;
                     navigator.clipboard?.writeText(url);
                     alert("Gekopieerd:\n" + url);
                   }}
@@ -935,17 +821,18 @@ function App() {
                   PR-Kit
                 </button>
 
-                {/* >>> NIEUW: Sketches share link */}
+                {/* (optioneel) Sketches share:
                 <button
                   className="rounded-full border px-3 py-1 text-sm"
                   onClick={()=>{
-                    const url = `${location.origin}${location.pathname}#share=scripts`;
+                    const url = `${location.origin}${location.pathname}#share=scripts&show=${activeShow?.id || ""}`;
                     navigator.clipboard?.writeText(url);
                     alert("Gekopieerd:\n" + url);
                   }}
                 >
                   Sketches
                 </button>
+                */}
               </div>
             </div>
 
