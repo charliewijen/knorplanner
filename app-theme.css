@@ -272,3 +272,11 @@ body::after{
   body { background: #fff !important; }
   table { box-shadow: none !important; border-color: #ccc !important; }
 }
+
+/* === Simpele mobile fix: geen sticky, menu wrappen, ruimte boven content === */
+@media (max-width: 900px) {
+  header { position: static !important; }        /* geen “plakkende” header op mobiel */
+  header nav { flex-wrap: wrap; overflow-x: visible; } /* knoppen gaan op meerdere regels i.p.v. overlap */
+  main { margin-top: .5rem !important; }         /* beetje lucht onder de header */
+}
+
