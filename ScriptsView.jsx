@@ -292,9 +292,10 @@ function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
               <div className="text-sm text-gray-500">Nog geen items.</div>
             )}
             <div className="space-y-2">
-              {active.sounds.map((s, idx) => (
+             
+{active.sounds.map((s, idx) => (
   <div key={s.id || idx} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center">
-    {/* Omschrijving (5 kolommen op desktop) */}
+    {/* Omschrijving (5 kol) */}
     <input
       className="md:col-span-5 min-w-0 rounded border px-2 py-1"
       placeholder="Omschrijving (bijv. 'VAR on! fluit')"
@@ -302,39 +303,40 @@ function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
       onChange={(e)=>updateSound(idx, { label: e.target.value })}
     />
 
-    {/* URL (5 kolommen op desktop) */}
-    <input
-      className="md:col-span-5 min-w-0 rounded border px-2 py-1"
-      placeholder="URL of bestandslink"
-      value={s.url || ""}
-      onChange={(e)=>updateSound(idx, { url: e.target.value })}
-    />
-
-    {/* Acties (2 kolommen op desktop) */}
-    <div className="md:col-span-2 flex items-center justify-end gap-2">
+    {/* URL + Open in dezelfde kolom (6 kol) */}
+    <div className="md:col-span-6 flex items-center gap-2">
+      <input
+        className="flex-1 min-w-0 rounded border px-2 py-1"
+        placeholder="URL of bestandslink"
+        value={s.url || ""}
+        onChange={(e)=>updateSound(idx, { url: e.target.value })}
+      />
       {hasHttpUrl(s.url) && (
         <a
           href={s.url}
           target="_blank"
           rel="noopener noreferrer"
-          className="shrink-0 w-[84px] text-center rounded border px-2 py-1 text-sm hover:bg-gray-50"
+          className="shrink-0 whitespace-nowrap rounded border px-3 py-1 text-sm hover:bg-gray-50"
           aria-label={`Open ${s.label || "geluid"} (nieuwe tab)`}
           title="Open link (nieuwe tab)"
         >
           Open
         </a>
       )}
-      <button
-        className="shrink-0 w-9 rounded border px-0 py-1"
-        onClick={()=>removeSound(idx)}
-        aria-label="Verwijder item"
-        title="Verwijder item"
-      >
-        x
-      </button>
     </div>
+
+    {/* Verwijderen (1 kol) */}
+    <button
+      className="md:col-span-1 shrink-0 w-9 rounded border px-0 py-1 justify-self-end"
+      onClick={()=>removeSound(idx)}
+      aria-label="Verwijder item"
+      title="Verwijder item"
+    >
+      x
+    </button>
   </div>
 ))}
+
 
             </div>
           </div>
