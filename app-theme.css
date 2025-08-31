@@ -254,3 +254,65 @@ section.rounded-2xl.border,
 @media (max-width: 480px){
   input[type="url"]{ font-size: 0.9rem; }
 }
+
+
+/* ====== BRANDING ====== */
+/* Titel groter, zonder menuruimte te pakken */
+.brand-title{
+  font-size: clamp(1.35rem, 1.2rem + 1.2vw, 2.2rem);
+  line-height: 1.05;
+  white-space: nowrap;
+}
+.brand-header .brand-logo{
+  filter: drop-shadow(0 1px 1px rgba(0,0,0,.08));
+}
+
+/* Zorg dat het menu altijd één rij is en scrolt, ook met grote titel */
+@media (min-width: 769px){
+  header nav{
+    display:flex;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    gap: .5rem;
+  }
+  header nav > *{ flex: 0 0 auto; }
+  header nav button,
+  header nav a{ white-space: nowrap; }
+}
+
+/* ====== SHARE PAGES: subtiel watermerk-logo rechtsonder ====== */
+.share-only::after{
+  content:"";
+  position: fixed;
+  right: 14px;
+  bottom: 14px;
+  width: 44px;
+  height: 44px;
+  background-image: url("https://cdn-icons-png.flaticon.com/512/616/616584.png");
+  background-size: contain;
+  background-repeat: no-repeat;
+  opacity: .15;
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* ====== Kaarten: een kleine corner badge (creatieve plek 3, subtiel) ====== */
+.pr-card{
+  position: relative;
+}
+.pr-card::before{
+  content:"";
+  position:absolute;
+  top: 10px; right: 10px;
+  width: 18px; height: 18px;
+  background-image: url("https://cdn-icons-png.flaticon.com/512/616/616584.png");
+  background-size: contain; background-repeat:no-repeat;
+  opacity:.18;
+  pointer-events:none;
+}
+
+/* Kleine hulpfix: inputs breken netjes */
+input, select, textarea{ min-width: 0; }
+
