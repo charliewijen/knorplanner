@@ -706,9 +706,11 @@ function App() {
       <div className="fixed left-4 bottom-4 z-50">
         <details className="group w-[min(92vw,380px)]">
           <summary className="cursor-pointer inline-flex items-center gap-2 rounded-full bg-black text-white px-4 py-2 shadow-lg select-none">
-            ⚙️ Hulpmiddelen
-            <span className="text-xs opacity-80">{syncStatus}</span>
-          </summary>
+  <img src="https://cdn-icons-png.flaticon.com/512/616/616584.png" alt="" className="w-4 h-4" aria-hidden="true" />
+  Hulpmiddelen
+  <span className="text-xs opacity-80">{syncStatus}</span>
+</summary>
+
 
           <div className="mt-2 rounded-xl border bg-white/95 backdrop-blur p-3 shadow-xl space-y-3">
             <div className="flex gap-2 flex-wrap">
