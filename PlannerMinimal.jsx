@@ -1,4 +1,4 @@
-function PlannerMinimal({ state, setState, activeShowId, setActiveShowId }) {
+function PlannerMinimal({ state, setState, activeShowId, setActiveShowId, onDuplicateShow }) {
   const activeShow = state.shows.find((s) => s.id === activeShowId) || state.shows[0];
 
   // Alle items (sketches + pauzes + waerse) voor deze show
@@ -237,17 +237,28 @@ function PlannerMinimal({ state, setState, activeShowId, setActiveShowId }) {
       <section className="rounded-2xl border p-4">
         <h3 className="mb-2 font-semibold">Voorstelling</h3>
 
-        <select
-          className="rounded border px-3 py-2 w-full"
-          value={activeShow?.id}
-          onChange={(e) => setActiveShowId(e.target.value)}
-        >
-          {state.shows.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.name || "Zonder naam"}
-            </option>
-          ))}
-        </select>
+        <div className="flex items-center gap-2">
+          <select
+            className="rounded border px-3 py-2 w-full"
+            value={activeShow?.id}
+            onChange={(e) => setActiveShowId(e.target.value)}
+          >
+            {state.shows.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name || "Zonder naam"}
+              </option>
+            ))}
+          </select>
+
+          {/* NIEUW: Dupliceer show-knop naast de select */}
+          <button
+            className="rounded-xl border px-3 py-2"
+            onClick={() => onDuplicateShow && onDuplicateShow()}
+            title="Maak een kopie van de huidige show (incl. spelers, sketches & repetities)"
+          >
+            Dupliceer show
+          </button>
+        </div>
 
         {activeShow && (
           <div className="mt-3 space-y-2">
