@@ -584,23 +584,25 @@ const showPRKit = React.useMemo(() => {
 )}
 
         {tab === "prkit" && (
-  <PRKitView
-    items={showPRKit}
-    showId={activeShow?.id}
-    onChange={(itemsForShow) => {
-      // Zorgt dat we alleen de items voor de actieve show overschrijven
-      pushHistory(state);
-      setState((prev) => {
-        const currentShowId = activeShow?.id;
-        if (!currentShowId) return prev;
-
-        const others = (prev.prKit || []).filter(x => x.showId !== currentShowId);
-        const normalized = (itemsForShow || []).map(x => ({ ...x, showId: currentShowId }));
-        return { ...prev, prKit: [...others, ...normalized] };
-      });
-    }}
-  />
+  <TabErrorBoundary>
+    <PRKitView
+      items={showPRKit}
+      showId={activeShow?.id}
+      onChange={(itemsForShow) => {
+        pushHistory(state);
+        setState((prev) => {
+          const currentShowId = activeShow?.id;
+          if (!currentShowId) return prev;
+          const others = (prev.prKit || []).filter(x => x.showId !== currentShowId);
+          const normalized = (itemsForShow || []).map(x => ({ ...x, showId: currentShowId }));
+          return { ...prev, prKit: [...others, ...normalized] };
+        });
+      }}
+    />
+  </TabErrorBoundary>
 )}
+
+ 
 
 
       </main>
