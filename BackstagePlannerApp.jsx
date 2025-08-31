@@ -432,22 +432,23 @@ function App() {
 
   // ====== SHARE ROUTES ======
   if (shareTab === "rehearsals") {
-    return (
-      <div className="mx-auto max-w-4xl p-4">
-        <h1 className="text-2xl font-bold mb-4">Repetitieschema (live)</h1>
-        <RehearsalPlanner
-          rehearsals={showRehearsals}
-          people={showPeople}
-          onAdd={()=>{}}
-          onUpdate={()=>{}}
-          onRemove={()=>{}}
-        />
-        <div className="text-sm text-gray-500 mt-6">
-          Dit is een gedeelde link, alleen-lezen. Wijzigingen kunnen alleen in de hoofd-app.
-        </div>
+  return (
+    <div className="mx-auto max-w-6xl p-4 share-only">
+      <h1 className="text-2xl font-bold mb-4">Repetitieschema (live)</h1>
+      <RehearsalPlanner
+        rehearsals={showRehearsals}
+        people={showPeople}
+        onAdd={()=>{}}
+        onUpdate={()=>{}}
+        onRemove={()=>{}}
+      />
+      <div className="text-sm text-gray-500 mt-6">
+        Dit is een gedeelde link, alleen-lezen. Wijzigingen kunnen alleen in de hoofd-app.
       </div>
-    );
-  }
+    </div>
+  );
+}
+
 
   if (shareTab === "rolverdeling") {
     return (
