@@ -61,8 +61,8 @@ function withDefaults(s = {}) {
     // app-instellingen
     settings: {
       ...(s.settings || {}),
-      requirePassword: !!(s.settings?.requirePassword),      // standaard UIT (false)
-      appPasswordHash: s.settings?.appPasswordHash || null,  // SHA-256 hash
+      requirePassword: !!(s.settings?.requirePassword),
+      appPasswordHash: s.settings?.appPasswordHash || null,
     },
   };
 }
@@ -93,7 +93,6 @@ function PasswordGate({ onUnlock }) {
     setErr("");
     try {
       const h = await hashText(pw || "");
-      // Het echte hashje komt uit state via onUnlock-check
       const ok = await onUnlock(h);
       if (!ok) setErr("Onjuist wachtwoord.");
     } catch (e) {
@@ -272,6 +271,77 @@ function App() {
     }));
   };
 
+  // ---------- Show dupliceren (incl. alles onder die show) ----------
+  const duplicateCurrentShow = () => {
+    if (!activeShow) { alert("Geen actieve show om te dupliceren."); return; }
+
+    if (!confirm(`Wil je “${activeShow.name}” dupliceren?\nAlles (spelers, sketches, repetities) wordt gekopieerd naar een nieuwe show.`)) {
+      return;
+    }
+
+    const srcShowId = activeShow.id;
+    const newShowId = uid();
+    const newShow = {
+      ...activeShow,
+      id: newShowId,
+      name: `${activeShow.name} (kopie)`,
+    };
+
+    pushHistory(state);
+    setState((prev) => {
+      // Spelers kopiëren
+      const srcPeople = (prev.people || []).filter(p => p.showId === srcShowId);
+      const idMap = {}; // oudPersoonId -> nieuwPersoonId
+      const copiedPeople = srcPeople.map(p => {
+        const npid = uid();
+        idMap[p.id] = npid;
+        return { ...p, id: npid, showId: newShowId };
+      });
+
+      // Sketches kopiëren
+      const srcSketches = (prev.sketches || []).filter(sk => sk.showId === srcShowId);
+      const copiedSketches = srcSketches.map(sk => {
+        const newRoles = (sk.roles || []).map(r => ({
+          ...r,
+          personId: r.personId ? (idMap[r.personId] || "") : "",
+        }));
+        const newMicAssignments = {};
+        const srcMA = sk.micAssignments || {};
+        Object.keys(srcMA).forEach(ch => {
+          const pid = srcMA[ch];
+          newMicAssignments[ch] = pid ? (idMap[pid] || "") : "";
+        });
+
+        return {
+          ...sk,
+          id: uid(),
+          showId: newShowId,
+          roles: newRoles,
+          micAssignments: newMicAssignments,
+        };
+      });
+
+      // Repetities kopiëren
+      const srcRehearsals = (prev.rehearsals || []).filter(r => r.showId === srcShowId);
+      const copiedRehearsals = srcRehearsals.map(r => ({
+        ...r,
+        id: uid(),
+        showId: newShowId,
+      }));
+
+      return {
+        ...prev,
+        shows: [...(prev.shows || []), newShow],
+        people: [...(prev.people || []), ...copiedPeople],
+        sketches: [...(prev.sketches || []), ...copiedSketches],
+        rehearsals: [...(prev.rehearsals || []), ...copiedRehearsals],
+      };
+    });
+
+    setActiveShowId(newShowId);
+    alert("Show gedupliceerd. Je kijkt nu naar de kopie.");
+  };
+
   // ====== READONLY SHARE-MODE ======
   const shareTab = React.useMemo(() => {
     const p = new URLSearchParams((location.hash || "").replace("#",""));
@@ -313,15 +383,14 @@ function App() {
   };
 
   const lockNow = () => {
-  if (!state.settings?.appPasswordHash) {
-    alert("Eerst een wachtwoord instellen bij ‘Wachtwoord instellen/wijzigen’.");
-    return;
-  }
-  setState(prev => ({ ...prev, settings: { ...(prev.settings||{}), requirePassword: true } }));
-  localStorage.removeItem("knor:auth");
-  alert("Vergrendeld. Vernieuw de pagina om te controleren.");
-};
-
+    if (!state.settings?.appPasswordHash) {
+      alert("Eerst een wachtwoord instellen bij ‘Wachtwoord instellen/wijzigen’.");
+      return;
+    }
+    setState(prev => ({ ...prev, settings: { ...(prev.settings||{}), requirePassword: true } }));
+    localStorage.removeItem("knor:auth");
+    alert("Vergrendeld. Vernieuw de pagina om te controleren.");
+  };
 
   const unlockThisDevice = () => {
     const h = state.settings?.appPasswordHash;
@@ -574,6 +643,20 @@ function App() {
                 >
                   Rolverdeling
                 </button>
+              </div>
+            </div>
+
+            {/* Show acties */}
+            <div className="rounded-lg border p-2">
+              <div className="font-semibold text-sm mb-1">Show acties</div>
+              <button
+                className="rounded-full border px-3 py-1 text-sm"
+                onClick={duplicateCurrentShow}
+              >
+                Dupliceer huidige show
+              </button>
+              <div className="text-[11px] text-gray-500 mt-1">
+                Kopieert spelers, sketches (incl. rollen & microfoon-koppelingen) en repetities naar een nieuwe show.
               </div>
             </div>
 
