@@ -21,14 +21,13 @@ function prPreviewSrc(item) {
   return PR_IMG_PLACEHOLDER;
 }
 
-function prLabelDate({ dateStart, dateEnd }) {
+function prLabelDate({ dateStart, dateEnd, isRange }) {
   if (!dateStart && !dateEnd) return "—";
-  if (dateStart && !dateEnd)   return dateStart;
-  if (!dateStart && dateEnd)   return dateEnd;
-  return `${dateStart} – ${dateEnd}`;
+  if (!isRange) return dateStart || "—";
+  return `${dateStart || "—"} – ${dateEnd || "—"}`;
 }
 
-function PRKitView({ items = [], onChange = () => {}, showId }) {
+function PRKitView({ items = [], onChange = () => {}, showId, readOnly = false }) {
   const addItem = (type) => {
     const blank = {
       id: prGenId(),
@@ -39,7 +38,7 @@ function PRKitView({ items = [], onChange = () => {}, showId }) {
       photosLink: "",     // alleen voor article
       dateStart: "",
       dateEnd: "",
-      isRange: false,     // << nieuw: standaard "Enkele dag"
+      isRange: false,     // standaard "Enkele dag"
       showId: showId || null
     };
     onChange([blank, ...(items || [])]);
@@ -60,11 +59,13 @@ function PRKitView({ items = [], onChange = () => {}, showId }) {
           <h2 className="text-lg font-semibold">PR-Kit</h2>
           <div className="text-xs text-gray-600">Voeg posters/afbeeldingen, interviews/artikelen of video’s toe voor het PR-team.</div>
         </div>
-        <div className="flex gap-2">
-          <button className="rounded-full border px-3 py-2" onClick={() => addItem("image")}>+ Afbeelding/Poster</button>
-          <button className="rounded-full border px-3 py-2" onClick={() => addItem("article")}>+ Interview/Artikel</button>
-          <button className="rounded-full border px-3 py-2" onClick={() => addItem("video")}>+ Video</button>
-        </div>
+        {!readOnly && (
+          <div className="flex gap-2">
+            <button className="rounded-full border px-3 py-2" onClick={() => addItem("image")}>+ Afbeelding/Poster</button>
+            <button className="rounded-full border px-3 py-2" onClick={() => addItem("article")}>+ Interview/Artikel</button>
+            <button className="rounded-full border px-3 py-2" onClick={() => addItem("video")}>+ Video</button>
+          </div>
+        )}
       </div>
 
       <div className="grid gap-3">
@@ -90,81 +91,87 @@ function PRKitView({ items = [], onChange = () => {}, showId }) {
                 <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium tag-${it.type}`}>
                   {it.type === "image" ? "Afbeelding/Poster" : it.type === "article" ? "Interview/Artikel" : "Video"}
                 </span>
-                <input
-                  className="flex-1 min-w-0 rounded border px-2 py-1"
-                  placeholder="Naam"
-                  value={it.name || ""}
-                  onChange={(e)=>patchItem(it.id, { name: e.target.value })}
-                />
-                <button className="flex-none rounded border px-2 py-1 text-sm" onClick={()=>removeItem(it.id)}>x</button>
+                <fieldset className={`flex-1 min-w-0 ${readOnly ? "opacity-75" : ""}`} disabled={readOnly}>
+                  <input
+                    className="w-full rounded border px-2 py-1"
+                    placeholder="Naam"
+                    value={it.name || ""}
+                    onChange={(e)=>patchItem(it.id, { name: e.target.value })}
+                  />
+                </fieldset>
+                {!readOnly && (
+                  <button className="flex-none rounded border px-2 py-1 text-sm" onClick={()=>removeItem(it.id)}>x</button>
+                )}
               </div>
 
               {/* Datumkeuze: elegant toggle */}
-              <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-                <label className="inline-flex items-center gap-2 text-sm">
-                  <input
-                    type="radio"
-                    name={`prdate-${it.id}`}
-                    checked={!it.isRange}
-                    onChange={()=>{
-                      const ds = it.dateStart || "";
-                      patchItem(it.id, { isRange: false, dateEnd: ds });
-                    }}
-                  />
-                  Enkele dag
-                </label>
-                <label className="inline-flex items-center gap-2 text-sm">
-                  <input
-                    type="radio"
-                    name={`prdate-${it.id}`}
-                    checked={!!it.isRange}
-                    onChange={()=>{
-                      const ds = it.dateStart || "";
-                      patchItem(it.id, { isRange: true, dateEnd: it.dateEnd || ds });
-                    }}
-                  />
-                  Periode
-                </label>
-              </div>
-
-              {/* Datums */}
-              {!it.isRange ? (
-                // Enkele dag: alleen start, we spiegelen end = start
-                <div className="flex items-center gap-2">
-                  <span className="w-28 text-sm text-gray-700">Datum</span>
-                  <input
-                    type="date"
-                    className="flex-1 rounded border px-2 py-1"
-                    value={it.dateStart || ""}
-                    onChange={(e)=>{
-                      const ds = e.target.value;
-                      patchItem(it.id, { dateStart: ds, dateEnd: ds });
-                    }}
-                  />
+              <fieldset className={`${readOnly ? "opacity-75" : ""}`} disabled={readOnly}>
+                <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+                  <label className="inline-flex items-center gap-2 text-sm">
+                    <input
+                      type="radio"
+                      name={`prdate-${it.id}`}
+                      checked={!it.isRange}
+                      onChange={()=>{
+                        const ds = it.dateStart || "";
+                        patchItem(it.id, { isRange: false, dateEnd: ds });
+                      }}
+                    />
+                    Enkele dag
+                  </label>
+                  <label className="inline-flex items-center gap-2 text-sm">
+                    <input
+                      type="radio"
+                      name={`prdate-${it.id}`}
+                      checked={!!it.isRange}
+                      onChange={()=>{
+                        const ds = it.dateStart || "";
+                        patchItem(it.id, { isRange: true, dateEnd: it.dateEnd || ds });
+                      }}
+                    />
+                    Periode
+                  </label>
                 </div>
-              ) : (
-                // Periode: start + end
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="w-28 text-sm text-gray-700">Startdatum</span>
+
+                {/* Datums */}
+                {!it.isRange ? (
+                  // Enkele dag: alleen start, we spiegelen end = start
+                  <div className="flex items-center gap-2 mt-2">
+                    <span className="w-28 text-sm text-gray-700">Datum</span>
                     <input
                       type="date"
                       className="flex-1 rounded border px-2 py-1"
                       value={it.dateStart || ""}
-                      onChange={(e)=>patchItem(it.id, { dateStart: e.target.value })}
+                      onChange={(e)=>{
+                        const ds = e.target.value;
+                        patchItem(it.id, { dateStart: ds, dateEnd: ds });
+                      }}
                     />
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="w-28 text-sm text-gray-700">Einddatum</span>
-                    <input
-                      type="date"
-                      className="flex-1 rounded border px-2 py-1"
-                      value={it.dateEnd || ""}
-                      onChange={(e)=>patchItem(it.id, { dateEnd: e.target.value })}
-                    />
+                ) : (
+                  // Periode: start + end
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                    <div className="flex items-center gap-2">
+                      <span className="w-28 text-sm text-gray-700">Startdatum</span>
+                      <input
+                        type="date"
+                        className="flex-1 rounded border px-2 py-1"
+                        value={it.dateStart || ""}
+                        onChange={(e)=>patchItem(it.id, { dateStart: e.target.value })}
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-28 text-sm text-gray-700">Einddatum</span>
+                      <input
+                        type="date"
+                        className="flex-1 rounded border px-2 py-1"
+                        value={it.dateEnd || ""}
+                        onChange={(e)=>patchItem(it.id, { dateEnd: e.target.value })}
+                      />
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
+              </fieldset>
 
               <div className="text-xs text-gray-500">
                 Planning: <span className="font-medium">{prLabelDate(it)}</span> {it.isRange ? "(periode)" : it.dateStart ? "(dag)" : ""}
@@ -174,7 +181,7 @@ function PRKitView({ items = [], onChange = () => {}, showId }) {
             {/* Rechterkolom: Links per type — uitlijning fixed */}
             <div className="grid gap-2 min-w-0">
               {it.type === "image" && (
-                <div className="flex items-center gap-2 min-w-0">
+                <fieldset className={`flex items-center gap-2 min-w-0 ${readOnly ? "opacity-75" : ""}`} disabled={readOnly}>
                   <span className="w-36 text-sm flex-none">Bestandslink</span>
                   <div className="flex items-center gap-2 flex-1 min-w-0">
                     <input
@@ -194,12 +201,12 @@ function PRKitView({ items = [], onChange = () => {}, showId }) {
                       </a>
                     )}
                   </div>
-                </div>
+                </fieldset>
               )}
 
               {it.type === "article" && (
                 <>
-                  <div className="flex items-center gap-2 min-w-0">
+                  <fieldset className={`flex items-center gap-2 min-w-0 ${readOnly ? "opacity-75" : ""}`} disabled={readOnly}>
                     <span className="w-36 text-sm flex-none">Link naar tekst</span>
                     <div className="flex items-center gap-2 flex-1 min-w-0">
                       <input
@@ -219,9 +226,9 @@ function PRKitView({ items = [], onChange = () => {}, showId }) {
                         </a>
                       )}
                     </div>
-                  </div>
+                  </fieldset>
 
-                  <div className="flex items-center gap-2 min-w-0">
+                  <fieldset className={`flex items-center gap-2 min-w-0 ${readOnly ? "opacity-75" : ""}`} disabled={readOnly}>
                     <span className="w-36 text-sm flex-none">Link naar foto's</span>
                     <div className="flex items-center gap-2 flex-1 min-w-0">
                       <input
@@ -241,12 +248,12 @@ function PRKitView({ items = [], onChange = () => {}, showId }) {
                         </a>
                       )}
                     </div>
-                  </div>
+                  </fieldset>
                 </>
               )}
 
               {it.type === "video" && (
-                <div className="flex items-center gap-2 min-w-0">
+                <fieldset className={`flex items-center gap-2 min-w-0 ${readOnly ? "opacity-75" : ""}`} disabled={readOnly}>
                   <span className="w-36 text-sm flex-none">Videolink</span>
                   <div className="flex items-center gap-2 flex-1 min-w-0">
                     <input
@@ -266,7 +273,7 @@ function PRKitView({ items = [], onChange = () => {}, showId }) {
                       </a>
                     )}
                   </div>
-                </div>
+                </fieldset>
               )}
             </div>
           </div>
