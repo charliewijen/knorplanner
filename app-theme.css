@@ -280,3 +280,35 @@ body::after{
   main { margin-top: .5rem !important; }         /* beetje lucht onder de header */
 }
 
+/* === Mobile nav fix: wrap chips, no hover transform, add spacing === */
+@media (max-width: 900px) {
+  /* header should not stick on small screens */
+  header { position: static !important; }
+
+  /* make the chip row wrap to multiple lines and stop overlapping */
+  header nav {
+    display: flex;
+    flex-wrap: wrap;
+    overflow: visible;
+    gap: .4rem .5rem;         /* row/column gap */
+    padding-bottom: .5rem;
+  }
+
+  /* chips: no lift-on-hover, no extra shadow that can overlap */
+  header nav button {
+    transform: none !important;
+    box-shadow: none !important;
+    margin: 0;                /* avoid vertical nudge */
+  }
+  
+  /* give content a bit of breathing room under the wrapped chips */
+  main { margin-top: .5rem !important; }
+  
+  /* the helper/tools banner: move to bottom-right so it doesn't cover content */
+  .fixed-tools {
+    left: auto;
+    right: .75rem;
+    bottom: .75rem;
+    max-width: calc(100vw - 1.5rem);
+  }
+}
