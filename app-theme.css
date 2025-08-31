@@ -312,3 +312,38 @@ body::after{
     max-width: calc(100vw - 1.5rem);
   }
 }
+
+/* === Mobile overlap kill-switch: wrap chips + push content down === */
+
+/* Apply everywhere (safe): header is not sticky */
+header { position: static !important; }
+
+/* Make the chip row behave */
+header nav {
+  display: flex;
+  flex-wrap: wrap !important;     /* go to multiple lines if needed */
+  overflow: visible !important;
+  justify-content: flex-start !important;
+  gap: .4rem .5rem;
+  margin-bottom: .75rem !important;  /* <-- pushes page content down */
+}
+
+/* Chips don’t “float” on hover */
+header nav button {
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+/* Extra safety: ensure the first section starts below the header */
+header + * { margin-top: .5rem !important; }
+
+/* Tools banner won’t cover content on phones */
+@media (max-width: 900px) {
+  .fixed-tools {
+    left: auto;
+    right: .75rem;
+    bottom: .75rem;
+    max-width: calc(100vw - 1.5rem);
+  }
+}
+
