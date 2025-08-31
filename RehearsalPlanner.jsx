@@ -53,8 +53,8 @@ function RehearsalPlanner({ rehearsals = [], people = [], onAdd, onUpdate, onRem
   return (
     <div className="rounded-2xl border p-4">
       <div className="flex justify-between mb-3">
-        <h2 className="text-lg font-semibold">Repetities</h2>
-        <button className="rounded-xl border px-3 py-2" onClick={onAdd}>+ Repetitie</button>
+        <h2 className="text-lg font-semibold">Agenda</h2>
+        <button className="rounded-xl border px-3 py-2" onClick={onAdd}>+ Activiteit</button>
       </div>
 
       <table className="min-w-full border-separate border-spacing-y-2">
