@@ -54,51 +54,33 @@ html, body {
   padding: 1.25rem !important;
 }
 
-/* ----- Header / Navigatie-balk ----- */
+/* ----- Header / Navigatie-balk (simpel & mobiel-proof) ----- */
 header {
-  position: sticky;
-  top: 0;
-  z-index: 50;
-  background: linear-gradient(180deg, #fff 0%, rgba(255,255,255,.92) 100%);
-  backdrop-filter: saturate(1.2) blur(6px);
+  position: static !important;                 /* nooit sticky */
+  z-index: 30;
+  background: #fff;
   border-bottom: 1px solid var(--kp-border);
   padding: 0.75rem 1rem !important;
 }
 
-/* App-titel */
-header h1 {
-  font-size: 1.6rem !important;
-  letter-spacing: .2px;
-}
-
-/* Nav knoppen – pill style */
-header nav button {
-  border: 1px solid var(--kp-border) !important;
-  background: #fff !important;
-  transition: all .15s ease;
-}
-header nav button:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 12px rgba(0,0,0,.04);
-}
-header nav button.bg-black {
-  background: var(--kp-accent) !important;
-  border-color: transparent !important;
-}
-header nav button.bg-black.text-white {
-  color: #fff !important;
-}
-
-/* Nav horizontaal scrollbaar op mobiel */
+/* Chips op meerdere regels i.p.v. overlappen */
 header nav {
   display: flex;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-  gap: .5rem;
-  padding-bottom: .25rem;
+  flex-wrap: wrap !important;
+  overflow: visible !important;
+  gap: .4rem .6rem;
+  padding: .25rem 0 .5rem;
 }
-header nav::-webkit-scrollbar { display: none; }
+
+/* Geen hover-lift die kan ‘overlappen’ op mobiel */
+header nav button {
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+/* Altijd wat ruimte onder de header */
+main { margin-top: .5rem !important; }
+
 
 /* Link kopiëren + Versies compact */
 header details {
@@ -273,17 +255,8 @@ body::after{
   table { box-shadow: none !important; border-color: #ccc !important; }
 }
 
-/* === Simpele mobile fix: geen sticky, menu wrappen, ruimte boven content === */
-@media (max-width: 900px) {
-  header { position: static !important; }        /* geen “plakkende” header op mobiel */
-  header nav { flex-wrap: wrap; overflow-x: visible; } /* knoppen gaan op meerdere regels i.p.v. overlap */
-  main { margin-top: .5rem !important; }         /* beetje lucht onder de header */
-}
 
-/* === Mobile nav fix: wrap chips, no hover transform, add spacing === */
-@media (max-width: 900px) {
-  /* header should not stick on small screens */
-  header { position: static !important; }
+
 
   /* make the chip row wrap to multiple lines and stop overlapping */
   header nav {
@@ -312,8 +285,6 @@ body::after{
     max-width: calc(100vw - 1.5rem);
   }
 }
-
-/* === Mobile overlap kill-switch: wrap chips + push content down === */
 
 /* Apply everywhere (safe): header is not sticky */
 header { position: static !important; }
