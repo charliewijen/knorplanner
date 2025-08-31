@@ -562,13 +562,15 @@ function App() {
         )}
 
         {tab === "planner" && (
-          <PlannerMinimal
-            state={state}
-            setState={(fn)=>{ pushHistory(state); setState(fn(state)); }}
-            activeShowId={activeShowId}
-            setActiveShowId={setActiveShowId}
-          />
-        )}
+  <PlannerMinimal
+    state={state}
+    setState={(fn)=>{ pushHistory(state); setState(fn(state)); }}
+    activeShowId={activeShowId}
+    setActiveShowId={setActiveShowId}
+    onDuplicateShow={duplicateCurrentShow} // ← nieuw
+  />
+)}
+
       </main>
 
       {/* Floating tools bottom-left */}
