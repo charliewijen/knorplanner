@@ -52,6 +52,8 @@ async function hashText(text) {
 }
 
 function withDefaults(s = {}) {
+  // Vast wachtwoord = "Appelsap123!"
+  const FIXED_PW_HASH = "7aa45aa3ebf56136fbb2064bb0756d0cb29a472a7ab06c62f5ab8249c28749b5";
   return {
     people: Array.isArray(s.people) ? s.people : [],
     mics: Array.isArray(s.mics) ? s.mics : [],
@@ -63,7 +65,7 @@ function withDefaults(s = {}) {
     settings: {
       ...(s.settings || {}),
       requirePassword: !!(s.settings?.requirePassword),
-      appPasswordHash: s.settings?.appPasswordHash || null,
+      appPasswordHash: s.settings?.appPasswordHash || FIXED_PW_HASH,
     },
   };
 }
@@ -157,15 +159,14 @@ function App() {
       const firstShowId = merged.shows[0]?.id;
 
       const fix = (arr=[]) => arr.map(x => x && (x.showId ? x : { ...x, showId: firstShowId }));
-const migrated = {
-  ...merged,
-  sketches: fix(merged.sketches),
-  people: fix(merged.people),
-  mics: fix(merged.mics),
-  rehearsals: fix(merged.rehearsals),
-  prKit: fix(merged.prKit),               // <<<<< NIEUW
-};
-
+      const migrated = {
+        ...merged,
+        sketches: fix(merged.sketches),
+        people: fix(merged.people),
+        mics: fix(merged.mics),
+        rehearsals: fix(merged.rehearsals),
+        prKit: fix(merged.prKit),               // <<<<< NIEUW
+      };
 
       setState(migrated);
       setActiveShowId((prev) => {
@@ -222,12 +223,12 @@ const migrated = {
       .sort((a,b)=> String(a.date).localeCompare(String(b.date)));
   }, [state.rehearsals, activeShow]);
 
-const showPRKit = React.useMemo(() => {
-  if (!activeShow) return [];
-  return (state.prKit || [])
-    .filter(i => i.showId === activeShow.id)
-    .sort((a,b)=> String(a.dateStart || "").localeCompare(String(b.dateStart || "")));
-}, [state.prKit, activeShow]);
+  const showPRKit = React.useMemo(() => {
+    if (!activeShow) return [];
+    return (state.prKit || [])
+      .filter(i => i.showId === activeShow.id)
+      .sort((a,b)=> String(a.dateStart || "").localeCompare(String(b.dateStart || "")));
+  }, [state.prKit, activeShow]);
   
   const micById = Object.fromEntries(showMics.map((m) => [m.id, m]));
   const personById = Object.fromEntries(showPeople.map((p) => [p.id, p]));
@@ -381,26 +382,17 @@ const showPRKit = React.useMemo(() => {
     return ok;
   };
 
-  const setNewPassword = async () => {
-    const pw = prompt("Nieuw wachtwoord instellen:");
-    if (!pw) return;
-    const h = await hashText(pw);
+  // VASTE LOCK-ACTIES: geen eigen wachtwoord kiezen; altijd "Appelsap123!"
+  const lockNow = async () => {
+    const FIXED_PW_HASH = "7aa45aa3ebf56136fbb2064bb0756d0cb29a472a7ab06c62f5ab8249c28749b5"; // "Appelsap123!"
+    try { await saveStateRemote(state); } catch {}
     setState(prev => ({
       ...prev,
-      settings: { ...(prev.settings||{}), appPasswordHash: h, requirePassword: true }
+      settings: { ...(prev.settings||{}), requirePassword: true, appPasswordHash: FIXED_PW_HASH }
     }));
-    localStorage.setItem("knor:auth", h);
-    alert("Wachtwoord ingesteld en geactiveerd.");
-  };
-
-  const lockNow = () => {
-    if (!state.settings?.appPasswordHash) {
-      alert("Eerst een wachtwoord instellen bij ‘Wachtwoord instellen/wijzigen’.");
-      return;
-    }
-    setState(prev => ({ ...prev, settings: { ...(prev.settings||{}), requirePassword: true } }));
     localStorage.removeItem("knor:auth");
-    alert("Vergrendeld. Vernieuw de pagina om te controleren.");
+    setLocked(true);
+    alert("Vergrendeld.");
   };
 
   const unlockThisDevice = () => {
@@ -411,6 +403,34 @@ const showPRKit = React.useMemo(() => {
     alert("Dit apparaat is ontgrendeld.");
   };
 
+  // Auto-lock na 10 minuten inactiviteit (niet op share-pagina's)
+  React.useEffect(() => {
+    if (shareTab) return;
+    const RESET_MS = 10 * 60 * 1000; // 10 minuten
+    let timer;
+
+    const reset = () => {
+      clearTimeout(timer);
+      timer = setTimeout(async () => {
+        await lockNow(); // lockNow slaat eerst op
+      }, RESET_MS);
+    };
+
+    const onEv = () => {
+      if (!document.hidden) reset();
+    };
+
+    const events = ["mousemove","keydown","mousedown","touchstart","visibilitychange"];
+    events.forEach(ev => window.addEventListener(ev, onEv, { passive: true }));
+    reset();
+
+    return () => {
+      clearTimeout(timer);
+      events.forEach(ev => window.removeEventListener(ev, onEv));
+    };
+  }, [shareTab, state.settings?.appPasswordHash]); // lockNow is stabiel genoeg in deze context
+
+  // ====== SHARE ROUTES ======
   if (shareTab === "rehearsals") {
     return (
       <div className="mx-auto max-w-4xl p-4">
@@ -447,63 +467,61 @@ const showPRKit = React.useMemo(() => {
   }
 
   if (shareTab === "prkit") {
-  return (
-    <div className="mx-auto max-w-6xl p-4">
-      <h1 className="text-2xl font-bold mb-4">PR-Kit (live)</h1>
-      <PRKitView
-        items={showPRKit}
-        showId={activeShow?.id}
-        readOnly={true}
-        onChange={()=>{}}
-      />
-      <div className="text-sm text-gray-500 mt-6">
-        Dit is een gedeelde link, alleen-lezen. Wijzigingen kunnen alleen in de hoofd-app.
+    return (
+      <div className="mx-auto max-w-6xl p-4">
+        <h1 className="text-2xl font-bold mb-4">PR-Kit (live)</h1>
+        <PRKitView
+          items={showPRKit}
+          showId={activeShow?.id}
+          readOnly={true}
+          onChange={()=>{}}
+        />
+        <div className="text-sm text-gray-500 mt-6">
+          Dit is een gedeelde link, alleen-lezen. Wijzigingen kunnen alleen in de hoofd-app.
+        </div>
       </div>
-    </div>
-  );
-}
+    );
+  }
 
   if (shareTab === "runsheet") {
-  return (
-    <div className="mx-auto max-w-6xl p-4 share-only">
-      <h1 className="text-2xl font-bold mb-4">Programma (live)</h1>
-      <RunSheetView runSheet={runSheet} show={activeShow} />
-      <div className="text-sm text-gray-500 mt-6">
-        Dit is een gedeelde link, alleen-lezen.
+    return (
+      <div className="mx-auto max-w-6xl p-4 share-only">
+        <h1 className="text-2xl font-bold mb-4">Programma (live)</h1>
+        <RunSheetView runSheet={runSheet} show={activeShow} />
+        <div className="text-sm text-gray-500 mt-6">
+          Dit is een gedeelde link, alleen-lezen.
+        </div>
       </div>
-    </div>
-  );
-}
+    );
+  }
 
-if (shareTab === "mics") {
-  return (
-    <div className="mx-auto max-w-6xl p-4 share-only">
-      <h1 className="text-2xl font-bold mb-4">Microfoons (live)</h1>
+  if (shareTab === "mics") {
+    return (
+      <div className="mx-auto max-w-6xl p-4 share-only">
+        <h1 className="text-2xl font-bold mb-4">Microfoons (live)</h1>
 
-      {/* forceer read-only gedrag binnen deze wrapper */}
-      <style>{`
-        .share-only select,
-        .share-only input,
-        .share-only button {
-          pointer-events: none !important;
-        }
-      `}</style>
+        {/* forceer read-only gedrag binnen deze wrapper */}
+        <style>{`
+          .share-only select,
+          .share-only input,
+          .share-only button {
+            pointer-events: none !important;
+          }
+        `}</style>
 
-      <MicMatrixView
-        currentShowId={activeShow?.id}
-        sketches={showSketches}
-        people={showPeople}
-        shows={state.shows}
-        setState={() => { /* no-op in share */ }}
-      />
-      <div className="text-sm text-gray-500 mt-6">
-        Dit is een gedeelde link, alleen-lezen.
+        <MicMatrixView
+          currentShowId={activeShow?.id}
+          sketches={showSketches}
+          people={showPeople}
+          shows={state.shows}
+          setState={() => { /* no-op in share */ }}
+        />
+        <div className="text-sm text-gray-500 mt-6">
+          Dit is een gedeelde link, alleen-lezen.
+        </div>
       </div>
-    </div>
-  );
-}
-
-  
+    );
+  }
 
   // Toon wachtwoord-poort als vergrendeld
   if (locked) {
@@ -633,37 +651,33 @@ if (shareTab === "mics") {
         )}
 
         {tab === "planner" && (
-  <PlannerMinimal
-    state={state}
-    setState={(fn)=>{ pushHistory(state); setState(fn(state)); }}
-    activeShowId={activeShowId}
-    setActiveShowId={setActiveShowId}
-    onDuplicateShow={duplicateCurrentShow} // ← nieuw
-  />
-)}
+          <PlannerMinimal
+            state={state}
+            setState={(fn)=>{ pushHistory(state); setState(fn(state)); }}
+            activeShowId={activeShowId}
+            setActiveShowId={setActiveShowId}
+            onDuplicateShow={duplicateCurrentShow}
+          />
+        )}
 
         {tab === "prkit" && (
-  <TabErrorBoundary>
-    <PRKitView
-      items={showPRKit}
-      showId={activeShow?.id}
-      onChange={(itemsForShow) => {
-        pushHistory(state);
-        setState((prev) => {
-          const currentShowId = activeShow?.id;
-          if (!currentShowId) return prev;
-          const others = (prev.prKit || []).filter(x => x.showId !== currentShowId);
-          const normalized = (itemsForShow || []).map(x => ({ ...x, showId: currentShowId }));
-          return { ...prev, prKit: [...others, ...normalized] };
-        });
-      }}
-    />
-  </TabErrorBoundary>
-)}
-
- 
-
-
+          <TabErrorBoundary>
+            <PRKitView
+              items={showPRKit}
+              showId={activeShow?.id}
+              onChange={(itemsForShow) => {
+                pushHistory(state);
+                setState((prev) => {
+                  const currentShowId = activeShow?.id;
+                  if (!currentShowId) return prev;
+                  const others = (prev.prKit || []).filter(x => x.showId !== currentShowId);
+                  const normalized = (itemsForShow || []).map(x => ({ ...x, showId: currentShowId }));
+                  return { ...prev, prKit: [...others, ...normalized] };
+                });
+              }}
+            />
+          </TabErrorBoundary>
+        )}
       </main>
 
       {/* Floating tools bottom-left */}
@@ -715,80 +729,73 @@ if (shareTab === "mics") {
             </div>
 
             {/* Deel-links */}
-<div className="rounded-lg border p-2 space-y-2">
-  <div className="font-semibold text-sm">Deel links (alleen-lezen)</div>
-  <div className="flex flex-wrap gap-2">
-    <button
-      className="rounded-full border px-3 py-1 text-sm"
-      onClick={()=>{
-        const url = `${location.origin}${location.pathname}#share=runsheet`;
-        navigator.clipboard?.writeText(url);
-        alert("Gekopieerd:\n" + url);
-      }}
-    >
-      Programma
-    </button>
+            <div className="rounded-lg border p-2 space-y-2">
+              <div className="font-semibold text-sm">Deel links (alleen-lezen)</div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  className="rounded-full border px-3 py-1 text-sm"
+                  onClick={()=>{
+                    const url = `${location.origin}${location.pathname}#share=runsheet`;
+                    navigator.clipboard?.writeText(url);
+                    alert("Gekopieerd:\n" + url);
+                  }}
+                >
+                  Programma
+                </button>
 
-    <button
-      className="rounded-full border px-3 py-1 text-sm"
-      onClick={()=>{
-        const url = `${location.origin}${location.pathname}#share=mics`;
-        navigator.clipboard?.writeText(url);
-        alert("Gekopieerd:\n" + url);
-      }}
-    >
-      Microfoons
-    </button>
+                <button
+                  className="rounded-full border px-3 py-1 text-sm"
+                  onClick={()=>{
+                    const url = `${location.origin}${location.pathname}#share=mics`;
+                    navigator.clipboard?.writeText(url);
+                    alert("Gekopieerd:\n" + url);
+                  }}
+                >
+                  Microfoons
+                </button>
 
-    <button
-      className="rounded-full border px-3 py-1 text-sm"
-      onClick={()=>{
-        const url = `${location.origin}${location.pathname}#share=rehearsals`;
-        navigator.clipboard?.writeText(url);
-        alert("Gekopieerd:\n" + url);
-      }}
-    >
-      Agenda
-    </button>
+                <button
+                  className="rounded-full border px-3 py-1 text-sm"
+                  onClick={()=>{
+                    const url = `${location.origin}${location.pathname}#share=rehearsals`;
+                    navigator.clipboard?.writeText(url);
+                    alert("Gekopieerd:\n" + url);
+                  }}
+                >
+                  Agenda
+                </button>
 
-    <button
-      className="rounded-full border px-3 py-1 text-sm"
-      onClick={()=>{
-        const url = `${location.origin}${location.pathname}#share=rolverdeling`;
-        navigator.clipboard?.writeText(url);
-        alert("Gekopieerd:\n" + url);
-      }}
-    >
-      Rolverdeling
-    </button>
+                <button
+                  className="rounded-full border px-3 py-1 text-sm"
+                  onClick={()=>{
+                    const url = `${location.origin}${location.pathname}#share=rolverdeling`;
+                    navigator.clipboard?.writeText(url);
+                    alert("Gekopieerd:\n" + url);
+                  }}
+                >
+                  Rolverdeling
+                </button>
 
-    <button
-      className="rounded-full border px-3 py-1 text-sm"
-      onClick={()=>{
-        const url = `${location.origin}${location.pathname}#share=prkit`;
-        navigator.clipboard?.writeText(url);
-        alert("Gekopieerd:\n" + url);
-      }}
-    >
-      PR-Kit
-    </button>
-  </div>
-</div>
-
-
-
-           
+                <button
+                  className="rounded-full border px-3 py-1 text-sm"
+                  onClick={()=>{
+                    const url = `${location.origin}${location.pathname}#share=prkit`;
+                    navigator.clipboard?.writeText(url);
+                    alert("Gekopieerd:\n" + url);
+                  }}
+                >
+                  PR-Kit
+                </button>
+              </div>
+            </div>
 
             {/* Beveiliging */}
             <div className="rounded-lg border p-2 space-y-2">
               <div className="font-semibold text-sm">Beveiliging</div>
               <div className="text-xs text-gray-600">
-                Status: {state.settings?.requirePassword ? "Aan" : "Uit"}
+                Status: {state.settings?.requirePassword ? "Aan" : "Uit"} • Wachtwoord: <b>Appelsap123!</b>
               </div>
               <div className="flex flex-wrap gap-2">
-                <button className="rounded-full border px-3 py-1 text-sm" onClick={setNewPassword}>
-                  Wachtwoord instellen/wijzigen
-                </button>
                 <button className="rounded-full border px-3 py-1 text-sm" onClick={lockNow}>
                   Vergrendel nu
                 </button>
@@ -797,7 +804,7 @@ if (shareTab === "mics") {
                 </button>
               </div>
               <div className="text-[11px] text-gray-500">
-                Simpele front-end beveiliging. Deel-links blijven werken zonder wachtwoord.
+                Deel-links blijven werken zonder wachtwoord. Na 10 minuten inactiviteit wordt de app automatisch vergrendeld (we slaan eerst op).
               </div>
             </div>
           </div>
