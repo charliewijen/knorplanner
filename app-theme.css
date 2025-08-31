@@ -1,4 +1,4 @@
-/* ===============================
+x/* ===============================
    KnorPlanner — app-theme.css
    Doel:
    - Frissere look & feel
@@ -55,14 +55,23 @@ html, body {
 }
 
 /* ----- Header / Navigatie-balk ----- */
+/* Mobiel: GEEN sticky (voorkomt overlappen/“hangen”) */
 header {
-  position: sticky;
-  top: 0;
-  z-index: 50;
+  position: static;
+  z-index: 30;
   background: linear-gradient(180deg, #fff 0%, rgba(255,255,255,.92) 100%);
   backdrop-filter: saturate(1.2) blur(6px);
   border-bottom: 1px solid var(--kp-border);
   padding: 0.75rem 1rem !important;
+}
+
+/* Desktop en groter: sticky aan */
+@media (min-width: 768px) {
+  header {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+  }
 }
 
 /* App-titel */
@@ -89,7 +98,7 @@ header nav button.bg-black.text-white {
   color: #fff !important;
 }
 
-/* Nav horizontaal scrollbaar op mobiel */
+/* Nav horizontaal scrollbaar op mobiel + beter touch-gedrag */
 header nav {
   display: flex;
   overflow-x: auto;
@@ -97,8 +106,17 @@ header nav {
   scrollbar-width: none;
   gap: .5rem;
   padding-bottom: .25rem;
+  touch-action: pan-x;              /* swipe links/rechts zonder verticaal blokkeren */
+  overscroll-behavior-x: contain;   /* geen “elastic” overscroll die content raakt */
+  background: transparent;
 }
 header nav::-webkit-scrollbar { display: none; }
+
+/* Ruimte onder header op desktop (klein beetje) */
+@media (min-width: 768px) {
+  main { margin-top: .25rem; }
+}
+
 
 /* Link kopiëren + Versies compact */
 header details {
