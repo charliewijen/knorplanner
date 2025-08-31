@@ -48,7 +48,7 @@ function MicMatrixView({ currentShowId, sketches = [], people = [], shows = [], 
   const rowType = (sk) => {
     const t = String(sk?.type || sk?.kind || "sketch").toLowerCase();
     if (t.includes("break") || t.includes("pauze")) return "break";
-    if (t.includes("waerse")) return "waerse";
+    if (t.includes("waerse") || t.includes("kuj")) return "waerse";
     if (t === "sketch") return "sketch";
     return "other";
   };
@@ -159,12 +159,12 @@ function MicMatrixView({ currentShowId, sketches = [], people = [], shows = [], 
           <tbody>
             {orderedSketches.map((sk, idx) => {
               const t = rowType(sk);
-              const isNeutral = (t === "break" || t === "waerse" || micRolesForSketch(sk).length === 0);
-              const satisfied = rowIsSatisfied(sk);
               const micOptions = micRolesForSketch(sk);
+              const noMicRoles = micOptions.length === 0;
+              const satisfied = rowIsSatisfied(sk);
 
               return (
-                <tr key={sk.id || idx} className={rowClass(sk)}>
+                <tr key={sk.id || idx} className={rowClass(sk)} data-kind={t}>
                   <td className="border px-2 py-1 text-center">{sk.order ?? (idx+1)}</td>
                   <td className="border px-2 py-1">
                     {sk.title || "(zonder titel)"}
@@ -181,11 +181,18 @@ function MicMatrixView({ currentShowId, sketches = [], people = [], shows = [], 
                   </td>
 
                   {allColumns.map(col => {
+                    // Voor pauze/waerse: helemaal geen select tonen
+                    if (t === "break" || t === "waerse") {
+                      return (
+                        <td key={col.id} className="border px-2 py-1 text-center text-gray-500">—</td>
+                      );
+                    }
+
                     const assigned = currentAssignment(sk, col.id);
-                    // Disabled-criteria:
-                    // - neutrale rij (pauze/waerse/geen mic-rollen)
-                    // - of: alles is al satisfied en dit kanaal is leeg => grijs & niet bedienbaar
-                    const disabled = isNeutral || (satisfied && !assigned);
+                    // Disabled-criteria (alleen voor normale rijen):
+                    // - geen mic-rollen in deze sketch -> disabled (grijs)
+                    // - of alle mic-rollen al voorzien én deze cel nog leeg -> disabled (grijs)
+                    const disabled = noMicRoles || (satisfied && !assigned);
                     const cls = "w-full rounded border px-2 py-1" + (disabled ? " bg-gray-100 text-gray-400 cursor-not-allowed" : "");
 
                     return (
@@ -197,7 +204,6 @@ function MicMatrixView({ currentShowId, sketches = [], people = [], shows = [], 
                           disabled={disabled}
                         >
                           <option value="">{disabled ? "—" : "— kies —"}</option>
-                          {/* Opties tonen we altijd (ook disabled), zodat je ziet wie in aanmerking komt */}
                           {micOptions.map(pid => (
                             <option key={pid} value={pid}>{fullName(pid)}</option>
                           ))}
@@ -209,7 +215,11 @@ function MicMatrixView({ currentShowId, sketches = [], people = [], shows = [], 
               );
             })}
             {orderedSketches.length === 0 && (
-              <tr><td className="border px-2 py-2 text-gray-500 text-center" colSpan={2 + allColumns.length}>Geen items.</td></tr>
+              <tr>
+                <td className="border px-2 py-2 text-gray-500 text-center" colSpan={2 + allColumns.length}>
+                  Geen items.
+                </td>
+              </tr>
             )}
           </tbody>
         </table>
