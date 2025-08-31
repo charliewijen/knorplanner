@@ -1,239 +1,251 @@
-function MicMatrixView({ currentShowId, sketches = [], people = [], shows = [], setState = () => {} }) {
-  // ===== veilige data =====
-  const show = (Array.isArray(shows) ? shows : []).find(s => s.id === currentShowId) || {};
-  const headsetCount = Number.isFinite(show.headsetCount) ? show.headsetCount : 0;
-  const handheldCount = Number.isFinite(show.handheldCount) ? show.handheldCount : 0;
+/* MicMatrixView.jsx
+   - Bovenaan: invoer aantal headsets/handhelds (per show)
+   - Tabel: kolommen = Headset 1..N + Handheld 1..M, rijen = sketches
+   - Per cel kies je 1 persoon uit de rollen die een microfoon nodig hebben
+   - Validaties:
+     * 1 persoon kan in dezelfde sketch niet 2 verschillende microfoons krijgen
+     * Per microfoon slechts 1 persoon
+   - Rijkleur:
+     * Groen als alle rollen-die-mic-nodig-hebben een mic hebben
+     * Anders rood
+   - PAUZE en WAERSE:
+     * tonen GEEN selects meer (geen grijze “kies speler”), cellen leeg
+*/
 
-  const items = (Array.isArray(sketches) ? sketches : [])
-    .filter(sk => sk && sk.showId === currentShowId)
-    .sort((a,b) => (a.order||0) - (b.order||0));
+function MicMatrixView({ currentShowId, sketches = [], people = [], shows = [], setState }) {
+  const activeShow = (shows || []).find(s => s.id === currentShowId);
 
-  const personById = Object.fromEntries((people || []).map(p => [p.id, p]));
-  const fullName = (p) => {
-    if (!p) return "";
-    const fn = (p.firstName || "").trim();
-    const ln = (p.lastName || p.name || "").trim();
-    return [fn, ln].filter(Boolean).join(" ");
+  // ===== headsets/handhelds per show =====
+  const headsetCount = Number.isInteger(activeShow?.headsetCount) ? activeShow.headsetCount : 0;
+  const handheldCount = Number.isInteger(activeShow?.handheldCount) ? activeShow.handheldCount : 0;
+
+  const setCounts = (patch) => {
+    if (!activeShow) return;
+    setState(prev => ({
+      ...prev,
+      shows: (prev.shows || []).map(s => s.id === activeShow.id ? { ...s, ...patch } : s)
+    }));
   };
 
-  // Kanaal-id helpers
-  const headsetIds = Array.from({length: headsetCount}, (_,i) => `HS${i+1}`);
-  const handheldIds = Array.from({length: handheldCount}, (_,i) => `HH${i+1}`);
-  const allChannels = [...headsetIds, ...handheldIds];
+  // ===== helpers =====
+  const orderedSketches = [...(sketches || [])].sort((a,b)=>(a.order||0)-(b.order||0));
 
-  // Opties per sketch: alle rollen met needsMic=true en personId ingevuld (uniek per personId)
-  const requiredForSketch = (sk) => {
-    const roles = Array.isArray(sk.roles) ? sk.roles : [];
-    return Array.from(new Set(
-      roles.filter(r => r && r.needsMic && r.personId).map(r => r.personId)
-    ));
+  const headsetCols = Array.from({ length: Math.max(0, headsetCount) }, (_, i) => ({ id: `H${i+1}`, label: `Headset ${i+1}` }));
+  const handheldCols = Array.from({ length: Math.max(0, handheldCount) }, (_, i) => ({ id: `HH${i+1}`, label: `Handheld ${i+1}` }));
+  const allColumns = [...headsetCols, ...handheldCols];
+
+  const pidToName = (pid) => (people || []).find(p => p.id === pid)?.firstName
+    ? `${(people || []).find(p => p.id === pid)?.firstName} ${(people || []).find(p => p.id === pid)?.lastName}`.trim()
+    : ((people || []).find(p => p.id === pid)?.name || "");
+
+  const rolesNeedingMic = (sketch) => (sketch?.roles || []).filter(r => !!r.needsMic);
+
+  const selectedForSketch = (sketch) => {
+    const ma = sketch?.micAssignments || {};
+    return Object.values(ma).filter(Boolean); // array van personIds (zonder lege strings)
   };
 
-  // Rij compleet? (alle needed personen hebben precies één mic)
-  const isRowComplete = (sk) => {
-    const need = requiredForSketch(sk);
-    if (need.length === 0) return true; // geen mics nodig => automatisch groen
-    const ass = sk.micAssignments && typeof sk.micAssignments === "object" ? sk.micAssignments : {};
-    const assigned = new Set(Object.values(ass).filter(Boolean));
-    return need.every(pid => assigned.has(pid));
+  // mag deze persoon nog kiezen in deze sketch?
+  const isPersonAvailableInSketch = (sketch, pid, currentChannelId = null) => {
+    if (!pid) return true;
+    // 1) persoon moet een rol hebben die mic nodig heeft
+    const allowed = rolesNeedingMic(sketch).some(r => r.personId === pid);
+    if (!allowed) return false;
+    // 2) persoon mag maar 1 mic in dezelfde sketch
+    const ma = sketch?.micAssignments || {};
+    const alreadyOn = Object.entries(ma).find(([ch, who]) => who === pid);
+    if (!alreadyOn) return true;
+    // Toegestaan als het dezelfde channel is (we wijzigen niet van channel)
+    return alreadyOn && alreadyOn[0] === currentChannelId;
   };
 
-  // Optielijst per cel: alle needed personen MIN degene die al zijn toegewezen in deze sketch
-  const optionsForCell = (sk, current) => {
-    const need = requiredForSketch(sk);
-    const ass = sk.micAssignments && typeof sk.micAssignments === "object" ? sk.micAssignments : {};
-    const already = new Set(Object.values(ass).filter(Boolean));
+  // complete row state
+  const isBreak = (sk) => (sk?.kind === "break");
+  const isWaerse = (sk) => (sk?.kind === "waerse");
 
-    // vorige (werkende) aanpak: simpele lijst met filtering,
-    // maar als er al een waarde staat die door filtering zou verdwijnen,
-    // voegen we die bovenaan weer toe zodat je hem ziet.
-    const base = need.filter(pid => !already.has(pid) || pid === current);
+  const rowIsSatisfied = (sk) => {
+    // PAUZE of WAERSE: geen mic nodig -> satisfied (groen)
+    if (isBreak(sk) || isWaerse(sk)) return true;
 
-    // Maak objects met label
-    const opts = base.map(pid => ({ id: pid, label: fullName(personById[pid]) || pid }));
+    const need = rolesNeedingMic(sk);
+    if (need.length === 0) return true; // niets nodig -> satisfied
 
-    // Als current bestaat en niet in de base zat (zou zeldzaam moeten zijn), voeg alsnog toe
-    if (current && !base.includes(current)) {
-      opts.unshift({ id: current, label: fullName(personById[current]) || current });
-    }
-    return opts;
+    const ma = sk?.micAssignments || {};
+    const assignedPids = new Set(Object.values(ma).filter(Boolean));
+    // alle rollen-die-mic-nodig-hebben moeten een mic hebben
+    return need.every(r => assignedPids.has(r.personId));
   };
 
-  // Huidige waarde per kanaal
-  const getAssigned = (sk, ch) => (sk.micAssignments && sk.micAssignments[ch]) || "";
+  const canEditCell = (sk) => !(isBreak(sk) || isWaerse(sk));
 
-  // Schrijven met regels:
-  // - één persoon per mic
-  // - binnen één sketch mag dezelfde persoon niet op meerdere mics
-  const assign = (skId, channel, personId) => {
-    setState(prev => {
-      const list = (prev.sketches || []).map(sk => {
-        if (sk.id !== skId) return sk;
-        const current = (sk.micAssignments && typeof sk.micAssignments === "object") ? {...sk.micAssignments} : {};
-        // verwijder bestaande toewijzing van dezelfde persoon in andere kanalen
-        if (personId) {
-          for (const [ch, pid] of Object.entries(current)) {
-            if (pid === personId && ch !== channel) current[ch] = "";
-          }
+  // ===== acties =====
+  const setAssignment = (sketchId, channelId, personId) => {
+    setState(prev => ({
+      ...prev,
+      sketches: (prev.sketches || []).map(sk => {
+        if (sk.id !== sketchId) return sk;
+
+        // veilig kopiëren
+        const ma = { ...(sk.micAssignments || {}) };
+
+        // als leeg gekozen: weghalen
+        if (!personId) {
+          delete ma[channelId];
+          return { ...sk, micAssignments: ma };
         }
-        current[channel] = personId || "";
-        return { ...sk, micAssignments: current };
-      });
-      return { ...prev, sketches: list };
-    });
+
+        // validaties:
+        // 1) persoon moet mic-rol hebben in deze sketch
+        if (!rolesNeedingMic(sk).some(r => r.personId === personId)) {
+          alert("Deze speler heeft geen rol met microfoon in dit stuk.");
+          return sk;
+        }
+        // 2) persoon mag niet op twee kanalen tegelijk in deze sketch
+        const otherChannel = Object.entries(ma).find(([ch, pid]) => pid === personId && ch !== channelId);
+        if (otherChannel) {
+          alert("Deze speler heeft in dit stuk al een microfoon.");
+          return sk;
+        }
+
+        ma[channelId] = personId;
+        return { ...sk, micAssignments: ma };
+      })
+    }));
   };
 
-  const clearChannel = (skId, channel) => assign(skId, channel, "");
-
-  const rowBg = (sk) => {
-    if (sk.kind === "break") return "bg-yellow-50";
-    if (sk.kind === "waerse") return "bg-blue-50";
-    return isRowComplete(sk) ? "bg-green-50" : "bg-red-50";
+  // opties voor het select-lijstje per cel
+  const optionsForCell = (sketch, channelId) => {
+    const need = rolesNeedingMic(sketch);
+    const ma = sketch?.micAssignments || {};
+    const already = new Set(Object.values(ma).filter(Boolean));
+    return [
+      { value: "", label: "—" },
+      ...need
+        .map(r => r.personId)
+        .filter(pid => pid && (isPersonAvailableInSketch(sketch, pid, channelId)))
+        .filter(pid => {
+          // als deze pid al ergens anders is toegewezen (ander kanaal) -> niet aanbieden
+          const otherChannel = Object.entries(ma).find(([ch, who]) => who === pid && ch !== channelId);
+          return !otherChannel;
+        })
+        .map(pid => ({ value: pid, label: pidToName(pid) || "Onbekend" }))
+        .sort((a,b)=> a.label.localeCompare(b.label, "nl"))
+    ];
   };
 
-  const printNow = () => window.print();
+  // ===== print =====
+  const doPrint = () => {
+    window.print();
+  };
 
-  // Kleine, vaste cellen zodat >=12 kolommen passen zonder horizontaal scrollen
-  // (table-fixed + compacte padding + iets kleinere font-size)
+  // ===== styles =====
+  const rowClass = (sk) => {
+    // voor break/waerse tonen we ‘neutraal/groen’ omdat er niets nodig is
+    return rowIsSatisfied(sk) ? "bg-green-50" : "bg-red-50";
+  };
+
   return (
-    <section id="print-mics" className="rounded-2xl border p-4 bg-white">
-      {/* Compacte stijl alleen voor scherm */}
-      <style>{`
-        @media screen {
-          #mic-fixed-table { table-layout: fixed; width: 100%; }
-          #mic-fixed-table th, #mic-fixed-table td { padding: 6px 6px; }
-          #mic-fixed-table { font-size: 13px; }
-          /* eerste kolommen smal houden */
-          #mic-fixed-table th.col-idx, #mic-fixed-table td.col-idx { width: 36px; }
-          #mic-fixed-table th.col-title, #mic-fixed-table td.col-title { width: 220px; }
-          /* mic-kolommen delen de resterende ruimte gelijkmatig dankzij table-fixed */
-          #mic-fixed-table th, #mic-fixed-table td { word-wrap: break-word; white-space: normal; }
-          /* select compact */
-          #mic-fixed-table select { width: 100%; max-width: 100%; }
-        }
-      `}</style>
-
-      <div className="mb-3 flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">Microfoonschema</h2>
-          <div className="text-xs text-gray-600">
-            Headsets: {headsetCount} • Handhelds: {handheldCount}
-          </div>
+    <section className="rounded-2xl border p-4">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h2 className="text-lg font-semibold">Microfoonschema</h2>
+        <div className="flex gap-2">
+          <button className="rounded-xl border px-3 py-2" onClick={doPrint}>Print / PDF</button>
         </div>
-        <button className="rounded-full border px-3 py-1 text-sm" onClick={printNow}>
-          Print / PDF
-        </button>
       </div>
 
-      {/* Aantallen instellen (verborgen in print) */}
-      <div className="mb-4 flex flex-wrap items-center gap-3 print-hide">
+      {/* tellers */}
+      <div className="mb-3 flex flex-wrap items-center gap-3">
         <label className="text-sm">Headsets</label>
         <input
           type="number"
-          min={0}
           className="w-20 rounded border px-2 py-1"
           value={headsetCount}
-          onChange={(e)=> {
-            const n = parseInt(e.target.value||"0",10);
-            setState(prev => ({
-              ...prev,
-              shows: (prev.shows||[]).map(s => s.id === currentShowId ? {...s, headsetCount: Math.max(0,n)} : s)
-            }));
-          }}
+          min={0}
+          onChange={(e)=> setCounts({ headsetCount: Math.max(0, parseInt(e.target.value||0,10)) })}
         />
-        <label className="text-sm">Handhelds</label>
+        <label className="text-sm ml-4">Handhelds</label>
         <input
           type="number"
-          min={0}
           className="w-20 rounded border px-2 py-1"
           value={handheldCount}
-          onChange={(e)=> {
-            const n = parseInt(e.target.value||"0",10);
-            setState(prev => ({
-              ...prev,
-              shows: (prev.shows||[]).map(s => s.id === currentShowId ? {...s, handheldCount: Math.max(0,n)} : s)
-            }));
-          }}
+          min={0}
+          onChange={(e)=> setCounts({ handheldCount: Math.max(0, parseInt(e.target.value||0,10)) })}
         />
-        <span className="text-xs text-gray-500">Rij wordt groen zodra iedereen met mic een mic heeft.</span>
+        <span className="text-xs text-gray-500">Tip: je kunt 12+ kolommen tonen; print in liggend formaat.</span>
       </div>
 
-      {/* Full width, geen horizontale scroll nodig bij ~12 kolommen */}
-      <div className="mx-0">
-        <table id="mic-fixed-table" className="border text-sm">
+      <div className="overflow-auto">
+        <table className="min-w-full border text-sm">
           <thead>
             <tr className="bg-gray-100">
-              <th className="border px-2 py-1 text-left col-idx">#</th>
-              <th className="border px-2 py-1 text-left col-title">Sketch</th>
-              {headsetIds.map((id, i) => (
-                <th key={id} className="border px-2 py-1 text-left">Headset {i+1}</th>
+              <th className="border px-2 py-1 text-left w-56">Sketch</th>
+              {headsetCols.map(c => (
+                <th key={c.id} className="border px-2 py-1 text-left min-w-[140px]">{c.label}</th>
               ))}
-              {handheldIds.map((id, i) => (
-                <th key={id} className="border px-2 py-1 text-left">Handheld {i+1}</th>
+              {handheldCols.map(c => (
+                <th key={c.id} className="border px-2 py-1 text-left min-w-[140px]">{c.label}</th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {items.map((sk, idx) => {
-              const isBreak = sk.kind === "break";
-              const isWaerse = sk.kind === "waerse";
-              const title = isBreak ? "PAUZE" : isWaerse ? (sk.title || "De Waerse Ku-j") : (sk.title || "");
+            {orderedSketches.map(sk => {
+              const satisfied = rowIsSatisfied(sk);
+              const rowCls = rowClass(sk);
+              const titleLabel = `#${sk.order || "?"} ${sk.title || (sk.kind === "break" ? "PAUZE" : (sk.kind === "waerse" ? "De Waerse Ku-j" : ""))}`;
 
-              const renderCell = (channelId) => {
-                const current = getAssigned(sk, channelId);
-                const disabledRow = isRowComplete(sk);
-
-                // vorige (werkende) dropdown: simpele lijst met filtering,
-                // geen extra flex/knoppen — strak en duidelijk.
-                const opts = optionsForCell(sk, current);
-
+              const renderCell = (col) => {
+                // GEEN selects meer voor pauze/waerse → lege cel
+                if (!canEditCell(sk)) {
+                  return <td key={col.id} className="border px-2 py-1"></td>;
+                }
+                const currentPid = (sk.micAssignments || {})[col.id] || "";
+                const opts = optionsForCell(sk, col.id);
+                const disabled = satisfied && !currentPid; // als rij groen en deze cel leeg -> “grijs”, maar we tonen wel de select (zoals afgesproken eerder) — nu wilde je bij pauze/waerse juist geen select, dat doen we hierboven
                 return (
-                  <td key={channelId} className="border px-2 py-1 align-top">
-                    {/* PRINT: toon alleen naam of leeg */}
-                    {current ? (
-                      <span className="no-truncate">{fullName(personById[current]) || current}</span>
-                    ) : (
-                      <span className="print-only">&nbsp;</span>
-                    )}
-
-                    {/* SCHERM: enkel de select (compact) */}
-<div className={`print-hide ${disabledRow ? "opacity-70" : ""}`} title={disabledRow ? "Rij is compleet, maar je kunt nog wijzigen." : ""}>
-                      <select
-                        className="rounded border px-2 py-1"
-                        value={current || ""}
-                        onChange={(e)=>assign(sk.id, channelId, e.target.value)}
-                      >
-                        <option value="">— kies speler —</option>
-                        {opts.map(o => (
-                          <option key={o.id} value={o.id}>{o.label}</option>
-                        ))}
-                      </select>
-                    </div>
+                  <td key={col.id} className="border px-2 py-1">
+                    <select
+                      className={`w-full rounded border px-2 py-1 ${disabled ? "opacity-50 pointer-events-none" : ""}`}
+                      value={currentPid}
+                      onChange={(e)=> setAssignment(sk.id, col.id, e.target.value)}
+                    >
+                      {opts.map(o => (
+                        <option key={o.value || "blank"} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
                   </td>
                 );
               };
 
               return (
-                <tr key={sk.id} className={rowBg(sk)}>
-                  <td className="border px-2 py-1 align-top col-idx">{sk.order || idx+1}</td>
-                  <td className="border px-2 py-1 align-top col-title whitespace-normal">
-                    <div className="no-truncate font-medium">{title}</div>
+                <tr key={sk.id} className={rowCls}>
+                  <td className="border px-2 py-1 font-medium whitespace-nowrap">
+                    {titleLabel}
                   </td>
-                  {headsetIds.map(renderCell)}
-                  {handheldIds.map(renderCell)}
+                  {allColumns.map(renderCell)}
                 </tr>
               );
             })}
-            {items.length === 0 && (
+            {orderedSketches.length === 0 && (
               <tr>
-                <td className="border px-2 py-2 text-gray-500 text-center" colSpan={2 + allChannels.length}>
-                  Geen items in deze show.
+                <td className="border px-2 py-2 text-gray-500 text-center" colSpan={1 + allColumns.length}>
+                  Nog geen items.
                 </td>
               </tr>
             )}
           </tbody>
         </table>
       </div>
+
+      {/* Print-styles: landscape & tabel paginabreed */}
+      <style>{`
+        @media print {
+          @page { size: A4 landscape; margin: 10mm; }
+          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          header, .fixed, .sticky { display: none !important; }
+          table { width: 100% !important; }
+          select { appearance: none; -webkit-appearance: none; border: none; background: transparent; padding: 0; }
+        }
+      `}</style>
     </section>
   );
 }
