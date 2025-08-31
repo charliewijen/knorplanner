@@ -70,7 +70,7 @@ tbody tr:last-child td{border-bottom:none!important;}
 .bg-red-50{background:var(--kp-bad)!important;}
 
 /* Lege-tekst grapje */
-.text-gray-500:empty::after, td:empty::after{content:"— niks te zien, doorlopen —";color:#9aa0a6;font-style:italic;opacity:.7;}
+.text-gray-500:empty::after, td:empty::after{content:"—";color:#9aa0a6;font-style:italic;opacity:.7;}
 
 /* Fixed bottom banner (optioneel element .fixed-tools) */
 .fixed-tools{
