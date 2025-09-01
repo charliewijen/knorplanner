@@ -206,6 +206,40 @@ function App() {
     })();
   }, []);
 
+  // --- Blok-tijden helpers voor Programma ---
+const mmToHHMM = (m) => `${String(Math.floor((m % 1440) / 60)).padStart(2,"0")}:${String(m % 60).padStart(2,"0")}`;
+
+const startMinRS = (typeof parseTimeToMin === "function")
+  ? parseTimeToMin(activeShow?.startTime || "19:30")
+  : (() => { const [h=19,m=30] = String(activeShow?.startTime||"19:30").split(":").map(n=>parseInt(n,10)); return h*60+m; })();
+
+const segmentsRS = React.useMemo(() => {
+  const segs = []; let block = [];
+  const flush = () => {
+    if (!block.length) return;
+    const duration = block.reduce((sum,it)=> sum + (parseInt(it.durationMin||0,10)||0), 0);
+    segs.push({ type:"block", count:block.length, durationMin:duration });
+    block = [];
+  };
+  for (const it of (showSketches||[])) {
+    const kind = String(it?.kind||"sketch").toLowerCase();
+    if (kind === "break") { flush(); segs.push({ type:"pause", durationMin: parseInt(it.durationMin||0,10)||0 }); }
+    else { block.push(it); }
+  }
+  flush();
+  return segs;
+}, [showSketches]);
+
+const timedSegmentsRS = React.useMemo(() => {
+  let cur = startMinRS, blk = 0;
+  return segmentsRS.map(seg => {
+    const start = cur, end = cur + (seg.durationMin||0); cur = end;
+    const label = seg.type === "pause" ? "Pauze" : `Blok ${++blk}`;
+    return { ...seg, label, startStr: mmToHHMM(start), endStr: mmToHHMM(end) };
+  });
+}, [segmentsRS, startMinRS]);
+
+
   // Realtime: luister naar updates op dezelfde rij
   React.useEffect(() => {
     const ch = window.SUPA
@@ -892,34 +926,64 @@ if (shareTab === "deck") {
 
       <main className="mt-6">
         {tab === "runsheet" && (
-          <div className="grid gap-4">
-            {/* Begintijd instellen */}
-            <div className="rounded-2xl border p-3 flex items-center gap-3">
-              <label className="text-sm text-gray-700">Begintijd</label>
-              <input
-                type="time"
-                className="rounded border px-2 py-1"
-                value={activeShow?.startTime || "19:30"}
-                onChange={(e) => updateActiveShow({ startTime: e.target.value })}
-              />
-              <span className="text-xs text-gray-500">
-                Wordt gebruikt om tijden in de runsheet te berekenen.
-              </span>
-            </div>
+  <div className="grid gap-4">
+    {/* Begintijd instellen */}
+    <div className="rounded-2xl border p-3 flex items-center gap-3">
+      <label className="text-sm text-gray-700">Begintijd</label>
+      <input
+        type="time"
+        className="rounded border px-2 py-1"
+        value={activeShow?.startTime || "19:30"}
+        onChange={(e) => updateActiveShow({ startTime: e.target.value })}
+      />
+      <span className="text-xs text-gray-500">
+        Wordt gebruikt om tijden in de runsheet te berekenen.
+      </span>
+    </div>
 
-            {(micWarnings?.length>0 || castWarnings?.length>0) && (
-              <div className="rounded-xl border p-3">
-                <div className="font-semibold mb-2">Waarschuwingen</div>
-                <ul className="text-sm list-disc pl-5 space-y-1">
-                  {micWarnings.map((w,i)=> <li key={`mw-${i}`}>Mic conflict: kanaal <b>{w.channelId}</b> van “{w.from}” naar “{w.to}”.</li>)}
-                  {castWarnings.map((w,i)=> <li key={`cw-${i}`}>Snel wisselen voor speler <b>{personById[w.personId]?.name||w.personId}</b> van “{w.from}” naar “{w.to}”.</li>)}
-                </ul>
-              </div>
-            )}
-
-            <RunSheetView runSheet={runSheet} show={activeShow} />
-          </div>
+    {/* NIEUW: Blok-overzicht (zelfde logica als bij Voorstellingen) */}
+    <div className="rounded-2xl border p-3 bg-white/60">
+      <div className="text-sm text-gray-700">
+        <b>Start:</b> {mmToHHMM(startMinRS)} • <b>Totale tijd:</b> {runSheet?.totalMin || 0} min
+      </div>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {timedSegmentsRS.length ? timedSegmentsRS.map((seg, i) => (
+          <span
+            key={i}
+            className={`rounded-full border px-3 py-1 text-xs whitespace-nowrap ${
+              seg.type === "pause" ? "bg-yellow-50 border-yellow-200" : "bg-gray-50"
+            }`}
+            title={
+              seg.type === "pause"
+                ? `Pauze • ${seg.durationMin} min • ${seg.startStr}–${seg.endStr}`
+                : `${seg.label} • ${seg.count} ${seg.count===1?"item":"items"} • ${seg.durationMin} min • ${seg.startStr}–${seg.endStr}`
+            }
+          >
+            {seg.type === "pause"
+              ? <>Pauze: {seg.durationMin} min • {seg.startStr}–{seg.endStr}</>
+              : <>{seg.label}: {seg.count} {seg.count===1?"item":"items"} • {seg.durationMin} min • {seg.startStr}–{seg.endStr}</>
+            }
+          </span>
+        )) : (
+          <span className="text-xs text-gray-500">Nog geen blokken.</span>
         )}
+      </div>
+    </div>
+
+    {(micWarnings?.length>0 || castWarnings?.length>0) && (
+      <div className="rounded-xl border p-3">
+        <div className="font-semibold mb-2">Waarschuwingen</div>
+        <ul className="text-sm list-disc pl-5 space-y-1">
+          {micWarnings.map((w,i)=> <li key={`mw-${i}`}>Mic conflict: kanaal <b>{w.channelId}</b> van “{w.from}” naar “{w.to}”.</li>)}
+          {castWarnings.map((w,i)=> <li key={`cw-${i}`}>Snel wisselen voor speler <b>{personById[w.personId]?.name||w.personId}</b> van “{w.from}” naar “{w.to}”.</li>)}
+        </ul>
+      </div>
+    )}
+
+    <RunSheetView runSheet={runSheet} show={activeShow} />
+  </div>
+)}
+
 
         {tab === "cast" && (
           <TabErrorBoundary>
