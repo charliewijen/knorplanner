@@ -35,6 +35,7 @@ const saveStateRemote = async (state) => {
   try {
     await window.SUPA.from(TABLE).upsert({ id: ROW_ID, data: state });
   } catch {}
+  // fallback cache (niet leidend)
   try {
     localStorage.setItem("sll-backstage-v2", JSON.stringify(state));
   } catch {}
@@ -55,12 +56,19 @@ function withDefaults(s = {}) {
   // Vast wachtwoord = "Appelsap123!"
   const FIXED_PW_HASH = "7aa45aa3ebf56136fbb2064bb0756d0cb29a472a7ab06c62f5ab8249c28749b5";
   return {
+    // kern-data
     people: Array.isArray(s.people) ? s.people : [],
     mics: Array.isArray(s.mics) ? s.mics : [],
     shows: Array.isArray(s.shows) && s.shows.length ? s.shows : [newEmptyShow()],
     sketches: Array.isArray(s.sketches) ? s.sketches : [],
     rehearsals: Array.isArray(s.rehearsals) ? s.rehearsals : [],
-    prKit: Array.isArray(s.prKit) ? s.prKit : [],               // <<<<< NIEUW
+    prKit: Array.isArray(s.prKit) ? s.prKit : [],
+    // gedeelde versies (nu in Supabase mee opgeslagen)
+    versions: Array.isArray(s.versions) ? s.versions : [],
+    // sync meta
+    rev: Number.isFinite(s.rev) ? s.rev : 0, // monotone timestamp (ms)
+    lastSavedBy: s.lastSavedBy || null,
+
     // app-instellingen
     settings: {
       ...(s.settings || {}),
@@ -137,6 +145,9 @@ function App() {
   const [tab, setTab] = React.useState("planner");
   const [syncStatus, setSyncStatus] = React.useState("Nog niet gesynced");
 
+  // Flag om save-loop bij realtime te voorkomen
+  const applyingRemoteRef = React.useRef(false);
+
   // ---- History (undo/redo) ----
   const [past, setPast] = React.useState([]);
   const [future, setFuture] = React.useState([]);
@@ -145,11 +156,30 @@ function App() {
   const undo = () => { if (!past.length) return; const prev = past[past.length-1]; setPast(past.slice(0,-1)); setFuture((f)=>[state, ...f]); setState(prev); };
   const redo = () => { if (!future.length) return; const nxt = future[0]; setFuture(future.slice(1)); setPast((p)=>[...p, state]); setState(nxt); };
 
-  // ---- Named versions ----
-  const [versions, setVersions] = React.useState(() => { try { return JSON.parse(localStorage.getItem(`sll-backstage-v2:versions`)||"[]"); } catch { return []; } });
-  const saveVersion = (name) => { const v = { id: uid(), name: name||`Versie ${new Date().toLocaleString()}`, ts: Date.now(), data: state }; const next = [...versions, v]; setVersions(next); localStorage.setItem(`sll-backstage-v2:versions`, JSON.stringify(next)); };
-  const restoreVersion = (id) => { const v = versions.find((x)=>x.id===id); if (!v) return; pushHistory(state); applyState(v.data); };
-  const deleteVersion = (id) => { const next = versions.filter((v)=>v.id!==id); setVersions(next); localStorage.setItem(`sll-backstage-v2:versions`, JSON.stringify(next)); };
+  // ---- Named versions (NU gedeeld via Supabase in state.versions) ----
+  const saveVersion = (name) => {
+    const v = {
+      id: uid(),
+      name: name || `Versie ${new Date().toLocaleString()}`,
+      ts: Date.now(),
+      // snapshot zonder recursieve versions
+      data: JSON.parse(JSON.stringify({ ...state, versions: [] })),
+    };
+    pushHistory(state);
+    setState(prev => ({ ...prev, versions: [...(prev.versions || []), v] }));
+  };
+  const restoreVersion = (id) => {
+    const v = (state.versions || []).find((x)=>x.id===id);
+    if (!v) return;
+    pushHistory(state);
+    // behoud huidige versions; herstel rest uit snapshot (zonder versions)
+    const restored = withDefaults({ ...v.data, versions: state.versions || [] });
+    setState(restored);
+  };
+  const deleteVersion = (id) => {
+    pushHistory(state);
+    setState(prev => ({ ...prev, versions: (prev.versions || []).filter(v=>v.id!==id) }));
+  };
 
   // Bij eerste keer laden
   React.useEffect(() => {
@@ -160,17 +190,13 @@ function App() {
 
       const fix = (arr=[]) => arr.map(x => x && (x.showId ? x : { ...x, showId: firstShowId }));
       const migrated = {
-  ...merged,
-  sketches: fix(merged.sketches),
-  people: fix(merged.people),
-  mics: fix(merged.mics),
-  rehearsals: fix(merged.rehearsals).map(r => ({
-    ...r,
-    // alleen toevoegen als het nog niet bestaat -> GEEN data verlies
-    time: typeof r.time === "string" ? r.time : "",
-  })),
-  prKit: fix(merged.prKit),               // <<<<< NIEUW
-};
+        ...merged,
+        sketches: fix(merged.sketches),
+        people: fix(merged.people),
+        mics: fix(merged.mics),
+        rehearsals: fix(merged.rehearsals),
+        prKit: fix(merged.prKit),
+      };
 
       setState(migrated);
       setActiveShowId((prev) => {
@@ -180,12 +206,57 @@ function App() {
     })();
   }, []);
 
-  // Opslaan bij elke wijziging
+  // Realtime: luister naar updates op dezelfde rij
   React.useEffect(() => {
+    const ch = window.SUPA
+      ?.channel?.("planner_live")
+      ?.on?.(
+        "postgres_changes",
+        { event: "*", schema: "public", table: TABLE, filter: `id=eq.${ROW_ID}` },
+        (payload) => {
+          const remoteData = payload?.new?.data;
+          if (!remoteData) return;
+          const incoming = withDefaults(remoteData);
+          // Alleen toepassen als nieuwer
+          if ((incoming.rev || 0) > (state.rev || 0)) {
+            applyingRemoteRef.current = true;
+            // behoud actieve show als die nog bestaat
+            const nextActiveId = (activeShowId && (incoming.shows || []).some(s=>s.id===activeShowId))
+              ? activeShowId
+              : (incoming.shows?.[0]?.id || null);
+            setState(incoming);
+            setActiveShowId(nextActiveId);
+            setSyncStatus("🔄 Bijgewerkt door een ander apparaat");
+            // kleine delay om save-effect te laten zien dat dit remote was
+            setTimeout(() => { applyingRemoteRef.current = false; }, 0);
+          }
+        }
+      )
+      ?.subscribe?.();
+
+    return () => {
+      if (ch && window.SUPA?.removeChannel) window.SUPA.removeChannel(ch);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeShowId, state.rev]);
+
+  // Opslaan bij elke lokale wijziging (debounced)
+  React.useEffect(() => {
+    // share-pagina's nooit saven
+    const p = new URLSearchParams((location.hash||"").replace("#",""));
+    const shareTab = p.get("share");
+    if (shareTab) return;
+
+    // Als we net een remote update toepasten: niet opnieuw saven
+    if (applyingRemoteRef.current) return;
+
     const t = setTimeout(async () => {
       try {
-        await saveStateRemote(state);
+        const next = { ...state, rev: Date.now() };
+        await saveStateRemote(next);
         setSyncStatus("✅ Gesynced om " + new Date().toLocaleTimeString());
+        // We laten state.rev updaten via realtime echo, maar als realtime uit staat,
+        // is het niet erg dat rev lokaal iets achterloopt.
       } catch {
         setSyncStatus("⚠️ Opslaan mislukt");
       }
@@ -197,26 +268,12 @@ function App() {
   React.useEffect(()=>{ const fromHash = new URLSearchParams((location.hash||'').replace('#','')).get('tab'); if (fromHash) setTab(fromHash); },[]);
   React.useEffect(()=>{ const sp = new URLSearchParams((location.hash||'').replace('#','')); sp.set('tab', tab); history.replaceState(null, '', `#${sp.toString()}`); },[tab]);
 
-  // ====== SHARE PARAMS ======
-  const shareTab = React.useMemo(() => {
-    const p = new URLSearchParams((location.hash || "").replace("#",""));
-    return p.get("share") || null;
-  }, [location.hash]);
-
-  // show-id uit de hash (= pinnen naar juiste show)
-  const shareShowId = React.useMemo(() => {
-    const p = new URLSearchParams((location.hash || "").replace("#",""));
-    return p.get("show") || null;
-  }, [location.hash]);
-
   const activeShow = React.useMemo(() => {
     const arr = state.shows || [];
     if (!arr.length) return null;
-    // in share-modus: prefer show-id uit link; anders de lokale selectie
-    const preferId = (shareTab && shareShowId) ? shareShowId : activeShowId;
-    const found = preferId ? arr.find(s => s.id === preferId) : null;
+    const found = activeShowId ? arr.find(s => s.id === activeShowId) : null;
     return found || arr[0] || null;
-  }, [state.shows, activeShowId, shareTab, shareShowId]);
+  }, [state.shows, activeShowId]);
 
   // Filter per showId
   const showSketches = React.useMemo(() => {
@@ -262,7 +319,7 @@ function App() {
       ...prev,
       rehearsals: [
         ...(prev.rehearsals || []),
-        { id: uid(), showId: activeShow.id, date: todayStr(), time: "", location: "", comments: "", absentees: [], type: "Repetitie" }
+        { id: uid(), showId: activeShow.id, date: todayStr(), time: "19:00", location: "Grote zaal - Buurthuis", comments: "", absentees: [], type: "Reguliere Repetitie" }
       ]
     }));
   };
@@ -293,6 +350,7 @@ function App() {
   // ---------- Show mutatie ----------
   const updateActiveShow = (patch) => {
     if (!activeShow) return;
+    pushHistory(state);
     setState((prev) => ({
       ...prev,
       shows: (prev.shows || []).map((s) =>
@@ -372,6 +430,12 @@ function App() {
     alert("Show gedupliceerd. Je kijkt nu naar de kopie.");
   };
 
+  // ====== READONLY SHARE-MODE ======
+  const shareTab = React.useMemo(() => {
+    const p = new URLSearchParams((location.hash || "").replace("#",""));
+    return p.get("share") || null;
+  }, [location.hash]);
+
   // ====== PASSWORD LOCK (alleen voor hoofd-app, niet voor share) ======
   const [locked, setLocked] = React.useState(false);
 
@@ -397,7 +461,7 @@ function App() {
   // VASTE LOCK-ACTIES: geen eigen wachtwoord kiezen; altijd "Appelsap123!"
   const lockNow = async () => {
     const FIXED_PW_HASH = "7aa45aa3ebf56136fbb2064bb0756d0cb29a472a7ab06c62f5ab8249c28749b5"; // "Appelsap123!"
-    try { await saveStateRemote(state); } catch {}
+    try { await saveStateRemote({ ...state, rev: Date.now() }); } catch {}
     setState(prev => ({
       ...prev,
       settings: { ...(prev.settings||{}), requirePassword: true, appPasswordHash: FIXED_PW_HASH }
@@ -443,8 +507,6 @@ function App() {
   }, [shareTab, state.settings?.appPasswordHash]); // lockNow is stabiel genoeg in deze context
 
   // ====== SHARE ROUTES ======
-
-  // Agenda (read-only)
   if (shareTab === "rehearsals") {
     return (
       <div className="mx-auto max-w-6xl p-4 share-only">
@@ -463,7 +525,6 @@ function App() {
     );
   }
 
-  // Rolverdeling (read-only)
   if (shareTab === "rolverdeling") {
     return (
       <div className="mx-auto max-w-6xl p-4">
@@ -481,7 +542,6 @@ function App() {
     );
   }
 
-  // PR-Kit (read-only)
   if (shareTab === "prkit") {
     return (
       <div className="mx-auto max-w-6xl p-4">
@@ -499,7 +559,6 @@ function App() {
     );
   }
 
-  // Programma (read-only)
   if (shareTab === "runsheet") {
     return (
       <div className="mx-auto max-w-6xl p-4 share-only">
@@ -512,7 +571,6 @@ function App() {
     );
   }
 
-  // Microfoons (read-only)
   if (shareTab === "mics") {
     return (
       <div className="mx-auto max-w-6xl p-4 share-only">
@@ -536,184 +594,6 @@ function App() {
         />
         <div className="text-sm text-gray-500 mt-6">
           Dit is een gedeelde link, alleen-lezen.
-        </div>
-      </div>
-    );
-  }
-
-  // Sketches (read-only, alles onder elkaar) – zodat de link hieronder werkt
-  if (shareTab === "scripts") {
-    const nameFor = (pid) => {
-      const p = personById[pid];
-      if (!p) return "";
-      const fn = (p.firstName || "").trim();
-      const ln = (p.lastName || p.name || "").trim();
-      return [fn, ln].filter(Boolean).join(" ");
-    };
-
-    const onlySketches = (showSketches || [])
-      .filter(s => (s?.kind || "sketch") === "sketch")
-      .sort((a,b) => (a.order||0) - (b.order||0));
-
-    return (
-      <div className="mx-auto max-w-6xl p-4 share-only">
-        <h1 className="text-2xl font-bold mb-4">Sketches (live)</h1>
-
-        <div className="space-y-8">
-          {onlySketches.map((sk, i) => {
-            const roles  = Array.isArray(sk.roles) ? sk.roles : [];
-            const links  = (sk.links && typeof sk.links === "object") ? sk.links : {};
-            const sounds = Array.isArray(sk.sounds) ? sk.sounds : [];
-            const place  = sk.stagePlace === "voor" ? "Voor de gordijn" : "Podium";
-
-            return (
-              <section key={sk.id || i} className="rounded-xl border p-4">
-                <h2 className="text-lg font-semibold">
-                  {sk.title || "(zonder titel)"}{" "}
-                  <span className="text-gray-500 font-normal">• {sk.durationMin || 0} min</span>
-                </h2>
-
-                <div className="mt-2 text-sm">
-                  <div className="mb-2"><strong>Plek:</strong> {place}</div>
-
-                  <div className="mb-3">
-                    <strong>Rollen</strong>
-                    {roles.length ? (
-                      <table className="w-full border-collapse text-sm mt-1">
-                        <thead>
-                          <tr className="bg-gray-100">
-                            <th className="border px-2 py-1 text-left">Rolnaam</th>
-                            <th className="border px-2 py-1 text-left">Cast</th>
-                            <th className="border px-2 py-1 text-left">Mic?</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {roles.map((r, idx) => (
-                            <tr key={idx} className="odd:bg-gray-50">
-                              <td className="border px-2 py-1">{r?.name || ""}</td>
-                              <td className="border px-2 py-1">{nameFor(r?.personId)}</td>
-                              <td className="border px-2 py-1">{r?.needsMic ? "Ja" : "Nee"}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    ) : (
-                      <div className="text-gray-500">— Geen rollen —</div>
-                    )}
-                  </div>
-
-                  <div className="mb-3">
-                    <strong>Links</strong>
-                    <div className="text-gray-700">
-                      Tekst: {links?.text ? (
-                        <a className="underline" href={links.text} target="_blank" rel="noopener noreferrer">{links.text}</a>
-                      ) : <em className="text-gray-500">—</em>}
-                    </div>
-                    <div className="text-gray-700">
-                      Licht/geluid: {links?.tech ? (
-                        <a className="underline" href={links.tech} target="_blank" rel="noopener noreferrer">{links.tech}</a>
-                      ) : <em className="text-gray-500">—</em>}
-                    </div>
-                  </div>
-
-                  <div className="mb-3">
-                    <strong>Geluiden & muziek</strong>
-                    {sounds.length ? (
-                      <table className="w-full border-collapse text-sm mt-1">
-                        <thead>
-                          <tr className="bg-gray-100">
-                            <th className="border px-2 py-1 text-left">Omschrijving</th>
-                            <th className="border px-2 py-1 text-left">Link</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {sounds.map((x, j) => (
-                            <tr key={x.id || j} className="odd:bg-gray-50">
-                              <td className="border px-2 py-1">{x.label || ""}</td>
-                              <td className="border px-2 py-1">
-                                {x.url ? (
-                                  <a className="underline" href={x.url} target="_blank" rel="noopener noreferrer">{x.url}</a>
-                                ) : <span className="text-gray-500">—</span>}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    ) : (
-                      <div className="text-gray-500">—</div>
-                    )}
-                  </div>
-
-                  <div>
-                    <strong>Decor</strong>
-                    <div>{sk.decor ? sk.decor : <span className="text-gray-500">—</span>}</div>
-                  </div>
-                </div>
-              </section>
-            );
-          })}
-
-          {!onlySketches.length && (
-            <div className="text-sm text-gray-500">Geen sketches voor deze show.</div>
-          )}
-        </div>
-
-        <div className="text-sm text-gray-500 mt-6">
-          Dit is een gedeelde link, alleen-lezen. Wijzigingen kunnen alleen in de hoofd-app.
-        </div>
-      </div>
-    );
-  }
-
-  // >>> NIEUW: DRAAIBOEK – publieke overzichtspagina met ALLE deel-links voor deze show
-  if (shareTab === "draaiboek") {
-    const base = `${location.origin}${location.pathname}`;
-    const sid = activeShow?.id || "";
-    const mk = (k) => `${base}#share=${k}&show=${sid}`;
-    const showTitle = activeShow?.name || "Onbekende show";
-    const pig = "https://cdn-icons-png.flaticon.com/512/616/616584.png";
-
-    const links = [
-      { key: "runsheet",     label: "Programma (live)" },
-      { key: "mics",         label: "Microfoons (live)" },
-      { key: "rehearsals",   label: "Agenda (live)" },
-      { key: "rolverdeling", label: "Rolverdeling (live)" },
-      { key: "scripts",      label: "Sketches (live)" },
-      { key: "prkit",        label: "PR-Kit (live)" },
-    ];
-
-    return (
-      <div className="mx-auto max-w-3xl md:max-w-5xl p-4">
-        <div className="flex items-center gap-3 mb-2">
-          <img src={pig} alt="" className="w-7 h-7 md:w-9 md:h-9" aria-hidden="true" />
-          <h1 className="text-2xl md:text-3xl font-extrabold">
-            Draaiboek: {showTitle}
-          </h1>
-        </div>
-        <p className="text-sm text-gray-600 mb-6">
-          Beste artiesten en medewerkers,<br />
-          hieronder vind je alle links die nodig zijn voor deze show.
-        </p>
-
-        <div className="grid sm:grid-cols-2 gap-3">
-          {links.map(({key,label}) => (
-            <a
-              key={key}
-              href={mk(key)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="group flex items-center gap-3 rounded-xl border p-3 hover:shadow transition"
-              title={`${label} openen in nieuw tabblad`}
-            >
-              <img src={pig} alt="" className="w-5 h-5 opacity-70 group-hover:opacity-100" aria-hidden="true" />
-              <div className="font-medium">{label}</div>
-              <span className="ml-auto text-xs text-gray-500 group-hover:underline">open</span>
-            </a>
-          ))}
-        </div>
-
-        <div className="text-xs text-gray-500 mt-6">
-          Deze pagina is openbaar en alleen-lezen. Elk item opent in een nieuw tabblad.
         </div>
       </div>
     );
@@ -902,10 +782,11 @@ function App() {
       <div className="fixed left-4 bottom-4 z-50">
         <details className="group w-[min(92vw,380px)]">
           <summary className="cursor-pointer inline-flex items-center gap-2 rounded-full bg-black text-white px-4 py-2 shadow-lg select-none">
-            <img src="https://cdn-icons-png.flaticon.com/512/616/616584.png" alt="" className="w-4 h-4" aria-hidden="true" />
-            Hulpmiddelen
-            <span className="text-xs opacity-80">{syncStatus}</span>
-          </summary>
+  <img src="https://cdn-icons-png.flaticon.com/512/616/616584.png" alt="" className="w-4 h-4" aria-hidden="true" />
+  Hulpmiddelen
+  <span className="text-xs opacity-80">{syncStatus}</span>
+</summary>
+
 
           <div className="mt-2 rounded-xl border bg-white/95 backdrop-blur p-3 shadow-xl space-y-3">
             <div className="flex gap-2 flex-wrap">
@@ -915,7 +796,7 @@ function App() {
                 className="rounded-full border px-3 py-1 text-sm"
                 onClick={()=>{ const n = prompt('Naam voor versie:','Snapshot'); if(n!==null) saveVersion(n); }}
               >
-                Save version
+                Save version (gedeeld)
               </button>
               <button
                 className="rounded-full border px-3 py-1 text-sm"
@@ -930,9 +811,9 @@ function App() {
             </div>
 
             <div className="rounded-lg border p-2">
-              <div className="font-semibold text-sm mb-1">Versies</div>
+              <div className="font-semibold text-sm mb-1">Versies (gedeeld)</div>
               <ul className="space-y-1 text-sm max-h-48 overflow-auto pr-1">
-                {versions.map(v=> (
+                {(state.versions || []).map(v=> (
                   <li key={v.id} className="flex items-center justify-between gap-2">
                     <span className="truncate">
                       {v.name} <span className="text-gray-500">({new Date(v.ts).toLocaleString()})</span>
@@ -943,33 +824,18 @@ function App() {
                     </span>
                   </li>
                 ))}
-                {versions.length===0 && <li className="text-gray-500">Nog geen versies.</li>}
+                {(state.versions || []).length===0 && <li className="text-gray-500">Nog geen versies.</li>}
               </ul>
             </div>
 
             {/* Deel-links */}
             <div className="rounded-lg border p-2 space-y-2">
               <div className="font-semibold text-sm">Deel links (alleen-lezen)</div>
-
-              {/* >>> Opvallende 'deel alles' knop */}
-              <button
-                className="inline-flex items-center gap-2 rounded-full bg-black text-white px-4 py-1.5 text-sm shadow hover:opacity-90"
-                onClick={()=>{
-                  const url = `${location.origin}${location.pathname}#share=draaiboek&show=${activeShow?.id || ""}`;
-                  navigator.clipboard?.writeText(url);
-                  alert("Gekopieerd:\n" + url);
-                }}
-                title="Draaiboek (alle links) kopiëren"
-              >
-                <img src="https://cdn-icons-png.flaticon.com/512/616/616584.png" alt="" className="w-4 h-4" aria-hidden="true" />
-                Draaiboek (alle links)
-              </button>
-
-              <div className="flex flex-wrap gap-2 pt-1">
+              <div className="flex flex-wrap gap-2">
                 <button
                   className="rounded-full border px-3 py-1 text-sm"
                   onClick={()=>{
-                    const url = `${location.origin}${location.pathname}#share=runsheet&show=${activeShow?.id || ""}`;
+                    const url = `${location.origin}${location.pathname}#share=runsheet`;
                     navigator.clipboard?.writeText(url);
                     alert("Gekopieerd:\n" + url);
                   }}
@@ -980,7 +846,7 @@ function App() {
                 <button
                   className="rounded-full border px-3 py-1 text-sm"
                   onClick={()=>{
-                    const url = `${location.origin}${location.pathname}#share=mics&show=${activeShow?.id || ""}`;
+                    const url = `${location.origin}${location.pathname}#share=mics`;
                     navigator.clipboard?.writeText(url);
                     alert("Gekopieerd:\n" + url);
                   }}
@@ -991,7 +857,7 @@ function App() {
                 <button
                   className="rounded-full border px-3 py-1 text-sm"
                   onClick={()=>{
-                    const url = `${location.origin}${location.pathname}#share=rehearsals&show=${activeShow?.id || ""}`;
+                    const url = `${location.origin}${location.pathname}#share=rehearsals`;
                     navigator.clipboard?.writeText(url);
                     alert("Gekopieerd:\n" + url);
                   }}
@@ -1002,7 +868,7 @@ function App() {
                 <button
                   className="rounded-full border px-3 py-1 text-sm"
                   onClick={()=>{
-                    const url = `${location.origin}${location.pathname}#share=rolverdeling&show=${activeShow?.id || ""}`;
+                    const url = `${location.origin}${location.pathname}#share=rolverdeling`;
                     navigator.clipboard?.writeText(url);
                     alert("Gekopieerd:\n" + url);
                   }}
@@ -1013,23 +879,12 @@ function App() {
                 <button
                   className="rounded-full border px-3 py-1 text-sm"
                   onClick={()=>{
-                    const url = `${location.origin}${location.pathname}#share=prkit&show=${activeShow?.id || ""}`;
+                    const url = `${location.origin}${location.pathname}#share=prkit`;
                     navigator.clipboard?.writeText(url);
                     alert("Gekopieerd:\n" + url);
                   }}
                 >
                   PR-Kit
-                </button>
-
-                <button
-                  className="rounded-full border px-3 py-1 text-sm"
-                  onClick={()=>{
-                    const url = `${location.origin}${location.pathname}#share=scripts&show=${activeShow?.id || ""}`;
-                    navigator.clipboard?.writeText(url);
-                    alert("Gekopieerd:\n" + url);
-                  }}
-                >
-                  Sketches
                 </button>
               </div>
             </div>
