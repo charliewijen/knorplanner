@@ -639,6 +639,151 @@ if (shareTab === "mics") {
   );
 }
 
+  if (shareTab === "scripts") {
+  // helpers voor read-only weergave
+  const personIndex = Object.fromEntries(sharePeople.map(p => [p.id, p]));
+  const fullName = (pidOrObj) => {
+    const p = typeof pidOrObj === "string" ? personIndex[pidOrObj] : pidOrObj;
+    if (!p) return "";
+    const fn = (p.firstName || "").trim();
+    const ln = (p.lastName || p.name || "").trim();
+    return [fn, ln].filter(Boolean).join(" ");
+  };
+  const ensureDefaultsLocal = (sk) => {
+    const links = sk?.links && typeof sk.links === "object" ? sk.links : { text: "", tech: "" };
+    return {
+      ...sk,
+      stagePlace: sk?.stagePlace || "podium",
+      durationMin: Number.isFinite(sk?.durationMin) ? sk.durationMin : 0,
+      roles: Array.isArray(sk?.roles) ? sk.roles : [],
+      links,
+      sounds: Array.isArray(sk?.sounds) ? sk.sounds : [],
+      decor: sk?.decor || "",
+    };
+  };
+
+  const onlySketches = (shareSketches || []).filter(s => (s?.kind || "sketch") === "sketch");
+
+  return (
+    <div className="mx-auto max-w-6xl p-4">
+      <h1 className="text-2xl font-bold mb-4">Sketches (live)</h1>
+
+      <div className="space-y-6">
+        {onlySketches.map((sk, i) => {
+          const s = ensureDefaultsLocal(sk);
+          return (
+            <div key={s.id || i} className="rounded-xl border p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                <div className="font-semibold">
+                  {`#${s.order || "?"} ${s.title || "(zonder titel)"}`}
+                </div>
+                <div className="text-sm text-gray-600">
+                  {(s.durationMin || 0)} min · {s.stagePlace === "voor" ? "Voor de gordijn" : "Podium"}
+                </div>
+              </div>
+
+              {/* Rollen */}
+              <div className="mb-3">
+                <div className="font-medium">Rollen</div>
+                {(s.roles || []).length ? (
+                  <table className="w-full border-collapse text-sm mt-1">
+                    <thead>
+                      <tr className="bg-gray-50">
+                        <th className="border px-2 py-1 text-left">Rol</th>
+                        <th className="border px-2 py-1 text-left">Cast</th>
+                        <th className="border px-2 py-1 text-left">Mic</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {s.roles.map((r, idx) => (
+                        <tr key={idx} className="odd:bg-gray-50">
+                          <td className="border px-2 py-1">{r?.name || ""}</td>
+                          <td className="border px-2 py-1">{fullName(r?.personId) || ""}</td>
+                          <td className="border px-2 py-1">{r?.needsMic ? "Ja" : "Nee"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <div className="text-sm text-gray-500">Geen rollen.</div>
+                )}
+              </div>
+
+              {/* Links & Decor */}
+              <div className="grid md:grid-cols-2 gap-3">
+                <div>
+                  <div className="font-medium">Links</div>
+                  <div className="text-sm text-gray-700 mt-1 space-y-1">
+                    <div>
+                      Tekst:{" "}
+                      {s.links?.text ? (
+                        <a href={s.links.text} target="_blank" rel="noopener noreferrer" className="underline break-all">
+                          {s.links.text}
+                        </a>
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      )}
+                    </div>
+                    <div>
+                      Licht/geluid:{" "}
+                      {s.links?.tech ? (
+                        <a href={s.links.tech} target="_blank" rel="noopener noreferrer" className="underline break-all">
+                          {s.links.tech}
+                        </a>
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <div className="font-medium">Decor</div>
+                  <div className="text-sm mt-1">{s.decor ? s.decor : <span className="text-gray-400">—</span>}</div>
+                </div>
+              </div>
+
+              {/* Geluiden & muziek */}
+              <div className="mt-3">
+                <div className="font-medium">Geluiden & muziek</div>
+                {(s.sounds || []).length ? (
+                  <table className="w-full border-collapse text-sm mt-1">
+                    <thead>
+                      <tr className="bg-gray-50">
+                        <th className="border px-2 py-1 text-left">Omschrijving</th>
+                        <th className="border px-2 py-1 text-left">Link</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {s.sounds.map((x, j) => (
+                        <tr key={x.id || j} className="odd:bg-gray-50">
+                          <td className="border px-2 py-1">{x.label || ""}</td>
+                          <td className="border px-2 py-1 break-all">
+                            {x.url ? (
+                              <a href={x.url} target="_blank" rel="noopener noreferrer" className="underline">
+                                {x.url}
+                              </a>
+                            ) : (
+                              <span className="text-gray-400">—</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <div className="text-sm text-gray-500">—</div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+        {onlySketches.length === 0 && <div className="text-sm text-gray-500">Geen sketches.</div>}
+      </div>
+    </div>
+  );
+}
+
+
 /** ---------- NIEUW: Draaiboek (alle share-links gebundeld) ---------- */
 if (shareTab === "deck") {
   const mk = (k) => `${location.origin}${location.pathname}#share=${k}&sid=${shareShow?.id || ""}`;
@@ -658,13 +803,15 @@ if (shareTab === "deck") {
       </p>
 
       <div className="grid gap-3 md:grid-cols-2">
-        {[ 
-          { key:"runsheet",   title:"Programma",     desc:"Volgorde en tijden van de avond." },
-          { key:"mics",       title:"Microfoons",    desc:"Wie op welk kanaal (alleen-lezen)." },
-          { key:"rehearsals", title:"Agenda",        desc:"Repetities, locaties en tijden." },
-          { key:"rolverdeling", title:"Rolverdeling", desc:"Wie speelt welke rol per sketch." },
-          { key:"prkit",      title:"PR-Kit",        desc:"Posters/afbeeldingen, interviews en video’s." },
-        ].map(({key, title, desc}) => (
+        {[
+  { key:"runsheet",     title:"Programma",     desc:"Volgorde en tijden van de avond." },
+  { key:"mics",         title:"Microfoons",    desc:"Wie op welk kanaal (alleen-lezen)." },
+  { key:"rehearsals",   title:"Agenda",        desc:"Repetities, locaties en tijden." },
+  { key:"rolverdeling", title:"Rolverdeling",  desc:"Wie speelt welke rol per sketch." },
+  { key:"scripts",      title:"Sketches",      desc:"Alle sketches met rollen, links en geluiden." },  // ← toegevoegd
+  { key:"prkit",        title:"PR-Kit",        desc:"Posters/afbeeldingen, interviews en video’s." },
+]
+.map(({key, title, desc}) => (
           <div key={key} className="rounded-xl border p-4 flex items-start justify-between gap-3">
             <div>
               <div className="font-semibold">{title}</div>
@@ -914,13 +1061,14 @@ if (shareTab === "deck") {
   <div className="font-semibold text-sm">Deel links (alleen-lezen)</div>
   <div className="flex flex-wrap gap-2">
     {[
-      { key:"runsheet",    label:"Programma" },
-      { key:"mics",        label:"Microfoons" },
-      { key:"rehearsals",  label:"Agenda" },
-      { key:"rolverdeling",label:"Rolverdeling" },
-      { key:"prkit",       label:"PR-Kit" },
-      { key:"deck",        label:"Draaiboek (alles)" }, // <<< NIEUW
-    ].map(({key,label}) => (
+  { key:"runsheet",     label:"Programma" },
+  { key:"mics",         label:"Microfoons" },
+  { key:"rehearsals",   label:"Agenda" },
+  { key:"rolverdeling", label:"Rolverdeling" },
+  { key:"scripts",      label:"Sketches" },     // ← toegevoegd
+  { key:"prkit",        label:"PR-Kit" },
+  { key:"deck",         label:"Draaiboek (alles)" },
+].map(({key,label}) => (
       <button
         key={key}
         className="rounded-full border px-3 py-1 text-sm"
