@@ -11,6 +11,84 @@ function PlannerMinimal({ state, setState, activeShowId, setActiveShowId, onDupl
   // --- Helpers: renummeren zodat order altijd 1..N is ---
   const renumber = (items) => items.map((it, idx) => ({ ...it, order: idx + 1 }));
 
+  // ---------- Tijd-helpers (voor blokken) ----------
+  const parseStartToMin = () => {
+    const t = String(activeShow?.startTime || "19:30");
+    const [hh, mm] = t.split(":").map((x) => parseInt(x, 10));
+    if (Number.isFinite(hh) && Number.isFinite(mm)) return hh * 60 + mm;
+    return 19 * 60 + 30;
+  };
+  const mmToHHMM = (m) => {
+    let hh = Math.floor((m % (24 * 60)) / 60);
+    if (hh < 0) hh += 24;
+    let mm = Math.floor(Math.abs(m) % 60);
+    return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+  };
+
+  // Segments bouwen: blokken (non-break aaneengesloten) + losse pauzes als aparte segmenten
+  const startMin = parseStartToMin();
+  const totalMin = showItems.reduce((acc, it) => acc + (parseInt(it.durationMin || 0, 10) || 0), 0);
+
+  const segments = (() => {
+    const segs = [];
+    let currentBlock = [];
+
+    const flushBlock = () => {
+      if (currentBlock.length === 0) return;
+      const duration = currentBlock.reduce((sum, it) => sum + (parseInt(it.durationMin || 0, 10) || 0), 0);
+      segs.push({ type: "block", items: currentBlock.slice(), count: currentBlock.length, durationMin: duration });
+      currentBlock = [];
+    };
+
+    for (const it of showItems) {
+      const kind = String(it?.kind || "sketch").toLowerCase();
+      const isBreak = kind === "break";
+      if (isBreak) {
+        // Sluit blok af, voeg pauze-segment toe
+        flushBlock();
+        segs.push({
+          type: "pause",
+          title: "Pauze",
+          item: it,
+          durationMin: parseInt(it.durationMin || 0, 10) || 0,
+        });
+      } else {
+        // Sketch of waerse telt mee in het blok
+        currentBlock.push(it);
+      }
+    }
+    // Laatste blok flushen
+    flushBlock();
+    return segs;
+  })();
+
+  // Start/End tijden op de time-line projecteren
+  let cursor = startMin;
+  const timedSegments = segments.map((seg, i) => {
+    const start = cursor;
+    const end = cursor + (seg.durationMin || 0);
+    cursor = end;
+    if (seg.type === "block") {
+      return {
+        ...seg,
+        label: `Blok ${i + 1 - segments.slice(0, i).filter(s => s.type === "pause").length}`,
+        startMin: start,
+        endMin: end,
+        startStr: mmToHHMM(start),
+        endStr: mmToHHMM(end),
+      };
+    }
+    // pause
+    return {
+      ...seg,
+      label: seg.title || "Pauze",
+      startMin: start,
+      endMin: end,
+      startStr: mmToHHMM(start),
+      endStr: mmToHHMM(end),
+    };
+  });
+
   // ---------- Items toevoegen ----------
   const addSketch = () => {
     if (!activeShow) return;
@@ -65,7 +143,7 @@ function PlannerMinimal({ state, setState, activeShowId, setActiveShowId, onDupl
     });
   };
 
-  // NIEUW: "De Waerse Ku-j" (zelfde regels als pauze: vaste naam, alleen volgorde & tijd)
+  // NIEUW: "De Waerse Ku-j"
   const addWaerse = () => {
     if (!activeShow) return;
     setState((prev) => {
@@ -271,23 +349,6 @@ function PlannerMinimal({ state, setState, activeShowId, setActiveShowId, onDupl
                 placeholder="Naam van de show"
               />
             </div>
-
-            <div className="flex gap-2">
-              <button
-                className="flex-1 rounded-xl border px-3 py-2 bg-gray-100 hover:bg-gray-200"
-                onClick={addShow}
-              >
-                + Nieuwe show
-              </button>
-              <button
-                className="flex-1 rounded-xl border px-3 py-2 bg-red-100 hover:bg-red-200 text-red-700"
-                onClick={removeShow}
-                disabled={state.shows.length <= 1}
-                title={state.shows.length <= 1 ? "Minimaal 1 show nodig" : "Verwijder deze show"}
-              >
-                🗑️ Verwijder
-              </button>
-            </div>
           </div>
         )}
       </section>
@@ -306,6 +367,41 @@ function PlannerMinimal({ state, setState, activeShowId, setActiveShowId, onDupl
             <button className="rounded-xl border px-3 py-2" onClick={addWaerse} disabled={!activeShow}>
               + De Waerse Ku-j
             </button>
+          </div>
+        </div>
+
+        {/* Tijdsoverzicht: Start • Totale tijd • Blokken + Pauzes met tijden */}
+        <div className="mb-3 rounded-xl border p-3 bg-white/60">
+          <div className="text-sm text-gray-700">
+            <b>Start:</b> {mmToHHMM(startMin)} • <b>Totale tijd:</b> {totalMin} min
+          </div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {timedSegments.map((seg, i) => (
+              <span
+                key={i}
+                className={`rounded-full border px-3 py-1 text-xs whitespace-nowrap ${
+                  seg.type === "pause"
+                    ? "bg-yellow-50 border-yellow-200"
+                    : "bg-gray-50"
+                }`}
+                title={
+                  seg.type === "pause"
+                    ? `Pauze • ${seg.durationMin} min • ${seg.startStr}–${seg.endStr}`
+                    : `${seg.label} • ${seg.count} items • ${seg.durationMin} min • ${seg.startStr}–${seg.endStr}`
+                }
+              >
+                {seg.type === "pause" ? (
+                  <>Pauze: {seg.durationMin} min • {seg.startStr}–{seg.endStr}</>
+                ) : (
+                  <>
+                    {seg.label}: {seg.count} {seg.count === 1 ? "item" : "items"} • {seg.durationMin} min • {seg.startStr}–{seg.endStr}
+                  </>
+                )}
+              </span>
+            ))}
+            {timedSegments.length === 0 && (
+              <span className="text-xs text-gray-500">Nog geen blokken.</span>
+            )}
           </div>
         </div>
 
