@@ -506,103 +506,183 @@ function App() {
     };
   }, [shareTab, state.settings?.appPasswordHash]); // lockNow is stabiel genoeg in deze context
 
-  // ====== SHARE ROUTES ======
-  if (shareTab === "rehearsals") {
-    return (
-      <div className="mx-auto max-w-6xl p-4 share-only">
-        <h1 className="text-2xl font-bold mb-4">Repetitieschema (live)</h1>
-        <RehearsalPlanner
-          rehearsals={showRehearsals}
-          people={showPeople}
-          onAdd={()=>{}}
-          onUpdate={()=>{}}
-          onRemove={()=>{}}
+ // ====== SHARE ROUTES ======
+
+// Bepaal 'share context': als #share=...&sid=... aanwezig is, pin aan die show
+const _shareParams = React.useMemo(() => new URLSearchParams((location.hash || "").replace("#","")), [location.hash]);
+const _sid         = _shareParams.get("sid");
+const shareShow    = React.useMemo(() => {
+  const base = _sid ? (state.shows || []).find(s => s.id === _sid) : activeShow;
+  return base || activeShow || (state.shows || [])[0] || null;
+}, [_sid, state.shows, activeShow]);
+
+const shareSketches = React.useMemo(() => {
+  if (!shareShow) return [];
+  return (state.sketches || [])
+    .filter(sk => sk.showId === shareShow.id)
+    .sort((a,b)=> (a.order||0) - (b.order||0));
+}, [state.sketches, shareShow]);
+
+const sharePeople = React.useMemo(() => {
+  if (!shareShow) return [];
+  return (state.people || []).filter(p => p.showId === shareShow.id);
+}, [state.people, shareShow]);
+
+const shareRehearsals = React.useMemo(() => {
+  if (!shareShow) return [];
+  return (state.rehearsals || [])
+    .filter(r => r.showId === shareShow.id)
+    .sort((a,b)=> String(a.date).localeCompare(String(b.date)));
+}, [state.rehearsals, shareShow]);
+
+const sharePRKit = React.useMemo(() => {
+  if (!shareShow) return [];
+  return (state.prKit || [])
+    .filter(i => i.showId === shareShow.id)
+    .sort((a,b)=> String(a.dateStart || "").localeCompare(String(b.dateStart || "")));
+}, [state.prKit, shareShow]);
+
+const runSheetShare = React.useMemo(() => {
+  return shareShow ? buildRunSheet(shareShow, shareSketches) : { items: [], totalMin: 0 };
+}, [shareShow, shareSketches]);
+
+// --- Share pages ---
+if (shareTab === "rehearsals") {
+  return (
+    <div className="mx-auto max-w-6xl p-4 share-only">
+      <h1 className="text-2xl font-bold mb-4">Repetitieschema (live)</h1>
+      <RehearsalPlanner
+        rehearsals={shareRehearsals}
+        people={sharePeople}
+        onAdd={()=>{}}
+        onUpdate={()=>{}}
+        onRemove={()=>{}}
+      />
+      <div className="text-sm text-gray-500 mt-6">
+        Dit is een gedeelde link, alleen-lezen. Wijzigingen kunnen alleen in de hoofd-app.
+      </div>
+    </div>
+  );
+}
+
+if (shareTab === "rolverdeling") {
+  return (
+    <div className="mx-auto max-w-6xl p-4">
+      <h1 className="text-2xl font-bold mb-4">Rolverdeling (live)</h1>
+      <RoleDistributionView
+        currentShowId={shareShow?.id}
+        sketches={shareSketches}
+        people={sharePeople}
+        setState={()=>{}}
+      />
+      <div className="text-sm text-gray-500 mt-6">
+        Dit is een gedeelde link, alleen-lezen. Wijzigingen kunnen alleen in de hoofd-app.
+      </div>
+    </div>
+  );
+}
+
+if (shareTab === "prkit") {
+  return (
+    <div className="mx-auto max-w-6xl p-4">
+      <h1 className="text-2xl font-bold mb-4">PR-Kit (live)</h1>
+      <PRKitView
+        items={sharePRKit}
+        showId={shareShow?.id}
+        readOnly={true}
+        onChange={()=>{}}
+      />
+      <div className="text-sm text-gray-500 mt-6">
+        Dit is een gedeelde link, alleen-lezen. Wijzigingen kunnen alleen in de hoofd-app.
+      </div>
+    </div>
+  );
+}
+
+if (shareTab === "runsheet") {
+  return (
+    <div className="mx-auto max-w-6xl p-4 share-only">
+      <h1 className="text-2xl font-bold mb-4">Programma (live)</h1>
+      <RunSheetView runSheet={runSheetShare} show={shareShow} />
+      <div className="text-sm text-gray-500 mt-6">
+        Dit is een gedeelde link, alleen-lezen.
+      </div>
+    </div>
+  );
+}
+
+if (shareTab === "mics") {
+  return (
+    <div className="mx-auto max-w-6xl p-4 share-only">
+      <h1 className="text-2xl font-bold mb-4">Microfoons (live)</h1>
+
+      {/* forceer read-only gedrag binnen deze wrapper */}
+      <style>{`
+        .share-only select,
+        .share-only input,
+        .share-only button {
+          pointer-events: none !important;
+        }
+      `}</style>
+
+      <MicMatrixView
+        currentShowId={shareShow?.id}
+        sketches={shareSketches}
+        people={sharePeople}
+        shows={state.shows}
+        setState={() => { /* no-op in share */ }}
+      />
+      <div className="text-sm text-gray-500 mt-6">
+        Dit is een gedeelde link, alleen-lezen.
+      </div>
+    </div>
+  );
+}
+
+/** ---------- NIEUW: Draaiboek (alle share-links gebundeld) ---------- */
+if (shareTab === "deck") {
+  const mk = (k) => `${location.origin}${location.pathname}#share=${k}&sid=${shareShow?.id || ""}`;
+  return (
+    <div className="mx-auto max-w-6xl p-4 share-only">
+      <div className="flex items-center gap-2 mb-1">
+        <img
+          src="https://cdn-icons-png.flaticon.com/512/616/616584.png"
+          alt=""
+          className="w-7 h-7"
+          aria-hidden="true"
         />
-        <div className="text-sm text-gray-500 mt-6">
-          Dit is een gedeelde link, alleen-lezen. Wijzigingen kunnen alleen in de hoofd-app.
-        </div>
+        <h1 className="text-2xl font-bold">Draaiboek: {shareShow?.name || "Show"}</h1>
       </div>
-    );
-  }
+      <p className="text-sm text-gray-600 mb-4">
+        Beste artiesten en medewerkers — hieronder vind je alle links die nodig zijn voor deze show.
+      </p>
 
-  if (shareTab === "rolverdeling") {
-    return (
-      <div className="mx-auto max-w-6xl p-4">
-        <h1 className="text-2xl font-bold mb-4">Rolverdeling (live)</h1>
-        <RoleDistributionView
-          currentShowId={activeShow?.id}
-          sketches={showSketches}
-          people={showPeople}
-          setState={()=>{}}
-        />
-        <div className="text-sm text-gray-500 mt-6">
-          Dit is een gedeelde link, alleen-lezen. Wijzigingen kunnen alleen in de hoofd-app.
-        </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        {[ 
+          { key:"runsheet",   title:"Programma",     desc:"Volgorde en tijden van de avond." },
+          { key:"mics",       title:"Microfoons",    desc:"Wie op welk kanaal (alleen-lezen)." },
+          { key:"rehearsals", title:"Agenda",        desc:"Repetities, locaties en tijden." },
+          { key:"rolverdeling", title:"Rolverdeling", desc:"Wie speelt welke rol per sketch." },
+          { key:"prkit",      title:"PR-Kit",        desc:"Posters/afbeeldingen, interviews en video’s." },
+        ].map(({key, title, desc}) => (
+          <div key={key} className="rounded-xl border p-4 flex items-start justify-between gap-3">
+            <div>
+              <div className="font-semibold">{title}</div>
+              <div className="text-sm text-gray-600">{desc}</div>
+            </div>
+            <a
+              href={mk(key)}
+              className="shrink-0 rounded-full border px-3 py-1 text-sm hover:bg-gray-50"
+              target="_blank" rel="noopener noreferrer"
+            >
+              Open
+            </a>
+          </div>
+        ))}
       </div>
-    );
-  }
-
-  if (shareTab === "prkit") {
-    return (
-      <div className="mx-auto max-w-6xl p-4">
-        <h1 className="text-2xl font-bold mb-4">PR-Kit (live)</h1>
-        <PRKitView
-          items={showPRKit}
-          showId={activeShow?.id}
-          readOnly={true}
-          onChange={()=>{}}
-        />
-        <div className="text-sm text-gray-500 mt-6">
-          Dit is een gedeelde link, alleen-lezen. Wijzigingen kunnen alleen in de hoofd-app.
-        </div>
-      </div>
-    );
-  }
-
-  if (shareTab === "runsheet") {
-    return (
-      <div className="mx-auto max-w-6xl p-4 share-only">
-        <h1 className="text-2xl font-bold mb-4">Programma (live)</h1>
-        <RunSheetView runSheet={runSheet} show={activeShow} />
-        <div className="text-sm text-gray-500 mt-6">
-          Dit is een gedeelde link, alleen-lezen.
-        </div>
-      </div>
-    );
-  }
-
-  if (shareTab === "mics") {
-    return (
-      <div className="mx-auto max-w-6xl p-4 share-only">
-        <h1 className="text-2xl font-bold mb-4">Microfoons (live)</h1>
-
-        {/* forceer read-only gedrag binnen deze wrapper */}
-        <style>{`
-          .share-only select,
-          .share-only input,
-          .share-only button {
-            pointer-events: none !important;
-          }
-        `}</style>
-
-        <MicMatrixView
-          currentShowId={activeShow?.id}
-          sketches={showSketches}
-          people={showPeople}
-          shows={state.shows}
-          setState={() => { /* no-op in share */ }}
-        />
-        <div className="text-sm text-gray-500 mt-6">
-          Dit is een gedeelde link, alleen-lezen.
-        </div>
-      </div>
-    );
-  }
-
-  // Toon wachtwoord-poort als vergrendeld
-  if (locked) {
-    return <PasswordGate onUnlock={handleUnlock} />;
-  }
+    </div>
+  );
+}
 
   // ====== NORMALE APP ======
   return (
@@ -829,65 +909,33 @@ function App() {
             </div>
 
             {/* Deel-links */}
-            <div className="rounded-lg border p-2 space-y-2">
-              <div className="font-semibold text-sm">Deel links (alleen-lezen)</div>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  className="rounded-full border px-3 py-1 text-sm"
-                  onClick={()=>{
-                    const url = `${location.origin}${location.pathname}#share=runsheet`;
-                    navigator.clipboard?.writeText(url);
-                    alert("Gekopieerd:\n" + url);
-                  }}
-                >
-                  Programma
-                </button>
-
-                <button
-                  className="rounded-full border px-3 py-1 text-sm"
-                  onClick={()=>{
-                    const url = `${location.origin}${location.pathname}#share=mics`;
-                    navigator.clipboard?.writeText(url);
-                    alert("Gekopieerd:\n" + url);
-                  }}
-                >
-                  Microfoons
-                </button>
-
-                <button
-                  className="rounded-full border px-3 py-1 text-sm"
-                  onClick={()=>{
-                    const url = `${location.origin}${location.pathname}#share=rehearsals`;
-                    navigator.clipboard?.writeText(url);
-                    alert("Gekopieerd:\n" + url);
-                  }}
-                >
-                  Agenda
-                </button>
-
-                <button
-                  className="rounded-full border px-3 py-1 text-sm"
-                  onClick={()=>{
-                    const url = `${location.origin}${location.pathname}#share=rolverdeling`;
-                    navigator.clipboard?.writeText(url);
-                    alert("Gekopieerd:\n" + url);
-                  }}
-                >
-                  Rolverdeling
-                </button>
-
-                <button
-                  className="rounded-full border px-3 py-1 text-sm"
-                  onClick={()=>{
-                    const url = `${location.origin}${location.pathname}#share=prkit`;
-                    navigator.clipboard?.writeText(url);
-                    alert("Gekopieerd:\n" + url);
-                  }}
-                >
-                  PR-Kit
-                </button>
-              </div>
-            </div>
+            {/* Deel-links */}
+<div className="rounded-lg border p-2 space-y-2">
+  <div className="font-semibold text-sm">Deel links (alleen-lezen)</div>
+  <div className="flex flex-wrap gap-2">
+    {[
+      { key:"runsheet",    label:"Programma" },
+      { key:"mics",        label:"Microfoons" },
+      { key:"rehearsals",  label:"Agenda" },
+      { key:"rolverdeling",label:"Rolverdeling" },
+      { key:"prkit",       label:"PR-Kit" },
+      { key:"deck",        label:"Draaiboek (alles)" }, // <<< NIEUW
+    ].map(({key,label}) => (
+      <button
+        key={key}
+        className="rounded-full border px-3 py-1 text-sm"
+        onClick={()=>{
+          const sid = activeShowId ? `&sid=${activeShowId}` : "";
+          const url = `${location.origin}${location.pathname}#share=${key}${sid}`;
+          navigator.clipboard?.writeText(url);
+          alert("Gekopieerd:\n" + url);
+        }}
+      >
+        {label}
+      </button>
+    ))}
+  </div>
+</div>
 
             {/* Beveiliging */}
             <div className="rounded-lg border p-2 space-y-2">
