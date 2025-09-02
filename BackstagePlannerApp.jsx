@@ -112,6 +112,9 @@ function withDefaults(s = {}) {
     versions: Array.isArray(s.versions) ? s.versions : [],
     rev: Number.isFinite(s.rev) ? s.rev : 0,
     lastSavedBy: s.lastSavedBy || null,
+
+librarySketches: Array.isArray(s.librarySketches) ? s.librarySketches : [],
+    
 settings: {
   ...(s.settings || {}),
   requirePassword: !!(s.settings?.requirePassword),
@@ -176,6 +179,12 @@ function App() {
   const [tab, setTab] = React.useState("planner");
   const [syncStatus, setSyncStatus] = React.useState("Nog niet gesynced");
 
+// Sketch Library UI state
+const [libraryOpen, setLibraryOpen]       = React.useState(false);
+const [replaceTargetId, setReplaceTarget] = React.useState(null);
+const [libraryQuery, setLibraryQuery]     = React.useState("");
+const [libEditId, setLibEditId]           = React.useState(null);
+  
     // Button style helpers
   const btn       = "rounded-full px-3 py-1 text-sm border";
   const btnPri    = "rounded-full px-3 py-1 text-sm border border-black bg-black text-white hover:opacity-90";
