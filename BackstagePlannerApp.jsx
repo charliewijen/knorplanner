@@ -431,17 +431,22 @@ function App() {
     return p.get("share") || null;
   }, [location.hash]);
 
-  // ====== PASSWORD LOCK (alleen voor hoofd-app, niet voor share) ======
-  // ====== PASSWORD LOCK (alleen voor hoofd-app, niet voor share) ======
+ // ====== PASSWORD LOCK (alleen voor hoofd-app, niet voor share) ======
 const [locked, setLocked] = React.useState(false);
 
 React.useEffect(() => {
-  if (shareTab) { setLocked(false); return; } // share is altijd open
-  const needPw = !!state.settings?.requirePassword;
+  if (shareTab) { setLocked(false); return; }            // share is altijd open
+  const needPw = !!state.settings?.requirePassword;      // als vergrendeling aan staat
   if (!needPw) { setLocked(false); return; }
+
+  // NIEUW: kijk naar het Netlify token
   const token = localStorage.getItem('knor:authToken') || '';
-  setLocked(!token);
-}, [shareTab, state.settings?.requirePassword]);
+  const exp   = parseInt(localStorage.getItem('knor:authExp') || '0', 10);
+  const valid = token && (!exp || Date.now() < exp);     // (exp is optioneel)
+
+  setLocked(!valid);                                     // geen (geldig) token? → overlay tonen
+}, [shareTab, state.settings?.requirePassword, state.rev]);
+
 
 
   const handleUnlock = async (plainPw) => {
