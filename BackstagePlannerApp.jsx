@@ -53,7 +53,6 @@ const saveStateRemote = async (state) => {
   try {
     const token = localStorage.getItem('knor:authToken');
     const headers = { 'Content-Type': 'application/json' };
-    // alleen Authorization zetten als er een token is
     if (token) headers['Authorization'] = `Bearer ${token}`;
 
     const res = await fetch('/.netlify/functions/save', {
@@ -70,6 +69,7 @@ const saveStateRemote = async (state) => {
     try { localStorage.setItem("sll-backstage-v2", JSON.stringify(state)); } catch {}
   }
 };
+
 
 
 // ---- Helpers ----
@@ -432,15 +432,17 @@ function App() {
   }, [location.hash]);
 
   // ====== PASSWORD LOCK (alleen voor hoofd-app, niet voor share) ======
-  const [locked, setLocked] = React.useState(false);
+  // ====== PASSWORD LOCK (alleen voor hoofd-app, niet voor share) ======
+const [locked, setLocked] = React.useState(false);
 
-  React.useEffect(() => {
-    if (shareTab) { setLocked(false); return; }              // share is altijd open
-    const req = !!state.settings?.requirePassword;
-    if (!req) { setLocked(false); return; }
-    const token = localStorage.getItem('knor:authToken') || '';
-    setLocked(!token);                                       // geen token => lock
-  }, [shareTab, state.settings?.requirePassword]);
+React.useEffect(() => {
+  if (shareTab) { setLocked(false); return; } // share is altijd open
+  const needPw = !!state.settings?.requirePassword;
+  if (!needPw) { setLocked(false); return; }
+  const token = localStorage.getItem('knor:authToken') || '';
+  setLocked(!token);
+}, [shareTab, state.settings?.requirePassword]);
+
 
   const handleUnlock = async (plainPw) => {
     try {
