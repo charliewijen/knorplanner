@@ -88,6 +88,19 @@ const saveStateRemote = async (state) => {
 const todayStr = () => new Date().toISOString().slice(0, 10);
 const newEmptyShow = () => ({ id: uid(), name: "Nieuwe show", date: todayStr(), startTime: "19:30" });
 
+const PIG_NAMES = ["Knor","Babe","Pumba","Truffel","Spekkie","Snuf","Piggy","Hamlet","Oink","Rasher","Sizzle","Hambo","Praline","Chashu","Pigasso","Bacon","Tonkotsu","Boer Boris","Snout","Porkchop"];
+
+function uniquePigShowName(shows=[]) {
+  for (let i=0;i<200;i++){
+    const pick = PIG_NAMES[Math.floor(Math.random()*PIG_NAMES.length)];
+    const name = `Voorstelling ${pick}`;
+    const exists = shows.some(s => String(s?.name||"").toLowerCase() === name.toLowerCase());
+    if (!exists) return name;
+  }
+  return `Voorstelling Knor-${Math.floor(Math.random()*10000)}`;
+}
+
+
 function withDefaults(s = {}) {
   return {
     people: Array.isArray(s.people) ? s.people : [],
@@ -156,6 +169,22 @@ function App() {
   const [activeShowId, setActiveShowId] = React.useState(boot.shows[0]?.id || null);
   const [tab, setTab] = React.useState("planner");
   const [syncStatus, setSyncStatus] = React.useState("Nog niet gesynced");
+
+  const [panelOpen, setPanelOpen] = React.useState("versions");
+const [verPage, setVerPage]     = React.useState(0);
+
+const pageSize = 5;
+const versionsSorted = React.useMemo(
+  () => [...(state.versions || [])].sort((a,b)=> b.ts - a.ts),
+  [state.versions]
+);
+const totalPages = Math.max(1, Math.ceil(versionsSorted.length / pageSize));
+const curPage    = Math.min(verPage, totalPages - 1);
+const pageStart  = curPage*pageSize;
+const visibleVersions = versionsSorted.slice(pageStart, pageStart + pageSize);
+React.useEffect(() => { setVerPage(0); }, [state.versions?.length]);
+
+  
   const applyingRemoteRef = React.useRef(false);
 
   // History
@@ -271,6 +300,41 @@ function App() {
     setState((prev) => ({ ...prev, shows: (prev.shows || []).map((s) => (s.id === activeShow.id ? { ...s, ...patch } : s)) }));
   };
 
+const createNewShow = () => {
+  pushHistory(state);
+  const id = uid();
+  setState(prev => {
+    const name = uniquePigShowName(prev.shows || []);
+    const sh = { id, name, date: todayStr(), startTime: "19:30", headsetCount: 4, handheldCount: 2 };
+    return { ...prev, shows: [...(prev.shows||[]), sh] };
+  });
+  setActiveShowId(id);
+};
+
+const deleteCurrentShow = () => {
+  if (!activeShow) { alert("Geen actieve show geselecteerd."); return; }
+  if ((state.shows||[]).length <= 1) { alert("Je kunt de laatste show niet verwijderen."); return; }
+  if (!confirm(`Voorstelling “${activeShow.name}” en alle gekoppelde data verwijderen? Dit kan niet ongedaan worden gemaakt.`)) return;
+
+  const delId = activeShow.id;
+  pushHistory(state);
+  setState(prev => {
+    const shows = (prev.shows||[]).filter(s => s.id !== delId);
+    const nextActive = shows[shows.length-1]?.id || shows[0]?.id || null;
+    return {
+      ...prev,
+      shows,
+      people: (prev.people||[]).filter(x => x.showId !== delId),
+      mics: (prev.mics||[]).filter(x => x.showId !== delId),
+      sketches: (prev.sketches||[]).filter(x => x.showId !== delId),
+      rehearsals: (prev.rehearsals||[]).filter(x => x.showId !== delId),
+      prKit: (prev.prKit||[]).filter(x => x.showId !== delId),
+    };
+  });
+  setActiveShowId(prev => prev === delId ? (state.shows.find(s=>s.id!==delId)?.id || null) : prev);
+};
+
+  
   // Dupliceren
   const duplicateCurrentShow = () => {
     if (!activeShow) { alert("Geen actieve show om te dupliceren."); return; }
@@ -780,14 +844,32 @@ if (shareTab === "deck") {
         )}
 
         {tab === "planner" && (
-          <C_PlannerMinimal
-            state={state}
-            setState={(fn)=>{ pushHistory(state); setState(fn(state)); }}
-            activeShowId={activeShowId}
-            setActiveShowId={setActiveShowId}
-            onDuplicateShow={duplicateCurrentShow}
-          />
-        )}
+  <div className="grid gap-3">
+    <div className="rounded-2xl border p-3 flex flex-wrap items-center gap-2">
+      <button className="rounded-full border px-3 py-1 text-sm" onClick={createNewShow}>
+        Nieuwe voorstelling toevoegen
+      </button>
+      <button className="rounded-full border px-3 py-1 text-sm" onClick={duplicateCurrentShow}>
+        Dupliceer huidige voorstelling
+      </button>
+      <button className="rounded-full border px-3 py-1 text-sm text-red-700 border-red-300" onClick={deleteCurrentShow}>
+        Verwijder huidige voorstelling
+      </button>
+      <span className="text-xs text-gray-500 ml-auto">
+        Actief: {activeShow?.name || "—"}
+      </span>
+    </div>
+
+    <C_PlannerMinimal
+      state={state}
+      setState={(fn)=>{ pushHistory(state); setState(fn(state)); }}
+      activeShowId={activeShowId}
+      setActiveShowId={setActiveShowId}
+      onDuplicateShow={duplicateCurrentShow}
+    />
+  </div>
+)}
+
 
         {tab === "prkit" && (
           <TabErrorBoundary>
@@ -809,9 +891,9 @@ if (shareTab === "deck") {
         )}
       </main>
 
-      {/* Floating tools (scrollbaar + sluitknop) */}
+      {/* Floating tools (accordion) */}
 <div className="fixed left-4 bottom-4 z-50">
-  <details id="tools-panel" className="group w-[min(92vw,420px)]">
+  <details className="group w-[min(92vw,420px)]">
     <summary className="cursor-pointer inline-flex items-center gap-2 rounded-full bg-black text-white px-4 py-2 shadow-lg select-none">
       <img src="https://cdn-icons-png.flaticon.com/512/616/616584.png" alt="" className="w-4 h-4" aria-hidden="true" />
       Hulpmiddelen
@@ -819,108 +901,151 @@ if (shareTab === "deck") {
     </summary>
 
     <div className="mt-2 rounded-xl border bg-white/95 backdrop-blur shadow-xl max-h-[70vh] overflow-auto">
-      {/* sticky header met sluitknop (werkt ook mobiel) */}
-      <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b bg-white/95 px-3 py-2">
-        <div className="font-semibold text-sm">Hulpmiddelen</div>
+      {/* ACC: Versies */}
+      <div className="border-b">
         <button
-          className="rounded-full border px-2 py-0.5 text-sm"
-          onClick={() => document.getElementById('tools-panel')?.removeAttribute('open')}
+          className="w-full flex items-center justify-between px-3 py-2 text-left"
+          onClick={()=> setPanelOpen(p => p==="versions" ? null : "versions")}
         >
-          Sluit ×
+          <span className="font-semibold text-sm">Versies</span>
+          <span className={`transition-transform ${panelOpen==="versions" ? "rotate-90" : ""}`}>▸</span>
         </button>
+        {panelOpen==="versions" && (
+          <div className="px-3 pb-3 space-y-2">
+            <div className="text-xs text-gray-600">
+              Toon {visibleVersions.length ? `${pageStart+1}–${pageStart+visibleVersions.length}` : "0"} van {versionsSorted.length}
+            </div>
+            <ul className="space-y-1 text-sm max-h-48 overflow-auto pr-1">
+              {visibleVersions.map(v=>(
+                <li key={v.id} className="flex items-center justify-between gap-2">
+                  <span className="truncate">
+                    {v.name} <span className="text-gray-500">({new Date(v.ts).toLocaleString()})</span>
+                  </span>
+                  <span className="flex gap-2 shrink-0">
+                    <button className="rounded-full border px-2 py-0.5" onClick={()=>restoreVersion(v.id)}>Herstel</button>
+                    <button className="rounded-full border px-2 py-0.5" onClick={()=>deleteVersion(v.id)}>Del</button>
+                  </span>
+                </li>
+              ))}
+              {versionsSorted.length===0 && <li className="text-gray-500">Nog geen versies.</li>}
+            </ul>
+            <div className="flex items-center justify-between pt-1">
+              <button
+                className="rounded-full border px-2 py-0.5 text-xs"
+                disabled={curPage===0}
+                onClick={()=> setVerPage(p => Math.max(0, p-1))}
+              >← 1–{pageSize*curPage || pageSize}</button>
+              <div className="text-xs text-gray-600">
+                Pagina {curPage+1} / {totalPages}
+              </div>
+              <button
+                className="rounded-full border px-2 py-0.5 text-xs"
+                disabled={curPage >= totalPages-1}
+                onClick={()=> setVerPage(p => Math.min(totalPages-1, p+1))}
+              >{pageSize*(curPage+1)+1}–{Math.min(pageSize*(curPage+2), versionsSorted.length)} →</button>
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              <button className="rounded-full border px-3 py-1 text-sm"
+                onClick={()=>{ const n = prompt('Naam voor versie:','Snapshot'); if(n!==null) saveVersion(n); }}>
+                Save version (gedeeld)
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
-      <div className="p-3 space-y-3">
-        {/* Undo/Redo/Versies */}
-        <div className="flex gap-2 flex-wrap">
-          <button className="rounded-full border px-3 py-1 text-sm" onClick={undo}>Undo</button>
-          <button className="rounded-full border px-3 py-1 text-sm" onClick={redo}>Redo</button>
-          <button className="rounded-full border px-3 py-1 text-sm" onClick={()=>{ const n = prompt('Naam voor versie:','Snapshot'); if(n!==null) saveVersion(n); }}>Save version (gedeeld)</button>
-          <button className="rounded-full border px-3 py-1 text-sm" onClick={()=>{ navigator.clipboard?.writeText(location.href); }}>Kopieer link</button>
-        </div>
-
-        <div className="text-xs text-gray-600">
-          Sync: <span className="font-medium">{syncStatus}</span>
-        </div>
-
-        <div className="rounded-lg border p-2">
-          <div className="font-semibold text-sm mb-1">Versies (gedeeld)</div>
-          <ul className="space-y-1 text-sm max-h-48 overflow-auto pr-1">
-            {(state.versions || []).map(v=> (
-              <li key={v.id} className="flex items-center justify-between gap-2">
-                <span className="truncate">{v.name} <span className="text-gray-500">({new Date(v.ts).toLocaleString()})</span></span>
-                <span className="flex gap-2 shrink-0">
-                  <button className="rounded-full border px-2 py-0.5" onClick={()=>restoreVersion(v.id)}>Herstel</button>
-                  <button className="rounded-full border px-2 py-0.5" onClick={()=>deleteVersion(v.id)}>Del</button>
-                </span>
-              </li>
-            ))}
-            {(state.versions || []).length===0 && <li className="text-gray-500">Nog geen versies.</li>}
-          </ul>
-        </div>
-
-        {/* Import / Export */}
-        <div className="rounded-lg border p-2 space-y-2">
-          <div className="font-semibold text-sm">Import / Export</div>
-          <div className="flex flex-wrap gap-2">
-            <button className="rounded-full border px-3 py-1 text-sm" onClick={exportShow}>Exporteer huidige voorstelling</button>
-            <button className="rounded-full border px-3 py-1 text-sm" onClick={importShow}>Importeer voorstelling (.json)</button>
+      {/* ACC: Import/Export */}
+      <div className="border-b">
+        <button
+          className="w-full flex items-center justify-between px-3 py-2 text-left"
+          onClick={()=> setPanelOpen(p => p==="impex" ? null : "impex")}
+        >
+          <span className="font-semibold text-sm">Import / Export</span>
+          <span className={`transition-transform ${panelOpen==="impex" ? "rotate-90" : ""}`}>▸</span>
+        </button>
+        {panelOpen==="impex" && (
+          <div className="px-3 pb-3 space-y-2">
+            <div className="flex flex-wrap gap-2">
+              <button className="rounded-full border px-3 py-1 text-sm" onClick={exportShow}>Exporteer huidige voorstelling</button>
+              <button className="rounded-full border px-3 py-1 text-sm" onClick={importShow}>Importeer voorstelling (.json)</button>
+            </div>
+            <div className="text-[11px] text-gray-500">
+              Export is leesbare JSON met data van de gekozen show (spelers, sketches, repetities, mics, PR-kit).
+            </div>
           </div>
-          <div className="text-[11px] text-gray-500">Export is leesbare JSON met alleen data van de gekozen show.</div>
-        </div>
+        )}
+      </div>
 
-        {/* Deel-links */}
-        <div className="rounded-lg border p-2 space-y-2">
-          <div className="font-semibold text-sm">Deel links (alleen-lezen)</div>
-          <div className="flex flex-wrap gap-2">
-            {[
-              { key:"runsheet",     label:"Programma" },
-              { key:"mics",         label:"Microfoons" },
-              { key:"rehearsals",   label:"Agenda" },
-              { key:"rolverdeling", label:"Rolverdeling" },
-              { key:"scripts",      label:"Sketches" },
-              { key:"prkit",        label:"PR-Kit" },
-              { key:"deck",         label:"Draaiboek (alles)" },
-            ].map(({key,label}) => (
-              <button key={key} className="rounded-full border px-3 py-1 text-sm"
-                onClick={()=>{
-                  const sid = activeShowId ? `&sid=${activeShowId}` : "";
-                  const url = `${location.origin}${location.pathname}#share=${key}${sid}`;
-                  navigator.clipboard?.writeText(url);
-                  alert("Gekopieerd:\n" + url);
-                }}>
-                {label}
-              </button>
-            ))}
+      {/* ACC: Deel links */}
+      <div className="border-b">
+        <button
+          className="w-full flex items-center justify-between px-3 py-2 text-left"
+          onClick={()=> setPanelOpen(p => p==="share" ? null : "share")}
+        >
+          <span className="font-semibold text-sm">Deel links (alleen-lezen)</span>
+          <span className={`transition-transform ${panelOpen==="share" ? "rotate-90" : ""}`}>▸</span>
+        </button>
+        {panelOpen==="share" && (
+          <div className="px-3 pb-3">
+            <div className="flex flex-wrap gap-2">
+              {[
+                { key:"runsheet",     label:"Programma" },
+                { key:"mics",         label:"Microfoons" },
+                { key:"rehearsals",   label:"Agenda" },
+                { key:"rolverdeling", label:"Rolverdeling" },
+                { key:"scripts",      label:"Sketches" },
+                { key:"prkit",        label:"PR-Kit" },
+                { key:"deck",         label:"Draaiboek (alles)" },
+              ].map(({key,label}) => (
+                <button
+                  key={key}
+                  className="rounded-full border px-3 py-1 text-sm"
+                  onClick={()=>{
+                    const sid = activeShowId ? `&sid=${activeShowId}` : "";
+                    const url = `${location.origin}${location.pathname}#share=${key}${sid}`;
+                    navigator.clipboard?.writeText(url);
+                    alert("Gekopieerd:\n" + url);
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
+      </div>
 
-        {/* Beveiliging */}
-        <div className="rounded-lg border p-2 space-y-2">
-          <div className="font-semibold text-sm">Beveiliging</div>
-          <div className="text-xs text-gray-600">
-            Vergrendeling: {state.settings?.requirePassword ? "Aan" : "Uit"} • Ingelogd: {localStorage.getItem('knor:authToken') ? "Ja" : "Nee"}
+      {/* ACC: Beveiliging */}
+      <div>
+        <button
+          className="w-full flex items-center justify-between px-3 py-2 text-left"
+          onClick={()=> setPanelOpen(p => p==="sec" ? null : "sec")}
+        >
+          <span className="font-semibold text-sm">Beveiliging</span>
+          <span className={`transition-transform ${panelOpen==="sec" ? "rotate-90" : ""}`}>▸</span>
+        </button>
+        {panelOpen==="sec" && (
+          <div className="px-3 pb-3 space-y-2">
+            <div className="text-xs text-gray-600">
+              Vergrendeling: {state.settings?.requirePassword ? "Aan" : "Uit"} •
+              {" "}Ingelogd: {localStorage.getItem('knor:authToken') ? "Ja" : "Nee"}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button className="rounded-full border px-3 py-1 text-sm" onClick={()=>setLocked(true)}>Log in</button>
+              <button className="rounded-full border px-3 py-1 text-sm" onClick={logout}>Log uit</button>
+              <button className="rounded-full border px-3 py-1 text-sm" onClick={lockNow}>Vergrendel nu</button>
+            </div>
+            <div className="text-[11px] text-gray-500">
+              “Log uit” verwijdert alleen je token (opslaan/export/import werken dan niet).
+              “Vergrendel nu” zet óók de app-lock aan (wachtwoord verplicht).
+            </div>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <button className="rounded-full border px-3 py-1 text-sm" onClick={()=>setLocked(true)}>Log in</button>
-            <button className="rounded-full border px-3 py-1 text-sm" onClick={()=>{ localStorage.removeItem('knor:authToken'); localStorage.removeItem('knor:authExp'); setLocked(true); setSyncStatus('🔒 Uitgelogd — wijzigingen niet opgeslagen'); }}>Log uit</button>
-            <button className="rounded-full border px-3 py-1 text-sm" onClick={lockNow}>Vergrendel nu</button>
-          </div>
-          <div className="text-[11px] text-gray-500">Deel-links blijven werken zonder wachtwoord. Na 10 min. inactiviteit vergrendelt de app automatisch.</div>
-        </div>
-
-        {/* Gevaarlijk */}
-        <div className="rounded-lg border p-2 space-y-2">
-          <div className="font-semibold text-sm text-red-700">Gevaarlijke acties</div>
-          <button className="rounded-full border border-red-300 text-red-700 px-3 py-1 text-sm"
-            onClick={deleteCurrentShow}>
-            Verwijder huidige voorstelling
-          </button>
-        </div>
+        )}
       </div>
     </div>
   </details>
 </div>
+
 
     </div>
   );
