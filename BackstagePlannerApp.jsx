@@ -316,6 +316,20 @@ function App() {
     return p.get("share") || null;
   }, [location.hash]);
 
+  // SHARE context helpers
+  const _shareParams = React.useMemo(() => new URLSearchParams((location.hash || "").replace("#","")), [location.hash]);
+  const _sid         = _shareParams.get("sid");
+  const shareShow    = React.useMemo(() => {
+    const base = _sid ? (state.shows || []).find(s => s.id === _sid) : activeShow;
+    return base || activeShow || (state.shows || [])[0] || null;
+  }, [_sid, state.shows, activeShow]);
+
+  const shareSketches = React.useMemo(() => (!shareShow ? [] : (state.sketches || []).filter(sk => sk.showId === shareShow.id).sort((a,b)=>(a.order||0)-(b.order||0))), [state.sketches, shareShow]);
+  const sharePeople   = React.useMemo(() => (!shareShow ? [] : (state.people   || []).filter(p => p.showId === shareShow.id)), [state.people, shareShow]);
+  const shareRehearsals = React.useMemo(() => (!shareShow ? [] : (state.rehearsals || []).filter(r => r.showId === shareShow.id).sort((a,b)=> String(a.date).localeCompare(String(b.date)))), [state.rehearsals, shareShow]);
+  const sharePRKit    = React.useMemo(() => (!shareShow ? [] : (state.prKit || []).filter(i => i.showId === shareShow.id).sort((a,b)=> String(a.dateStart||"").localeCompare(String(b.dateStart||"")))), [state.prKit, shareShow]);
+  const runSheetShare = React.useMemo(() => (shareShow ? buildRunSheet(shareShow, shareSketches) : { items: [], totalMin: 0 }), [shareShow, shareSketches]);
+
   // PASSWORD LOCK (niet voor share)
   const [locked, setLocked] = React.useState(false);
   React.useEffect(() => {
@@ -391,20 +405,7 @@ function App() {
   // Als vergrendeld en niet in share: overlay tonen
   if (!shareTab && locked) return <PasswordGate onUnlock={handleUnlock} />;
 
-  // SHARE context helpers
-  const _shareParams = React.useMemo(() => new URLSearchParams((location.hash || "").replace("#","")), [location.hash]);
-  const _sid         = _shareParams.get("sid");
-  const shareShow    = React.useMemo(() => {
-    const base = _sid ? (state.shows || []).find(s => s.id === _sid) : activeShow;
-    return base || activeShow || (state.shows || [])[0] || null;
-  }, [_sid, state.shows, activeShow]);
-
-  const shareSketches = React.useMemo(() => (!shareShow ? [] : (state.sketches || []).filter(sk => sk.showId === shareShow.id).sort((a,b)=>(a.order||0)-(b.order||0))), [state.sketches, shareShow]);
-  const sharePeople   = React.useMemo(() => (!shareShow ? [] : (state.people   || []).filter(p => p.showId === shareShow.id)), [state.people, shareShow]);
-  const shareRehearsals = React.useMemo(() => (!shareShow ? [] : (state.rehearsals || []).filter(r => r.showId === shareShow.id).sort((a,b)=> String(a.date).localeCompare(String(b.date)))), [state.rehearsals, shareShow]);
-  const sharePRKit    = React.useMemo(() => (!shareShow ? [] : (state.prKit || []).filter(i => i.showId === shareShow.id).sort((a,b)=> String(a.dateStart||"").localeCompare(String(b.dateStart||"")))), [state.prKit, shareShow]);
-  const runSheetShare = React.useMemo(() => (shareShow ? buildRunSheet(shareShow, shareSketches) : { items: [], totalMin: 0 }), [shareShow, shareSketches]);
-
+  
   // Export / Import
   const exportShow = async () => {
     if (!activeShow) return;
