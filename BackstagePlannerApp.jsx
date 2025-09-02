@@ -7,10 +7,32 @@ const {
   detectCastConflicts,
   RunSheetView,
   PeopleAndResources,
-  parseTimeToMin
+  parseTimeToMin,
+  // onderstaande views/comp worden elders op window gezet
+  CastMatrixView,
+  MicMatrixView,
+  RoleDistributionView,
+  RehearsalPlanner,
+  ScriptsView,
+  PRKitView,
+  PlannerMinimal,
 } = window;
 
-// ---------- Storage via Netlify Functions ----------
+/* =========================================================================================
+   PERSISTENT STORAGE via Netlify Functions
+   -----------------------------------------------------------------------------------------
+   Vereist op Netlify (Environment variables):
+     - SUPABASE_URL
+     - SUPABASE_SERVICE_ROLE
+     - APP_PASSWORD
+   Functions die gebruikt worden:
+     - /.netlify/functions/load         (GET)     -> hele state JSON
+     - /.netlify/functions/save         (POST)    -> hele state JSON, Authorization: Bearer <token>
+     - /.netlify/functions/pw           (POST)    -> {password} -> {token} (bij juist wachtwoord)
+     - /.netlify/functions/export-show  (GET)     -> ?showId=...  download JSON van die show
+     - /.netlify/functions/import-show  (POST)    -> leesbare JSON met show+gerelateerde tabellen
+========================================================================================= */
+
 const loadState = async () => {
   try {
     const res = await fetch('/.netlify/functions/load');
@@ -18,7 +40,7 @@ const loadState = async () => {
     const json = await res.json();
     return json || null;
   } catch {
-    // optioneel mini fallback
+    // mini-fallback (niet leidend)
     try {
       const raw = localStorage.getItem("sll-backstage-v2");
       return raw ? JSON.parse(raw) : null;
@@ -47,7 +69,6 @@ const saveStateRemote = async (state) => {
   }
 };
 
-
 // ---- Helpers ----
 const todayStr = () => new Date().toISOString().slice(0, 10);
 const newEmptyShow = () => ({ id: uid(), name: "Nieuwe show", date: todayStr(), startTime: "19:30" });
@@ -61,20 +82,18 @@ function withDefaults(s = {}) {
     sketches: Array.isArray(s.sketches) ? s.sketches : [],
     rehearsals: Array.isArray(s.rehearsals) ? s.rehearsals : [],
     prKit: Array.isArray(s.prKit) ? s.prKit : [],
-    // gedeelde versies (opgeslagen in hoofd-state)
+    // gedeelde versies -> netjes mee geserialiseerd
     versions: Array.isArray(s.versions) ? s.versions : [],
     // sync meta
     rev: Number.isFinite(s.rev) ? s.rev : 0, // monotone timestamp (ms)
     lastSavedBy: s.lastSavedBy || null,
-
-    // app-instellingen (alleen requirePassword gebruiken; geen hash meer client-side)
+    // app-instellingen (requirePassword bepaalt of lock actief is)
     settings: {
       ...(s.settings || {}),
       requirePassword: !!(s.settings?.requirePassword),
     },
   };
 }
-
 
 // ---------- ErrorBoundary voor tabs ----------
 class TabErrorBoundary extends React.Component {
@@ -112,7 +131,15 @@ function PasswordGate({ onUnlock }) {
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-white">
       <div className="w-[min(92vw,380px)] rounded-2xl border p-6 shadow-xl">
-        <h1 className="text-xl font-bold mb-2">KnorPlanner</h1>
+        <div className="flex items-center gap-2 mb-2">
+          <img
+            src="https://cdn-icons-png.flaticon.com/512/616/616584.png"
+            alt=""
+            className="w-7 h-7"
+            aria-hidden="true"
+          />
+          <h1 className="text-xl font-bold">KnorPlanner</h1>
+        </div>
         <p className="text-sm text-gray-600 mb-4">Voer het wachtwoord in om de planner te openen.</p>
         <input
           type="password"
@@ -132,7 +159,6 @@ function PasswordGate({ onUnlock }) {
   );
 }
 
-
 // ---------- Root Component ----------
 function App() {
   const boot = React.useMemo(() => withDefaults(), []);
@@ -141,7 +167,7 @@ function App() {
   const [tab, setTab] = React.useState("planner");
   const [syncStatus, setSyncStatus] = React.useState("Nog niet gesynced");
 
-  // Flag om save-loop bij polling te voorkomen
+  // Guard voor "echo" saves (hier niet nodig, maar houden voor consistentie)
   const applyingRemoteRef = React.useRef(false);
 
   // ---- History (undo/redo) ----
@@ -152,14 +178,13 @@ function App() {
   const undo = () => { if (!past.length) return; const prev = past[past.length-1]; setPast(past.slice(0,-1)); setFuture((f)=>[state, ...f]); setState(prev); };
   const redo = () => { if (!future.length) return; const nxt = future[0]; setFuture(future.slice(1)); setPast((p)=>[...p, state]); setState(nxt); };
 
-  // ---- Named versions (gedeeld via load/save) ----
+  // ---- Named versions (gedeeld; worden mee opgeslagen) ----
   const saveVersion = (name) => {
     const v = {
       id: uid(),
       name: name || `Versie ${new Date().toLocaleString()}`,
       ts: Date.now(),
-      // snapshot zonder recursieve versions
-      data: JSON.parse(JSON.stringify({ ...state, versions: [] })),
+      data: JSON.parse(JSON.stringify({ ...state, versions: [] })), // snapshot zonder zichzelf
     };
     pushHistory(state);
     setState(prev => ({ ...prev, versions: [...(prev.versions || []), v] }));
@@ -176,7 +201,7 @@ function App() {
     setState(prev => ({ ...prev, versions: (prev.versions || []).filter(v=>v.id!==id) }));
   };
 
-  // Bij eerste keer laden
+  // Eerste load
   React.useEffect(() => {
     (async () => {
       const remote = await loadState();
@@ -200,50 +225,6 @@ function App() {
       });
     })();
   }, []);
-
-  // 🔁 Poll elke 5s voor andermans wijzigingen (geen Supabase realtime meer)
-  React.useEffect(() => {
-    const iv = setInterval(async () => {
-      try {
-        const remote = await loadState();
-        if (!remote) return;
-        const incoming = withDefaults(remote);
-        if ((incoming.rev || 0) > (state.rev || 0)) {
-          applyingRemoteRef.current = true;
-          const nextActiveId = (activeShowId && (incoming.shows || []).some(s=>s.id===activeShowId))
-            ? activeShowId
-            : (incoming.shows?.[0]?.id || null);
-          setState(incoming);
-          setActiveShowId(nextActiveId);
-          setSyncStatus("🔄 Bijgewerkt door een ander apparaat");
-          setTimeout(()=>{ applyingRemoteRef.current = false; }, 0);
-        }
-      } catch {}
-    }, 5000);
-    return () => clearInterval(iv);
-  }, [state.rev, activeShowId]);
-
-  // Opslaan bij elke lokale wijziging (debounced)
-  React.useEffect(() => {
-    // share-pagina's nooit saven
-    const p = new URLSearchParams((location.hash||"").replace("#",""));
-    const shareTab = p.get("share");
-    if (shareTab) return;
-
-    // Als we net een remote update toepasten: niet opnieuw saven
-    if (applyingRemoteRef.current) return;
-
-    const t = setTimeout(async () => {
-      try {
-        const next = { ...state, rev: Date.now() };
-        await saveStateRemote(next);
-        setSyncStatus("✅ Gesynced om " + new Date().toLocaleTimeString());
-      } catch {
-        setSyncStatus("⚠️ Opslaan mislukt");
-      }
-    }, 500);
-    return () => clearTimeout(t);
-  }, [state]);
 
   // ---- View link per tab ----
   React.useEffect(()=>{ const fromHash = new URLSearchParams((location.hash||'').replace('#','')).get('tab'); if (fromHash) setTab(fromHash); },[]);
@@ -285,71 +266,48 @@ function App() {
       .filter(i => i.showId === activeShow.id)
       .sort((a,b)=> String(a.dateStart || "").localeCompare(String(b.dateStart || "")));
   }, [state.prKit, activeShow]);
-  
-  const micById = Object.fromEntries(showMics.map((m) => [m.id, m]));
-  const personById = Object.fromEntries(showPeople.map((p) => [p.id, p]));
-  const runSheet = React.useMemo(() => activeShow ? buildRunSheet(activeShow, showSketches) : {items:[],totalMin:0}, [activeShow, showSketches]);
-  const micWarnings = React.useMemo(() => detectMicConflicts(showSketches), [showSketches]);
+
+  const runSheet = React.useMemo(
+    () => activeShow ? buildRunSheet(activeShow, showSketches) : {items:[],totalMin:0},
+    [activeShow, showSketches]
+  );
+
+  const micWarnings  = React.useMemo(() => detectMicConflicts(showSketches), [showSketches]);
   const castWarnings = React.useMemo(() => detectCastConflicts(showSketches), [showSketches]);
 
-  // --- Blok-tijden helpers voor Programma ---
-  const mmToHHMM = (m) =>
-    `${String(Math.floor((m % 1440) / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+  // --- Blok-tijden helpers (NA showSketches!) ---
+  const mmToHHMM = (m) => `${String(Math.floor((m % 1440) / 60)).padStart(2,"0")}:${String(m % 60).padStart(2,"0")}`;
 
   const startMinRS = (typeof parseTimeToMin === "function")
     ? parseTimeToMin(activeShow?.startTime || "19:30")
     : (() => {
-        const [h = 19, m = 30] = String(activeShow?.startTime || "19:30")
-          .split(":")
-          .map((n) => parseInt(n, 10));
-        return h * 60 + m;
+        const [h=19,m=30] = String(activeShow?.startTime||"19:30").split(":").map(n=>parseInt(n,10));
+        return h*60+m;
       })();
 
   const segmentsRS = React.useMemo(() => {
-    const segs = [];
-    let block = [];
-
+    const segs = []; let block = [];
     const flush = () => {
       if (!block.length) return;
-      const duration = block.reduce(
-        (sum, it) => sum + (parseInt(it.durationMin || 0, 10) || 0),
-        0
-      );
-      segs.push({ type: "block", count: block.length, durationMin: duration });
+      const duration = block.reduce((sum,it)=> sum + (parseInt(it.durationMin||0,10)||0), 0);
+      segs.push({ type:"block", count:block.length, durationMin:duration });
       block = [];
     };
-
-    for (const it of (showSketches || [])) {
-      const kind = String(it?.kind || "sketch").toLowerCase();
-      if (kind === "break") {
-        flush();
-        segs.push({
-          type: "pause",
-          durationMin: parseInt(it.durationMin || 0, 10) || 0,
-        });
-      } else {
-        // 'waerse' telt mee in lopend blok
-        block.push(it);
-      }
+    for (const it of (showSketches||[])) {
+      const kind = String(it?.kind||"sketch").toLowerCase();
+      if (kind === "break") { flush(); segs.push({ type:"pause", durationMin: parseInt(it.durationMin||0,10)||0 }); }
+      else { block.push(it); } // 'waerse' telt mee in lopend blok
     }
     flush();
     return segs;
   }, [showSketches]);
 
   const timedSegmentsRS = React.useMemo(() => {
-    let cur = startMinRS;
-    let blk = 0;
-    return segmentsRS.map((seg) => {
-      const start = cur;
-      const end = cur + (seg.durationMin || 0);
-      cur = end;
+    let cur = startMinRS, blk = 0;
+    return segmentsRS.map(seg => {
+      const start = cur, end = cur + (seg.durationMin||0); cur = end;
       const label = seg.type === "pause" ? "Pauze" : `Blok ${++blk}`;
-      return {
-        ...seg,
-        label,
-        startStr: mmToHHMM(start),
-        endStr: mmToHHMM(end),
-      };
+      return { ...seg, label, startStr: mmToHHMM(start), endStr: mmToHHMM(end) };
     });
   }, [segmentsRS, startMinRS]);
 
@@ -411,17 +369,13 @@ function App() {
 
     const srcShowId = activeShow.id;
     const newShowId = uid();
-    const newShow = {
-      ...activeShow,
-      id: newShowId,
-      name: `${activeShow.name} (kopie)`,
-    };
+    const newShow = { ...activeShow, id: newShowId, name: `${activeShow.name} (kopie)` };
 
     pushHistory(state);
     setState((prev) => {
       // Spelers kopiëren
       const srcPeople = (prev.people || []).filter(p => p.showId === srcShowId);
-      const idMap = {}; // oudPersoonId -> nieuwPersoonId
+      const idMap = {};
       const copiedPeople = srcPeople.map(p => {
         const npid = uid();
         idMap[p.id] = npid;
@@ -453,11 +407,7 @@ function App() {
 
       // Repetities kopiëren
       const srcRehearsals = (prev.rehearsals || []).filter(r => r.showId === srcShowId);
-      const copiedRehearsals = srcRehearsals.map(r => ({
-        ...r,
-        id: uid(),
-        showId: newShowId,
-      }));
+      const copiedRehearsals = srcRehearsals.map(r => ({ ...r, id: uid(), showId: newShowId }));
 
       return {
         ...prev,
@@ -482,11 +432,11 @@ function App() {
   const [locked, setLocked] = React.useState(false);
 
   React.useEffect(() => {
-    if (shareTab) { setLocked(false); return; } // share is altijd open
-    const req = !!(state.settings?.requirePassword);
+    if (shareTab) { setLocked(false); return; }              // share is altijd open
+    const req = !!state.settings?.requirePassword;
     if (!req) { setLocked(false); return; }
-    const token = localStorage.getItem("knor:authToken") || "";
-    setLocked(!token);
+    const token = localStorage.getItem('knor:authToken') || '';
+    setLocked(!token);                                       // geen token => lock
   }, [shareTab, state.settings?.requirePassword]);
 
   const handleUnlock = async (plainPw) => {
@@ -498,27 +448,29 @@ function App() {
       });
       if (!res.ok) return false;
       const { token } = await res.json();
+      if (!token) return false;
       localStorage.setItem('knor:authToken', token);
       setLocked(false);
       return true;
     } catch { return false; }
   };
 
-  // Vergrendel: zet requirePassword aan en wis token
   const lockNow = async () => {
-    try { await saveStateRemote({ ...state, settings: { ...(state.settings||{}), requirePassword: true }, rev: Date.now() }); } catch {}
-    setState(prev => ({ ...prev, settings: { ...(prev.settings||{}), requirePassword: true } }));
-    localStorage.removeItem("knor:authToken");
+    try { await saveStateRemote({ ...state, rev: Date.now() }); } catch {}
+    setState(prev => ({
+      ...prev,
+      settings: { ...(prev.settings||{}), requirePassword: true }
+    }));
+    localStorage.removeItem('knor:authToken');
     setLocked(true);
-    alert("Vergrendeld.");
+    alert('Vergrendeld.');
   };
 
-  // Ontgrendel dit apparaat (vraag wachtwoord via prompt)
   const unlockThisDevice = async () => {
-    const pw = prompt("Wachtwoord:");
-    if (!pw) return;
+    const pw = prompt('Wachtwoord:');
+    if (pw == null) return;
     const ok = await handleUnlock(pw);
-    if (!ok) alert("Onjuist wachtwoord.");
+    alert(ok ? 'Dit apparaat is ontgrendeld.' : 'Onjuist wachtwoord.');
   };
 
   // Auto-lock na 10 minuten inactiviteit (niet op share-pagina's)
@@ -526,31 +478,48 @@ function App() {
     if (shareTab) return;
     const RESET_MS = 10 * 60 * 1000; // 10 minuten
     let timer;
-
     const reset = () => {
       clearTimeout(timer);
       timer = setTimeout(async () => {
-        await lockNow(); // lockNow slaat eerst op
+        await lockNow();
       }, RESET_MS);
     };
-
-    const onEv = () => {
-      if (!document.hidden) reset();
-    };
-
+    const onEv = () => { if (!document.hidden) reset(); };
     const events = ["mousemove","keydown","mousedown","touchstart","visibilitychange"];
     events.forEach(ev => window.addEventListener(ev, onEv, { passive: true }));
     reset();
-
     return () => {
       clearTimeout(timer);
       events.forEach(ev => window.removeEventListener(ev, onEv));
     };
-  }, [shareTab]);
+  }, [shareTab, state.settings?.requirePassword]); 
 
- // ====== SHARE ROUTES ======
+  // Opslaan bij elke lokale wijziging (debounced) — alleen met token
+  React.useEffect(() => {
+    const p = new URLSearchParams((location.hash||"").replace("#",""));
+    const shareTabNow = p.get("share");
+    if (shareTabNow) return;                 // share-pagina's saven niet
+    if (applyingRemoteRef.current) return;
 
-  // Bepaal 'share context': als #share=...&sid=... aanwezig is, pin aan die show
+    const t = setTimeout(async () => {
+      try {
+        const token = localStorage.getItem('knor:authToken') || '';
+        if (!token) {
+          setSyncStatus('🔒 Niet ingelogd — wijzigingen niet opgeslagen');
+          return;
+        }
+        const next = { ...state, rev: Date.now() };
+        await saveStateRemote(next);
+        setSyncStatus("✅ Gesynced om " + new Date().toLocaleTimeString());
+      } catch (e) {
+        console.error('save failed', e);
+        setSyncStatus("⚠️ Opslaan mislukt");
+      }
+    }, 500);
+    return () => clearTimeout(t);
+  }, [state]);
+
+  // ====== SHARE CONTEXT (deck en andere share pagina's) ======
   const _shareParams = React.useMemo(() => new URLSearchParams((location.hash || "").replace("#","")), [location.hash]);
   const _sid         = _shareParams.get("sid");
   const shareShow    = React.useMemo(() => {
@@ -588,6 +557,50 @@ function App() {
     return shareShow ? buildRunSheet(shareShow, shareSketches) : { items: [], totalMin: 0 };
   }, [shareShow, shareSketches]);
 
+  // --- Export / Import helpers ---
+  const exportShow = async () => {
+    if (!activeShow) return;
+    const ts = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+    const safe = (activeShow.name || 'show').replace(/[^\w\-]+/g,'_');
+    const url = `/.netlify/functions/export-show?showId=${encodeURIComponent(activeShow.id)}&t=${ts}`;
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `knorplanner-${safe}-${ts}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
+
+  const importShow = async () => {
+    const token = localStorage.getItem('knor:authToken') || '';
+    if (!token) { alert('Ontgrendel eerst (wachtwoord) om te importeren.'); return; }
+
+    const pick = document.createElement('input');
+    pick.type = 'file';
+    pick.accept = 'application/json';
+    pick.onchange = async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const payload = JSON.parse(text);
+        const res = await fetch('/.netlify/functions/import-show', {
+          method: 'POST',
+          headers: { 'Content-Type':'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) throw new Error('import failed');
+        const fresh = await loadState();
+        setState(withDefaults(fresh || {}));
+        alert('Import gelukt.');
+      } catch (err) {
+        console.error(err);
+        alert('Import mislukt. Is dit een geldige export?');
+      }
+    };
+    pick.click();
+  };
+
   // --- Share pages ---
   if (shareTab === "rehearsals") {
     return (
@@ -600,9 +613,7 @@ function App() {
           onUpdate={()=>{}}
           onRemove={()=>{}}
         />
-        <div className="text-sm text-gray-500 mt-6">
-          Dit is een gedeelde link, alleen-lezen. Wijzigingen kunnen alleen in de hoofd-app.
-        </div>
+        <div className="text-sm text-gray-500 mt-6">Dit is een gedeelde link, alleen-lezen. Wijzigingen kunnen alleen in de hoofd-app.</div>
       </div>
     );
   }
@@ -617,9 +628,7 @@ function App() {
           people={sharePeople}
           setState={()=>{}}
         />
-        <div className="text-sm text-gray-500 mt-6">
-          Dit is een gedeelde link, alleen-lezen. Wijzigingen kunnen alleen in de hoofd-app.
-        </div>
+        <div className="text-sm text-gray-500 mt-6">Dit is een gedeelde link, alleen-lezen. Wijzigingen kunnen alleen in de hoofd-app.</div>
       </div>
     );
   }
@@ -634,9 +643,7 @@ function App() {
           readOnly={true}
           onChange={()=>{}}
         />
-        <div className="text-sm text-gray-500 mt-6">
-          Dit is een gedeelde link, alleen-lezen. Wijzigingen kunnen alleen in de hoofd-app.
-        </div>
+        <div className="text-sm text-gray-500 mt-6">Dit is een gedeelde link, alleen-lezen. Wijzigingen kunnen alleen in de hoofd-app.</div>
       </div>
     );
   }
@@ -646,9 +653,7 @@ function App() {
       <div className="mx-auto max-w-6xl p-4 share-only">
         <h1 className="text-2xl font-bold mb-4">Programma (live)</h1>
         <RunSheetView runSheet={runSheetShare} show={shareShow} />
-        <div className="text-sm text-gray-500 mt-6">
-          Dit is een gedeelde link, alleen-lezen.
-        </div>
+        <div className="text-sm text-gray-500 mt-6">Dit is een gedeelde link, alleen-lezen.</div>
       </div>
     );
   }
@@ -657,32 +662,24 @@ function App() {
     return (
       <div className="mx-auto max-w-6xl p-4 share-only">
         <h1 className="text-2xl font-bold mb-4">Microfoons (live)</h1>
-
-        {/* forceer read-only gedrag binnen deze wrapper */}
         <style>{`
           .share-only select,
           .share-only input,
-          .share-only button {
-            pointer-events: none !important;
-          }
+          .share-only button { pointer-events: none !important; }
         `}</style>
-
         <MicMatrixView
           currentShowId={shareShow?.id}
           sketches={shareSketches}
           people={sharePeople}
           shows={state.shows}
-          setState={() => { /* no-op in share */ }}
+          setState={() => {}}
         />
-        <div className="text-sm text-gray-500 mt-6">
-          Dit is een gedeelde link, alleen-lezen.
-        </div>
+        <div className="text-sm text-gray-500 mt-6">Dit is een gedeelde link, alleen-lezen.</div>
       </div>
     );
   }
 
   if (shareTab === "scripts") {
-    // helpers voor read-only weergave
     const personIndex = Object.fromEntries(sharePeople.map(p => [p.id, p]));
     const fullNameRO = (pidOrObj) => {
       const p = typeof pidOrObj === "string" ? personIndex[pidOrObj] : pidOrObj;
@@ -703,22 +700,18 @@ function App() {
         decor: sk?.decor || "",
       };
     };
-
     const onlySketches = (shareSketches || []).filter(s => (s?.kind || "sketch") === "sketch");
 
     return (
       <div className="mx-auto max-w-6xl p-4">
         <h1 className="text-2xl font-bold mb-4">Sketches (live)</h1>
-
         <div className="space-y-6">
           {onlySketches.map((sk, i) => {
             const s = ensureDefaultsLocal(sk);
             return (
               <div key={s.id || i} className="rounded-xl border p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-                  <div className="font-semibold">
-                    {`#${s.order || "?"} ${s.title || "(zonder titel)"}`}
-                  </div>
+                  <div className="font-semibold">{`#${s.order || "?"} ${s.title || "(zonder titel)"}`}</div>
                   <div className="text-sm text-gray-600">
                     {(s.durationMin || 0)} min · {s.stagePlace === "voor" ? "Voor de gordijn" : "Podium"}
                   </div>
@@ -762,9 +755,7 @@ function App() {
                           <a href={s.links.text} target="_blank" rel="noopener noreferrer" className="underline break-all">
                             {s.links.text}
                           </a>
-                        ) : (
-                          <span className="text-gray-400">—</span>
-                        )}
+                        ) : (<span className="text-gray-400">—</span>)}
                       </div>
                       <div>
                         Licht/geluid:{" "}
@@ -772,9 +763,7 @@ function App() {
                           <a href={s.links.tech} target="_blank" rel="noopener noreferrer" className="underline break-all">
                             {s.links.tech}
                           </a>
-                        ) : (
-                          <span className="text-gray-400">—</span>
-                        )}
+                        ) : (<span className="text-gray-400">—</span>)}
                       </div>
                     </div>
                   </div>
@@ -804,17 +793,13 @@ function App() {
                                 <a href={x.url} target="_blank" rel="noopener noreferrer" className="underline">
                                   {x.url}
                                 </a>
-                              ) : (
-                                <span className="text-gray-400">—</span>
-                              )}
+                              ) : (<span className="text-gray-400">—</span>)}
                             </td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
-                  ) : (
-                    <div className="text-sm text-gray-500">—</div>
-                  )}
+                  ) : (<div className="text-sm text-gray-500">—</div>)}
                 </div>
               </div>
             );
@@ -825,8 +810,7 @@ function App() {
     );
   }
 
-
-  /** ---------- NIEUW: Draaiboek (alle share-links gebundeld) ---------- */
+  /** ---------- Draaiboek (alle share-links gebundeld) ---------- */
   if (shareTab === "deck") {
     const mk = (k) => `${location.origin}${location.pathname}#share=${k}&sid=${shareShow?.id || ""}`;
     return (
@@ -872,114 +856,6 @@ function App() {
     );
   }
 
-  // ====== Export / Import helpers ======
-  const exportCurrentShow = () => {
-    if (!activeShow) return;
-    const sid = activeShow.id;
-    const payload = {
-      meta: { type: "knorplanner.show", version: 1 },
-      show: { id: sid, name: activeShow.name, date: activeShow.date, startTime: activeShow.startTime, headsetCount: activeShow.headsetCount || 0, handheldCount: activeShow.handheldCount || 0 },
-      people: (state.people || []).filter(p => p.showId === sid),
-      mics: (state.mics || []).filter(m => m.showId === sid),
-      sketches: (state.sketches || []).filter(s => s.showId === sid),
-      rehearsals: (state.rehearsals || []).filter(r => r.showId === sid),
-      prKit: (state.prKit || []).filter(i => i.showId === sid),
-    };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    const safeName = (activeShow.name || "show").replace(/[^\w\-]+/g, "_");
-    a.download = `knorplanner-${safeName}.json`;
-    a.click();
-    URL.revokeObjectURL(a.href);
-  };
-
-  const importShowData = (data) => {
-    if (!data || data.meta?.type !== "knorplanner.show") {
-      alert("Bestand lijkt geen KnorPlanner-show export.");
-      return;
-    }
-    const newShowId = uid();
-
-    // Maps
-    const personIdMap = {};
-    const sketchIdMap = {};
-
-    // People
-    const newPeople = (data.people || []).map(p => {
-      const nid = uid();
-      personIdMap[p.id] = nid;
-      return { ...p, id: nid, showId: newShowId };
-    });
-
-    // Sketches + nested refs
-    const newSketches = (data.sketches || []).map(s => {
-      const nid = uid();
-      sketchIdMap[s.id] = nid;
-
-      const roles = Array.isArray(s.roles) ? s.roles.map(r => ({
-        ...r,
-        personId: r.personId ? (personIdMap[r.personId] || "") : "",
-      })) : [];
-
-      // micAssignments: channel -> personId
-      const micAssignments = {};
-      const srcMA = s.micAssignments || {};
-      Object.keys(srcMA).forEach(ch => {
-        const pid = srcMA[ch];
-        micAssignments[ch] = pid ? (personIdMap[pid] || "") : "";
-      });
-
-      return { ...s, id: nid, showId: newShowId, roles, micAssignments };
-    });
-
-    // Rehearsals / PRKit / mics
-    const newRehearsals = (data.rehearsals || []).map(r => ({ ...r, id: uid(), showId: newShowId }));
-    const newPRKit = (data.prKit || []).map(i => ({ ...i, id: uid(), showId: newShowId }));
-    const newMics = (data.mics || []).map(m => ({ ...m, id: uid(), showId: newShowId }));
-
-    const newShow = {
-      id: newShowId,
-      name: `${data.show?.name || "Show"} (geïmporteerd)`,
-      date: data.show?.date || todayStr(),
-      startTime: data.show?.startTime || "19:30",
-      headsetCount: data.show?.headsetCount || 0,
-      handheldCount: data.show?.handheldCount || 0,
-    };
-
-    pushHistory(state);
-    setState(prev => ({
-      ...prev,
-      shows: [...(prev.shows || []), newShow],
-      people: [...(prev.people || []), ...newPeople],
-      mics: [...(prev.mics || []), ...newMics],
-      sketches: [...(prev.sketches || []), ...newSketches],
-      rehearsals: [...(prev.rehearsals || []), ...newRehearsals],
-      prKit: [...(prev.prKit || []), ...newPRKit],
-    }));
-    setActiveShowId(newShowId);
-    alert("Voorstelling geïmporteerd.");
-  };
-
-  const fileInputRef = React.useRef(null);
-  const onImportClick = () => fileInputRef.current?.click();
-  const onImportFileChange = (e) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const data = JSON.parse(reader.result || "{}");
-        importShowData(data);
-      } catch {
-        alert("Kon JSON niet lezen.");
-      } finally {
-        e.target.value = "";
-      }
-    };
-    reader.readAsText(f, "utf-8");
-  };
-
   // ====== NORMALE APP ======
   return (
     <div className="mx-auto max-w-7xl p-4">
@@ -987,7 +863,7 @@ function App() {
       <header className="sticky top-0 z-40 w-full border-b bg-white/80 backdrop-blur brand-header">
         <div className="mx-auto max-w-7xl px-4">
           <div className="h-14 flex items-center gap-3">
-            {/* BRAND: logo + titel (neemt alleen eigen breedte) */}
+            {/* BRAND */}
             <div className="brand flex items-center gap-2 flex-none">
               <img
                 src="https://cdn-icons-png.flaticon.com/512/616/616584.png"
@@ -998,7 +874,7 @@ function App() {
               <div className="brand-title font-extrabold tracking-wide">KnorPlanner</div>
             </div>
 
-            {/* MENU: krijgt ALLE resterende ruimte */}
+            {/* MENU */}
             <nav className="flex gap-2 overflow-x-auto flex-1">
               {[
                 { key: "planner",       label: "Voorstellingen" },
@@ -1089,7 +965,7 @@ function App() {
                 <div className="font-semibold mb-2">Waarschuwingen</div>
                 <ul className="text-sm list-disc pl-5 space-y-1">
                   {micWarnings.map((w,i)=> <li key={`mw-${i}`}>Mic conflict: kanaal <b>{w.channelId}</b> van “{w.from}” naar “{w.to}”.</li>)}
-                  {castWarnings.map((w,i)=> <li key={`cw-${i}`}>Snel wisselen voor speler <b>{personById[w.personId]?.name||w.personId}</b> van “{w.from}” naar “{w.to}”.</li>)}
+                  {castWarnings.map((w,i)=> <li key={`cw-${i}`}>Snel wisselen voor speler <b>{(showPeople.find(p=>p.id===w.personId)?.name) || w.personId}</b> van “{w.from}” naar “{w.to}”.</li>)}
                 </ul>
               </div>
             )}
@@ -1209,26 +1085,6 @@ function App() {
               </button>
             </div>
 
-            {/* Export / Import */}
-            <div className="rounded-lg border p-2 space-y-2">
-              <div className="font-semibold text-sm">Uitwisselen</div>
-              <div className="flex flex-wrap gap-2">
-                <button className="rounded-full border px-3 py-1 text-sm" onClick={exportCurrentShow}>
-                  Exporteer huidige voorstelling
-                </button>
-                <button className="rounded-full border px-3 py-1 text-sm" onClick={onImportClick}>
-                  Importeer voorstelling (JSON)
-                </button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="application/json"
-                  className="hidden"
-                  onChange={onImportFileChange}
-                />
-              </div>
-            </div>
-
             <div className="text-xs text-gray-600">
               Sync: <span className="font-medium">{syncStatus}</span>
             </div>
@@ -1249,6 +1105,22 @@ function App() {
                 ))}
                 {(state.versions || []).length===0 && <li className="text-gray-500">Nog geen versies.</li>}
               </ul>
+            </div>
+
+            {/* Import / Export */}
+            <div className="rounded-lg border p-2 space-y-2">
+              <div className="font-semibold text-sm">Import / Export</div>
+              <div className="flex flex-wrap gap-2">
+                <button className="rounded-full border px-3 py-1 text-sm" onClick={exportShow}>
+                  Exporteer huidige voorstelling
+                </button>
+                <button className="rounded-full border px-3 py-1 text-sm" onClick={importShow}>
+                  Importeer voorstelling (.json)
+                </button>
+              </div>
+              <div className="text-[11px] text-gray-500">
+                Export is leesbare JSON met alleen data van de gekozen show (spelers, sketches, repetities, mics, PR-kit).
+              </div>
             </div>
 
             {/* Deel-links */}
@@ -1284,7 +1156,7 @@ function App() {
             <div className="rounded-lg border p-2 space-y-2">
               <div className="font-semibold text-sm">Beveiliging</div>
               <div className="text-xs text-gray-600">
-                Status: {state.settings?.requirePassword ? "Aan" : "Uit"}
+                Status: {state.settings?.requirePassword ? "Aan" : "Uit"} • Wachtwoordcontrole: <b>server-side</b>
               </div>
               <div className="flex flex-wrap gap-2">
                 <button className="rounded-full border px-3 py-1 text-sm" onClick={lockNow}>
@@ -1295,7 +1167,7 @@ function App() {
                 </button>
               </div>
               <div className="text-[11px] text-gray-500">
-                Deel-links blijven werken zonder wachtwoord. Na 10 minuten inactiviteit wordt de app automatisch vergrendeld (we slaan eerst op).
+                Deel-links blijven werken zonder wachtwoord. Na 10 minuten inactiviteit wordt de app automatisch vergrendeld.
               </div>
             </div>
           </div>
