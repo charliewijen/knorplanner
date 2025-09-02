@@ -112,7 +112,13 @@ function withDefaults(s = {}) {
     versions: Array.isArray(s.versions) ? s.versions : [],
     rev: Number.isFinite(s.rev) ? s.rev : 0,
     lastSavedBy: s.lastSavedBy || null,
-    settings: { ...(s.settings || {}), requirePassword: !!(s.settings?.requirePassword) },
+settings: {
+  ...(s.settings || {}),
+  requirePassword: !!(s.settings?.requirePassword),
+  autoLockMin: Number.isFinite(s.settings?.autoLockMin)
+    ? Math.max(1, Math.min(120, s.settings.autoLockMin))
+    : 20, // standaard 20 minuten
+},
   };
 }
 
@@ -448,15 +454,26 @@ const deleteCurrentShow = () => {
 
   // Auto-lock
   React.useEffect(() => {
-    if (shareTab) return;
-    const RESET_MS = 10 * 60 * 1000;
-    let timer;
-    const reset = () => { clearTimeout(timer); timer = setTimeout(async () => { await lockNow(); }, RESET_MS); };
-    const onEv = () => { if (!document.hidden) reset(); };
-    ["mousemove","keydown","mousedown","touchstart","visibilitychange"].forEach(ev => window.addEventListener(ev, onEv, { passive: true }));
-    reset();
-    return () => { clearTimeout(timer); ["mousemove","keydown","mousedown","touchstart","visibilitychange"].forEach(ev => window.removeEventListener(ev, onEv)); };
-  }, [shareTab, state.settings?.requirePassword]);
+  if (shareTab) return;
+  const mins = Number(state.settings?.autoLockMin) || 10;
+  const RESET_MS = Math.max(1, Math.min(120, mins)) * 60 * 1000;
+
+  let timer;
+  const reset = () => {
+    clearTimeout(timer);
+    timer = setTimeout(async () => { await lockNow(); }, RESET_MS);
+  };
+  const onEv = () => { if (!document.hidden) reset(); };
+
+  const events = ["mousemove","keydown","mousedown","touchstart","visibilitychange"];
+  events.forEach(ev => window.addEventListener(ev, onEv, { passive: true }));
+  reset();
+  return () => {
+    clearTimeout(timer);
+    events.forEach(ev => window.removeEventListener(ev, onEv));
+  };
+}, [shareTab, state.settings?.autoLockMin]);
+
 
  // Opslaan (debounced) — vereist altijd token; bij 401 toon login
 React.useEffect(() => {
@@ -1045,6 +1062,26 @@ if (shareTab === "deck") {
               Vergrendeling: {state.settings?.requirePassword ? "Aan" : "Uit"} •
               {" "}Ingelogd: {localStorage.getItem('knor:authToken') ? "Ja" : "Nee"}
             </div>
+
+            <div className="flex items-center gap-2 text-sm">
+  <label className="text-gray-700">Auto-lock na (min):</label>
+  <input
+    type="number"
+    min="1"
+    max="120"
+    className="w-20 rounded border px-2 py-1"
+    value={state.settings?.autoLockMin ?? 10}
+    onChange={(e) => {
+      const v = Math.max(1, Math.min(120, parseInt(e.target.value || '10', 10)));
+      setState(prev => ({
+        ...prev,
+        settings: { ...(prev.settings || {}), autoLockMin: v }
+      }));
+    }}
+  />
+</div>
+
+            
             <div className="flex flex-wrap gap-2">
               <button className={btnPri} onClick={()=>setLocked(true)}>Log in</button>
               <button className={btnDanger} onClick={logout}>Log uit</button>
