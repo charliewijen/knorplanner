@@ -8,7 +8,6 @@ const {
   RunSheetView,
   PeopleAndResources,
   parseTimeToMin,
-  // onderstaande views/comp worden elders op window gezet
   CastMatrixView,
   MicMatrixView,
   RoleDistributionView,
@@ -20,17 +19,17 @@ const {
 
 /* =========================================================================================
    PERSISTENT STORAGE via Netlify Functions
-   -----------------------------------------------------------------------------------------
    Vereist op Netlify (Environment variables):
      - SUPABASE_URL
      - SUPABASE_SERVICE_ROLE
      - APP_PASSWORD
-   Functions die gebruikt worden:
-     - /.netlify/functions/load         (GET)     -> hele state JSON
-     - /.netlify/functions/save         (POST)    -> hele state JSON, Authorization: Bearer <token>
-     - /.netlify/functions/pw           (POST)    -> {password} -> {token} (bij juist wachtwoord)
-     - /.netlify/functions/export-show  (GET)     -> ?showId=...  download JSON van die show
-     - /.netlify/functions/import-show  (POST)    -> leesbare JSON met show+gerelateerde tabellen
+     - APP_SECRET
+   Functions:
+     - /.netlify/functions/load         (GET)
+     - /.netlify/functions/save         (POST, Authorization: Bearer <token>)
+     - /.netlify/functions/pw           (POST, {password} -> {token, exp})
+     - /.netlify/functions/export-show  (GET,  ?showId=...)
+     - /.netlify/functions/import-show  (POST, body = leesbare JSON)
 ========================================================================================= */
 
 const loadState = async () => {
@@ -48,7 +47,6 @@ const loadState = async () => {
   }
 };
 
-// ---- saveStateRemote ----
 const saveStateRemote = async (state) => {
   try {
     const token = localStorage.getItem('knor:authToken');
@@ -70,8 +68,6 @@ const saveStateRemote = async (state) => {
   }
 };
 
-
-
 // ---- Helpers ----
 const todayStr = () => new Date().toISOString().slice(0, 10);
 const newEmptyShow = () => ({ id: uid(), name: "Nieuwe show", date: todayStr(), startTime: "19:30" });
@@ -85,12 +81,11 @@ function withDefaults(s = {}) {
     sketches: Array.isArray(s.sketches) ? s.sketches : [],
     rehearsals: Array.isArray(s.rehearsals) ? s.rehearsals : [],
     prKit: Array.isArray(s.prKit) ? s.prKit : [],
-    // gedeelde versies -> netjes mee geserialiseerd
     versions: Array.isArray(s.versions) ? s.versions : [],
     // sync meta
-    rev: Number.isFinite(s.rev) ? s.rev : 0, // monotone timestamp (ms)
+    rev: Number.isFinite(s.rev) ? s.rev : 0,
     lastSavedBy: s.lastSavedBy || null,
-    // app-instellingen (requirePassword bepaalt of lock actief is)
+    // app-instellingen
     settings: {
       ...(s.settings || {}),
       requirePassword: !!(s.settings?.requirePassword),
@@ -98,7 +93,7 @@ function withDefaults(s = {}) {
   };
 }
 
-// ---------- ErrorBoundary voor tabs ----------
+// ---------- ErrorBoundary ----------
 class TabErrorBoundary extends React.Component {
   constructor(props){ super(props); this.state={hasError:false, err:null}; }
   static getDerivedStateFromError(err){ return {hasError:true, err}; }
@@ -125,7 +120,7 @@ function PasswordGate({ onUnlock }) {
     try {
       const ok = await onUnlock(pw);
       if (!ok) setErr("Onjuist wachtwoord.");
-    } catch (e) {
+    } catch {
       setErr("Er ging iets mis.");
     }
   };
@@ -135,12 +130,7 @@ function PasswordGate({ onUnlock }) {
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-white">
       <div className="w-[min(92vw,380px)] rounded-2xl border p-6 shadow-xl">
         <div className="flex items-center gap-2 mb-2">
-          <img
-            src="https://cdn-icons-png.flaticon.com/512/616/616584.png"
-            alt=""
-            className="w-7 h-7"
-            aria-hidden="true"
-          />
+          <img src="https://cdn-icons-png.flaticon.com/512/616/616584.png" alt="" className="w-7 h-7" aria-hidden="true" />
           <h1 className="text-xl font-bold">KnorPlanner</h1>
         </div>
         <p className="text-sm text-gray-600 mb-4">Voer het wachtwoord in om de planner te openen.</p>
@@ -169,11 +159,9 @@ function App() {
   const [activeShowId, setActiveShowId] = React.useState(boot.shows[0]?.id || null);
   const [tab, setTab] = React.useState("planner");
   const [syncStatus, setSyncStatus] = React.useState("Nog niet gesynced");
-
-  // Guard voor "echo" saves (hier niet nodig, maar houden voor consistentie)
   const applyingRemoteRef = React.useRef(false);
 
-  // ---- History (undo/redo) ----
+  // History
   const [past, setPast] = React.useState([]);
   const [future, setFuture] = React.useState([]);
   const pushHistory = (prev) => setPast((p) => [...p.slice(-49), prev]);
@@ -181,13 +169,13 @@ function App() {
   const undo = () => { if (!past.length) return; const prev = past[past.length-1]; setPast(past.slice(0,-1)); setFuture((f)=>[state, ...f]); setState(prev); };
   const redo = () => { if (!future.length) return; const nxt = future[0]; setFuture(future.slice(1)); setPast((p)=>[...p, state]); setState(nxt); };
 
-  // ---- Named versions (gedeeld; worden mee opgeslagen) ----
+  // Versies
   const saveVersion = (name) => {
     const v = {
       id: uid(),
       name: name || `Versie ${new Date().toLocaleString()}`,
       ts: Date.now(),
-      data: JSON.parse(JSON.stringify({ ...state, versions: [] })), // snapshot zonder zichzelf
+      data: JSON.parse(JSON.stringify({ ...state, versions: [] })),
     };
     pushHistory(state);
     setState(prev => ({ ...prev, versions: [...(prev.versions || []), v] }));
@@ -215,10 +203,10 @@ function App() {
       const migrated = {
         ...merged,
         sketches: fix(merged.sketches),
-        people: fix(merged.people),
-        mics: fix(merged.mics),
+        people:   fix(merged.people),
+        mics:     fix(merged.mics),
         rehearsals: fix(merged.rehearsals),
-        prKit: fix(merged.prKit),
+        prKit:      fix(merged.prKit),
       };
 
       setState(migrated);
@@ -229,7 +217,7 @@ function App() {
     })();
   }, []);
 
-  // ---- View link per tab ----
+  // URL-tab in hash
   React.useEffect(()=>{ const fromHash = new URLSearchParams((location.hash||'').replace('#','')).get('tab'); if (fromHash) setTab(fromHash); },[]);
   React.useEffect(()=>{ const sp = new URLSearchParams((location.hash||'').replace('#','')); sp.set('tab', tab); history.replaceState(null, '', `#${sp.toString()}`); },[tab]);
 
@@ -240,7 +228,7 @@ function App() {
     return found || arr[0] || null;
   }, [state.shows, activeShowId]);
 
-  // Filter per showId
+  // Per show
   const showSketches = React.useMemo(() => {
     if (!activeShow) return [];
     const all = Array.isArray(state.sketches) ? state.sketches : [];
@@ -274,13 +262,11 @@ function App() {
     () => activeShow ? buildRunSheet(activeShow, showSketches) : {items:[],totalMin:0},
     [activeShow, showSketches]
   );
-
   const micWarnings  = React.useMemo(() => detectMicConflicts(showSketches), [showSketches]);
   const castWarnings = React.useMemo(() => detectCastConflicts(showSketches), [showSketches]);
 
-  // --- Blok-tijden helpers (NA showSketches!) ---
+  // --- Blok-tijden helpers ---
   const mmToHHMM = (m) => `${String(Math.floor((m % 1440) / 60)).padStart(2,"0")}:${String(m % 60).padStart(2,"0")}`;
-
   const startMinRS = (typeof parseTimeToMin === "function")
     ? parseTimeToMin(activeShow?.startTime || "19:30")
     : (() => {
@@ -299,7 +285,7 @@ function App() {
     for (const it of (showSketches||[])) {
       const kind = String(it?.kind||"sketch").toLowerCase();
       if (kind === "break") { flush(); segs.push({ type:"pause", durationMin: parseInt(it.durationMin||0,10)||0 }); }
-      else { block.push(it); } // 'waerse' telt mee in lopend blok
+      else { block.push(it); } // 'waerse' telt mee
     }
     flush();
     return segs;
@@ -362,53 +348,31 @@ function App() {
     }));
   };
 
-  // ---------- Show dupliceren (incl. alles onder die show) ----------
+  // ---------- Show dupliceren ----------
   const duplicateCurrentShow = () => {
     if (!activeShow) { alert("Geen actieve show om te dupliceren."); return; }
-
     if (!confirm(`Wil je “${activeShow.name}” dupliceren?\nAlles (spelers, sketches, repetities) wordt gekopieerd naar een nieuwe show.`)) {
       return;
     }
-
     const srcShowId = activeShow.id;
     const newShowId = uid();
     const newShow = { ...activeShow, id: newShowId, name: `${activeShow.name} (kopie)` };
 
     pushHistory(state);
     setState((prev) => {
-      // Spelers kopiëren
       const srcPeople = (prev.people || []).filter(p => p.showId === srcShowId);
       const idMap = {};
-      const copiedPeople = srcPeople.map(p => {
-        const npid = uid();
-        idMap[p.id] = npid;
-        return { ...p, id: npid, showId: newShowId };
-      });
+      const copiedPeople = srcPeople.map(p => { const npid = uid(); idMap[p.id] = npid; return { ...p, id: npid, showId: newShowId }; });
 
-      // Sketches kopiëren
       const srcSketches = (prev.sketches || []).filter(sk => sk.showId === srcShowId);
       const copiedSketches = srcSketches.map(sk => {
-        const newRoles = (sk.roles || []).map(r => ({
-          ...r,
-          personId: r.personId ? (idMap[r.personId] || "") : "",
-        }));
+        const newRoles = (sk.roles || []).map(r => ({ ...r, personId: r.personId ? (idMap[r.personId] || "") : "" }));
         const newMicAssignments = {};
         const srcMA = sk.micAssignments || {};
-        Object.keys(srcMA).forEach(ch => {
-          const pid = srcMA[ch];
-          newMicAssignments[ch] = pid ? (idMap[pid] || "") : "";
-        });
-
-        return {
-          ...sk,
-          id: uid(),
-          showId: newShowId,
-          roles: newRoles,
-          micAssignments: newMicAssignments,
-        };
+        Object.keys(srcMA).forEach(ch => { const pid = srcMA[ch]; newMicAssignments[ch] = pid ? (idMap[pid] || "") : ""; });
+        return { ...sk, id: uid(), showId: newShowId, roles: newRoles, micAssignments: newMicAssignments };
       });
 
-      // Repetities kopiëren
       const srcRehearsals = (prev.rehearsals || []).filter(r => r.showId === srcShowId);
       const copiedRehearsals = srcRehearsals.map(r => ({ ...r, id: uid(), showId: newShowId }));
 
@@ -425,29 +389,24 @@ function App() {
     alert("Show gedupliceerd. Je kijkt nu naar de kopie.");
   };
 
-  // ====== READONLY SHARE-MODE ======
+  // ====== SHARE-MODE ======
   const shareTab = React.useMemo(() => {
     const p = new URLSearchParams((location.hash || "").replace("#",""));
     return p.get("share") || null;
   }, [location.hash]);
 
- // ====== PASSWORD LOCK (alleen voor hoofd-app, niet voor share) ======
-const [locked, setLocked] = React.useState(false);
+  // ====== PASSWORD LOCK (alleen voor hoofd-app, niet voor share) ======
+  const [locked, setLocked] = React.useState(false);
 
-React.useEffect(() => {
-  if (shareTab) { setLocked(false); return; }            // share is altijd open
-  const needPw = !!state.settings?.requirePassword;      // als vergrendeling aan staat
-  if (!needPw) { setLocked(false); return; }
-
-  // NIEUW: kijk naar het Netlify token
-  const token = localStorage.getItem('knor:authToken') || '';
-  const exp   = parseInt(localStorage.getItem('knor:authExp') || '0', 10);
-  const valid = token && (!exp || Date.now() < exp);     // (exp is optioneel)
-
-  setLocked(!valid);                                     // geen (geldig) token? → overlay tonen
-}, [shareTab, state.settings?.requirePassword, state.rev]);
-
-
+  React.useEffect(() => {
+    if (shareTab) { setLocked(false); return; }            // share is altijd open
+    const needPw = !!state.settings?.requirePassword;
+    if (!needPw) { setLocked(false); return; }
+    const token = localStorage.getItem('knor:authToken') || '';
+    const exp   = parseInt(localStorage.getItem('knor:authExp') || '0', 10);
+    const valid = token && (!exp || Date.now() < exp);
+    setLocked(!valid);
+  }, [shareTab, state.settings?.requirePassword, state.rev]);
 
   const handleUnlock = async (plainPw) => {
     try {
@@ -457,9 +416,10 @@ React.useEffect(() => {
         body: JSON.stringify({ password: plainPw })
       });
       if (!res.ok) return false;
-      const { token } = await res.json();
+      const { token, exp } = await res.json();
       if (!token) return false;
       localStorage.setItem('knor:authToken', token);
+      if (exp) localStorage.setItem('knor:authExp', String(exp));
       setLocked(false);
       return true;
     } catch { return false; }
@@ -472,27 +432,27 @@ React.useEffect(() => {
       settings: { ...(prev.settings||{}), requirePassword: true }
     }));
     localStorage.removeItem('knor:authToken');
+    localStorage.removeItem('knor:authExp');
     setLocked(true);
     alert('Vergrendeld.');
   };
 
-  const unlockThisDevice = async () => {
-    const pw = prompt('Wachtwoord:');
-    if (pw == null) return;
-    const ok = await handleUnlock(pw);
-    alert(ok ? 'Dit apparaat is ontgrendeld.' : 'Onjuist wachtwoord.');
+  const openLogin = () => setLocked(true);
+  const logout    = () => {
+    localStorage.removeItem('knor:authToken');
+    localStorage.removeItem('knor:authExp');
+    setLocked(true);
+    setSyncStatus('🔒 Uitgelogd — wijzigingen niet opgeslagen');
   };
 
   // Auto-lock na 10 minuten inactiviteit (niet op share-pagina's)
   React.useEffect(() => {
     if (shareTab) return;
-    const RESET_MS = 10 * 60 * 1000; // 10 minuten
+    const RESET_MS = 10 * 60 * 1000;
     let timer;
     const reset = () => {
       clearTimeout(timer);
-      timer = setTimeout(async () => {
-        await lockNow();
-      }, RESET_MS);
+      timer = setTimeout(async () => { await lockNow(); }, RESET_MS);
     };
     const onEv = () => { if (!document.hidden) reset(); };
     const events = ["mousemove","keydown","mousedown","touchstart","visibilitychange"];
@@ -502,40 +462,42 @@ React.useEffect(() => {
       clearTimeout(timer);
       events.forEach(ev => window.removeEventListener(ev, onEv));
     };
-  }, [shareTab, state.settings?.requirePassword]); 
+  }, [shareTab, state.settings?.requirePassword]);
 
-  // Opslaan bij elke lokale wijziging (debounced) — alleen met token
+  // Opslaan bij elke wijziging (debounced)
   React.useEffect(() => {
-  const p = new URLSearchParams((location.hash||"").replace("#",""));
-  const shareTabNow = p.get("share");
-  if (shareTabNow) return;
-  if (applyingRemoteRef.current) return;
+    const p = new URLSearchParams((location.hash||"").replace("#",""));
+    const shareTabNow = p.get("share");
+    if (shareTabNow) return;
+    if (applyingRemoteRef.current) return;
 
-  const t = setTimeout(async () => {
-    try {
-      const needsAuth = !!state.settings?.requirePassword;
-      // alleen eisen dat je ingelogd bent als vergrendeling aan staat
-      if (needsAuth) {
-        const token = localStorage.getItem('knor:authToken') || '';
-        if (!token) {
-          setSyncStatus('🔒 Niet ingelogd — wijzigingen niet opgeslagen');
-          return;
+    const t = setTimeout(async () => {
+      try {
+        const needsAuth = !!state.settings?.requirePassword;
+        if (needsAuth) {
+          const token = localStorage.getItem('knor:authToken') || '';
+          if (!token) {
+            setSyncStatus('🔒 Niet ingelogd — wijzigingen niet opgeslagen');
+            return;
+          }
         }
+        const next = { ...state, rev: Date.now() };
+        await saveStateRemote(next);
+        setSyncStatus("✅ Gesynced om " + new Date().toLocaleTimeString());
+      } catch (e) {
+        console.error('save failed', e);
+        setSyncStatus("⚠️ Opslaan mislukt");
       }
+    }, 500);
+    return () => clearTimeout(t);
+  }, [state]);
 
-      const next = { ...state, rev: Date.now() };
-      await saveStateRemote(next);
-      setSyncStatus("✅ Gesynced om " + new Date().toLocaleTimeString());
-    } catch (e) {
-      console.error('save failed', e);
-      setSyncStatus("⚠️ Opslaan mislukt");
-    }
-  }, 500);
-  return () => clearTimeout(t);
-}, [state]);
+  // ---- Als vergrendeld en NIET in share: toon overlay
+  if (!shareTab && locked) {
+    return <PasswordGate onUnlock={handleUnlock} />;
+  }
 
-
-  // ====== SHARE CONTEXT (deck en andere share pagina's) ======
+  // ====== SHARE CONTEXT ======
   const _shareParams = React.useMemo(() => new URLSearchParams((location.hash || "").replace("#","")), [location.hash]);
   const _sid         = _shareParams.get("sid");
   const shareShow    = React.useMemo(() => {
@@ -622,13 +584,7 @@ React.useEffect(() => {
     return (
       <div className="mx-auto max-w-6xl p-4 share-only">
         <h1 className="text-2xl font-bold mb-4">Repetitieschema (live)</h1>
-        <RehearsalPlanner
-          rehearsals={shareRehearsals}
-          people={sharePeople}
-          onAdd={()=>{}}
-          onUpdate={()=>{}}
-          onRemove={()=>{}}
-        />
+        <RehearsalPlanner rehearsals={shareRehearsals} people={sharePeople} onAdd={()=>{}} onUpdate={()=>{}} onRemove={()=>{}} />
         <div className="text-sm text-gray-500 mt-6">Dit is een gedeelde link, alleen-lezen. Wijzigingen kunnen alleen in de hoofd-app.</div>
       </div>
     );
@@ -638,12 +594,7 @@ React.useEffect(() => {
     return (
       <div className="mx-auto max-w-6xl p-4">
         <h1 className="text-2xl font-bold mb-4">Rolverdeling (live)</h1>
-        <RoleDistributionView
-          currentShowId={shareShow?.id}
-          sketches={shareSketches}
-          people={sharePeople}
-          setState={()=>{}}
-        />
+        <RoleDistributionView currentShowId={shareShow?.id} sketches={shareSketches} people={sharePeople} setState={()=>{}} />
         <div className="text-sm text-gray-500 mt-6">Dit is een gedeelde link, alleen-lezen. Wijzigingen kunnen alleen in de hoofd-app.</div>
       </div>
     );
@@ -653,12 +604,7 @@ React.useEffect(() => {
     return (
       <div className="mx-auto max-w-6xl p-4">
         <h1 className="text-2xl font-bold mb-4">PR-Kit (live)</h1>
-        <PRKitView
-          items={sharePRKit}
-          showId={shareShow?.id}
-          readOnly={true}
-          onChange={()=>{}}
-        />
+        <PRKitView items={sharePRKit} showId={shareShow?.id} readOnly={true} onChange={()=>{}} />
         <div className="text-sm text-gray-500 mt-6">Dit is een gedeelde link, alleen-lezen. Wijzigingen kunnen alleen in de hoofd-app.</div>
       </div>
     );
@@ -683,13 +629,7 @@ React.useEffect(() => {
           .share-only input,
           .share-only button { pointer-events: none !important; }
         `}</style>
-        <MicMatrixView
-          currentShowId={shareShow?.id}
-          sketches={shareSketches}
-          people={sharePeople}
-          shows={state.shows}
-          setState={() => {}}
-        />
+        <MicMatrixView currentShowId={shareShow?.id} sketches={shareSketches} people={sharePeople} shows={state.shows} setState={() => {}} />
         <div className="text-sm text-gray-500 mt-6">Dit is een gedeelde link, alleen-lezen.</div>
       </div>
     );
@@ -733,7 +673,6 @@ React.useEffect(() => {
                   </div>
                 </div>
 
-                {/* Rollen */}
                 <div className="mb-3">
                   <div className="font-medium">Rollen</div>
                   {(s.roles || []).length ? (
@@ -755,12 +694,9 @@ React.useEffect(() => {
                         ))}
                       </tbody>
                     </table>
-                  ) : (
-                    <div className="text-sm text-gray-500">Geen rollen.</div>
-                  )}
+                  ) : (<div className="text-sm text-gray-500">Geen rollen.</div>)}
                 </div>
 
-                {/* Links & Decor */}
                 <div className="grid md:grid-cols-2 gap-3">
                   <div>
                     <div className="font-medium">Links</div>
@@ -768,17 +704,13 @@ React.useEffect(() => {
                       <div>
                         Tekst:{" "}
                         {s.links?.text ? (
-                          <a href={s.links.text} target="_blank" rel="noopener noreferrer" className="underline break-all">
-                            {s.links.text}
-                          </a>
+                          <a href={s.links.text} target="_blank" rel="noopener noreferrer" className="underline break-all">{s.links.text}</a>
                         ) : (<span className="text-gray-400">—</span>)}
                       </div>
                       <div>
                         Licht/geluid:{" "}
                         {s.links?.tech ? (
-                          <a href={s.links.tech} target="_blank" rel="noopener noreferrer" className="underline break-all">
-                            {s.links.tech}
-                          </a>
+                          <a href={s.links.tech} target="_blank" rel="noopener noreferrer" className="underline break-all">{s.links.tech}</a>
                         ) : (<span className="text-gray-400">—</span>)}
                       </div>
                     </div>
@@ -789,7 +721,6 @@ React.useEffect(() => {
                   </div>
                 </div>
 
-                {/* Geluiden & muziek */}
                 <div className="mt-3">
                   <div className="font-medium">Geluiden & muziek</div>
                   {(s.sounds || []).length ? (
@@ -805,11 +736,7 @@ React.useEffect(() => {
                           <tr key={x.id || j} className="odd:bg-gray-50">
                             <td className="border px-2 py-1">{x.label || ""}</td>
                             <td className="border px-2 py-1 break-all">
-                              {x.url ? (
-                                <a href={x.url} target="_blank" rel="noopener noreferrer" className="underline">
-                                  {x.url}
-                                </a>
-                              ) : (<span className="text-gray-400">—</span>)}
+                              {x.url ? (<a href={x.url} target="_blank" rel="noopener noreferrer" className="underline">{x.url}</a>) : (<span className="text-gray-400">—</span>)}
                             </td>
                           </tr>
                         ))}
@@ -826,52 +753,6 @@ React.useEffect(() => {
     );
   }
 
-  /** ---------- Draaiboek (alle share-links gebundeld) ---------- */
-  if (shareTab === "deck") {
-    const mk = (k) => `${location.origin}${location.pathname}#share=${k}&sid=${shareShow?.id || ""}`;
-    return (
-      <div className="mx-auto max-w-6xl p-4 share-only">
-        <div className="flex items-center gap-2 mb-1">
-          <img
-            src="https://cdn-icons-png.flaticon.com/512/616/616584.png"
-            alt=""
-            className="w-7 h-7"
-            aria-hidden="true"
-          />
-          <h1 className="text-2xl font-bold">Draaiboek: {shareShow?.name || "Show"}</h1>
-        </div>
-        <p className="text-sm text-gray-600 mb-4">
-          Beste artiesten en medewerkers — hieronder vind je alle links die nodig zijn voor deze show.
-        </p>
-
-        <div className="grid gap-3 md:grid-cols-2">
-          {[
-            { key:"runsheet",     title:"Programma",     desc:"Volgorde en tijden van de avond." },
-            { key:"mics",         title:"Microfoons",    desc:"Wie op welk kanaal (alleen-lezen)." },
-            { key:"rehearsals",   title:"Agenda",        desc:"Repetities, locaties en tijden." },
-            { key:"rolverdeling", title:"Rolverdeling",  desc:"Wie speelt welke rol per sketch." },
-            { key:"scripts",      title:"Sketches",      desc:"Alle sketches met rollen, links en geluiden." },
-            { key:"prkit",        title:"PR-Kit",        desc:"Posters/afbeeldingen, interviews en video’s." },
-          ].map(({key, title, desc}) => (
-            <div key={key} className="rounded-xl border p-4 flex items-start justify-between gap-3">
-              <div>
-                <div className="font-semibold">{title}</div>
-                <div className="text-sm text-gray-600">{desc}</div>
-              </div>
-              <a
-                href={mk(key)}
-                className="shrink-0 rounded-full border px-3 py-1 text-sm hover:bg-gray-50"
-                target="_blank" rel="noopener noreferrer"
-              >
-                Open
-              </a>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
   // ====== NORMALE APP ======
   return (
     <div className="mx-auto max-w-7xl p-4">
@@ -881,12 +762,7 @@ React.useEffect(() => {
           <div className="h-14 flex items-center gap-3">
             {/* BRAND */}
             <div className="brand flex items-center gap-2 flex-none">
-              <img
-                src="https://cdn-icons-png.flaticon.com/512/616/616584.png"
-                alt=""
-                className="brand-logo w-7 h-7 md:w-8 md:h-8"
-                aria-hidden="true"
-              />
+              <img src="https://cdn-icons-png.flaticon.com/512/616/616584.png" alt="" className="brand-logo w-7 h-7 md:w-8 md:h-8" aria-hidden="true" />
               <div className="brand-title font-extrabold tracking-wide">KnorPlanner</div>
             </div>
 
@@ -904,9 +780,7 @@ React.useEffect(() => {
               ].map(({ key, label }) => (
                 <button
                   key={key}
-                  className={`rounded-full px-4 py-2 text-sm transition ${
-                    tab === key ? "bg-black text-white shadow" : "bg-gray-100 hover:bg-gray-200"
-                  }`}
+                  className={`rounded-full px-4 py-2 text-sm transition ${tab === key ? "bg-black text-white shadow" : "bg-gray-100 hover:bg-gray-200"}`}
                   onClick={() => setTab(key)}
                 >
                   {label}
@@ -914,14 +788,9 @@ React.useEffect(() => {
               ))}
             </nav>
 
-            {/* Extra: subtiel logo rechts (alleen op md+) */}
+            {/* Rechts logo */}
             <div className="hidden md:flex items-center gap-2 flex-none">
-              <img
-                src="https://cdn-icons-png.flaticon.com/512/616/616584.png"
-                alt=""
-                className="w-6 h-6 opacity-70"
-                aria-hidden="true"
-              />
+              <img src="https://cdn-icons-png.flaticon.com/512/616/616584.png" alt="" className="w-6 h-6 opacity-70" aria-hidden="true" />
             </div>
           </div>
         </div>
@@ -933,18 +802,11 @@ React.useEffect(() => {
       <main className="mt-6">
         {tab === "runsheet" && (
           <div className="grid gap-4">
-            {/* Begintijd instellen */}
+            {/* Begintijd */}
             <div className="rounded-2xl border p-3 flex items-center gap-3">
               <label className="text-sm text-gray-700">Begintijd</label>
-              <input
-                type="time"
-                className="rounded border px-2 py-1"
-                value={activeShow?.startTime || "19:30"}
-                onChange={(e) => updateActiveShow({ startTime: e.target.value })}
-              />
-              <span className="text-xs text-gray-500">
-                Wordt gebruikt om tijden in de runsheet te berekenen.
-              </span>
+              <input type="time" className="rounded border px-2 py-1" value={activeShow?.startTime || "19:30"} onChange={(e) => updateActiveShow({ startTime: e.target.value })} />
+              <span className="text-xs text-gray-500">Wordt gebruikt om tijden in de runsheet te berekenen.</span>
             </div>
 
             {/* Blok-overzicht */}
@@ -956,13 +818,10 @@ React.useEffect(() => {
                 {timedSegmentsRS.length ? timedSegmentsRS.map((seg, i) => (
                   <span
                     key={i}
-                    className={`rounded-full border px-3 py-1 text-xs whitespace-nowrap ${
-                      seg.type === "pause" ? "bg-yellow-50 border-yellow-200" : "bg-gray-50"
-                    }`}
-                    title={
-                      seg.type === "pause"
-                        ? `Pauze • ${seg.durationMin} min • ${seg.startStr}–${seg.endStr}`
-                        : `${seg.label} • ${seg.count} ${seg.count===1?"item":"items"} • ${seg.durationMin} min • ${seg.startStr}–${seg.endStr}`
+                    className={`rounded-full border px-3 py-1 text-xs whitespace-nowrap ${seg.type === "pause" ? "bg-yellow-50 border-yellow-200" : "bg-gray-50"}`}
+                    title={seg.type === "pause"
+                      ? `Pauze • ${seg.durationMin} min • ${seg.startStr}–${seg.endStr}`
+                      : `${seg.label} • ${seg.count} ${seg.count===1?"item":"items"} • ${seg.durationMin} min • ${seg.startStr}–${seg.endStr}`
                     }
                   >
                     {seg.type === "pause"
@@ -970,9 +829,7 @@ React.useEffect(() => {
                       : <>{seg.label}: {seg.count} {seg.count===1?"item":"items"} • {seg.durationMin} min • {seg.startStr}–{seg.endStr}</>
                     }
                   </span>
-                )) : (
-                  <span className="text-xs text-gray-500">Nog geen blokken.</span>
-                )}
+                )) : <span className="text-xs text-gray-500">Nog geen blokken.</span>}
               </div>
             </div>
 
@@ -1087,16 +944,10 @@ React.useEffect(() => {
             <div className="flex gap-2 flex-wrap">
               <button className="rounded-full border px-3 py-1 text-sm" onClick={undo}>Undo</button>
               <button className="rounded-full border px-3 py-1 text-sm" onClick={redo}>Redo</button>
-              <button
-                className="rounded-full border px-3 py-1 text-sm"
-                onClick={()=>{ const n = prompt('Naam voor versie:','Snapshot'); if(n!==null) saveVersion(n); }}
-              >
+              <button className="rounded-full border px-3 py-1 text-sm" onClick={()=>{ const n = prompt('Naam voor versie:','Snapshot'); if(n!==null) saveVersion(n); }}>
                 Save version (gedeeld)
               </button>
-              <button
-                className="rounded-full border px-3 py-1 text-sm"
-                onClick={()=>{ navigator.clipboard?.writeText(location.href); }}
-              >
+              <button className="rounded-full border px-3 py-1 text-sm" onClick={()=>{ navigator.clipboard?.writeText(location.href); }}>
                 Kopieer link
               </button>
             </div>
@@ -1127,12 +978,8 @@ React.useEffect(() => {
             <div className="rounded-lg border p-2 space-y-2">
               <div className="font-semibold text-sm">Import / Export</div>
               <div className="flex flex-wrap gap-2">
-                <button className="rounded-full border px-3 py-1 text-sm" onClick={exportShow}>
-                  Exporteer huidige voorstelling
-                </button>
-                <button className="rounded-full border px-3 py-1 text-sm" onClick={importShow}>
-                  Importeer voorstelling (.json)
-                </button>
+                <button className="rounded-full border px-3 py-1 text-sm" onClick={exportShow}>Exporteer huidige voorstelling</button>
+                <button className="rounded-full border px-3 py-1 text-sm" onClick={importShow}>Importeer voorstelling (.json)</button>
               </div>
               <div className="text-[11px] text-gray-500">
                 Export is leesbare JSON met alleen data van de gekozen show (spelers, sketches, repetities, mics, PR-kit).
@@ -1172,18 +1019,15 @@ React.useEffect(() => {
             <div className="rounded-lg border p-2 space-y-2">
               <div className="font-semibold text-sm">Beveiliging</div>
               <div className="text-xs text-gray-600">
-                Status: {state.settings?.requirePassword ? "Aan" : "Uit"} • Wachtwoordcontrole: <b>server-side</b>
+                Vergrendeling: {state.settings?.requirePassword ? "Aan" : "Uit"} • Ingelogd: {localStorage.getItem('knor:authToken') ? "Ja" : "Nee"}
               </div>
               <div className="flex flex-wrap gap-2">
-                <button className="rounded-full border px-3 py-1 text-sm" onClick={lockNow}>
-                  Vergrendel nu
-                </button>
-                <button className="rounded-full border px-3 py-1 text-sm" onClick={unlockThisDevice}>
-                  Ontgrendel dit apparaat
-                </button>
+                <button className="rounded-full border px-3 py-1 text-sm" onClick={openLogin}>Log in</button>
+                <button className="rounded-full border px-3 py-1 text-sm" onClick={logout}>Log uit</button>
+                <button className="rounded-full border px-3 py-1 text-sm" onClick={lockNow}>Vergrendel nu</button>
               </div>
               <div className="text-[11px] text-gray-500">
-                Deel-links blijven werken zonder wachtwoord. Na 10 minuten inactiviteit wordt de app automatisch vergrendeld.
+                Deel-links blijven werken zonder wachtwoord. Na 10 min. inactiviteit vergrendelt de app automatisch.
               </div>
             </div>
           </div>
