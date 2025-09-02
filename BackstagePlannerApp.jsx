@@ -52,16 +52,7 @@ const saveStateRemote = async (state) => {
 const todayStr = () => new Date().toISOString().slice(0, 10);
 const newEmptyShow = () => ({ id: uid(), name: "Nieuwe show", date: todayStr(), startTime: "19:30" });
 
-// SHA-256 hash (voor wachtwoord)
-async function hashText(text) {
-  const enc = new TextEncoder().encode(text);
-  const buf = await crypto.subtle.digest("SHA-256", enc);
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,"0")).join("");
-}
-
 function withDefaults(s = {}) {
-  // Vast wachtwoord = "Appelsap123!"
-  const FIXED_PW_HASH = "7aa45aa3ebf56136fbb2064bb0756d0cb29a472a7ab06c62f5ab8249c28749b5";
   return {
     // kern-data
     people: Array.isArray(s.people) ? s.people : [],
@@ -70,17 +61,16 @@ function withDefaults(s = {}) {
     sketches: Array.isArray(s.sketches) ? s.sketches : [],
     rehearsals: Array.isArray(s.rehearsals) ? s.rehearsals : [],
     prKit: Array.isArray(s.prKit) ? s.prKit : [],
-    // gedeelde versies (nu in Supabase mee opgeslagen)
+    // gedeelde versies (opgeslagen in hoofd-state)
     versions: Array.isArray(s.versions) ? s.versions : [],
     // sync meta
     rev: Number.isFinite(s.rev) ? s.rev : 0, // monotone timestamp (ms)
     lastSavedBy: s.lastSavedBy || null,
 
-    // app-instellingen
+    // app-instellingen (alleen requirePassword gebruiken; geen hash meer client-side)
     settings: {
       ...(s.settings || {}),
       requirePassword: !!(s.settings?.requirePassword),
-      appPasswordHash: s.settings?.appPasswordHash || FIXED_PW_HASH,
     },
   };
 }
@@ -151,7 +141,7 @@ function App() {
   const [tab, setTab] = React.useState("planner");
   const [syncStatus, setSyncStatus] = React.useState("Nog niet gesynced");
 
-  // Flag om save-loop bij realtime te voorkomen
+  // Flag om save-loop bij polling te voorkomen
   const applyingRemoteRef = React.useRef(false);
 
   // ---- History (undo/redo) ----
@@ -162,7 +152,7 @@ function App() {
   const undo = () => { if (!past.length) return; const prev = past[past.length-1]; setPast(past.slice(0,-1)); setFuture((f)=>[state, ...f]); setState(prev); };
   const redo = () => { if (!future.length) return; const nxt = future[0]; setFuture(future.slice(1)); setPast((p)=>[...p, state]); setState(nxt); };
 
-  // ---- Named versions (NU gedeeld via Supabase in state.versions) ----
+  // ---- Named versions (gedeeld via load/save) ----
   const saveVersion = (name) => {
     const v = {
       id: uid(),
@@ -178,7 +168,6 @@ function App() {
     const v = (state.versions || []).find((x)=>x.id===id);
     if (!v) return;
     pushHistory(state);
-    // behoud huidige versions; herstel rest uit snapshot (zonder versions)
     const restored = withDefaults({ ...v.data, versions: state.versions || [] });
     setState(restored);
   };
@@ -212,39 +201,27 @@ function App() {
     })();
   }, []);
 
-  // Realtime: luister naar updates op dezelfde rij
+  // 🔁 Poll elke 5s voor andermans wijzigingen (geen Supabase realtime meer)
   React.useEffect(() => {
-    const ch = window.SUPA
-      ?.channel?.("planner_live")
-      ?.on?.(
-        "postgres_changes",
-        { event: "*", schema: "public", table: TABLE, filter: `id=eq.${ROW_ID}` },
-        (payload) => {
-          const remoteData = payload?.new?.data;
-          if (!remoteData) return;
-          const incoming = withDefaults(remoteData);
-          // Alleen toepassen als nieuwer
-          if ((incoming.rev || 0) > (state.rev || 0)) {
-            applyingRemoteRef.current = true;
-            // behoud actieve show als die nog bestaat
-            const nextActiveId = (activeShowId && (incoming.shows || []).some(s=>s.id===activeShowId))
-              ? activeShowId
-              : (incoming.shows?.[0]?.id || null);
-            setState(incoming);
-            setActiveShowId(nextActiveId);
-            setSyncStatus("🔄 Bijgewerkt door een ander apparaat");
-            // kleine delay om save-effect te laten zien dat dit remote was
-            setTimeout(() => { applyingRemoteRef.current = false; }, 0);
-          }
+    const iv = setInterval(async () => {
+      try {
+        const remote = await loadState();
+        if (!remote) return;
+        const incoming = withDefaults(remote);
+        if ((incoming.rev || 0) > (state.rev || 0)) {
+          applyingRemoteRef.current = true;
+          const nextActiveId = (activeShowId && (incoming.shows || []).some(s=>s.id===activeShowId))
+            ? activeShowId
+            : (incoming.shows?.[0]?.id || null);
+          setState(incoming);
+          setActiveShowId(nextActiveId);
+          setSyncStatus("🔄 Bijgewerkt door een ander apparaat");
+          setTimeout(()=>{ applyingRemoteRef.current = false; }, 0);
         }
-      )
-      ?.subscribe?.();
-
-    return () => {
-      if (ch && window.SUPA?.removeChannel) window.SUPA.removeChannel(ch);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeShowId, state.rev]);
+      } catch {}
+    }, 5000);
+    return () => clearInterval(iv);
+  }, [state.rev, activeShowId]);
 
   // Opslaan bij elke lokale wijziging (debounced)
   React.useEffect(() => {
@@ -315,7 +292,7 @@ function App() {
   const micWarnings = React.useMemo(() => detectMicConflicts(showSketches), [showSketches]);
   const castWarnings = React.useMemo(() => detectCastConflicts(showSketches), [showSketches]);
 
-  // --- Blok-tijden helpers voor Programma (plaatsing NA activeShow/showSketches!) ---
+  // --- Blok-tijden helpers voor Programma ---
   const mmToHHMM = (m) =>
     `${String(Math.floor((m % 1440) / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 
@@ -351,7 +328,7 @@ function App() {
           durationMin: parseInt(it.durationMin || 0, 10) || 0,
         });
       } else {
-        // 'waerse' telt mee in lopend blok (afgesproken gedrag)
+        // 'waerse' telt mee in lopend blok
         block.push(it);
       }
     }
@@ -508,46 +485,40 @@ function App() {
     if (shareTab) { setLocked(false); return; } // share is altijd open
     const req = !!(state.settings?.requirePassword);
     if (!req) { setLocked(false); return; }
-    const token = localStorage.getItem("knor:auth") || "";
-    const ok = !!(token && state.settings?.appPasswordHash && token === state.settings.appPasswordHash);
-    setLocked(!ok);
-  }, [shareTab, state.settings]);
+    const token = localStorage.getItem("knor:authToken") || "";
+    setLocked(!token);
+  }, [shareTab, state.settings?.requirePassword]);
 
   const handleUnlock = async (plainPw) => {
-  try {
-    const res = await fetch('/.netlify/functions/pw', {
-      method:'POST',
-      headers:{ 'Content-Type':'application/json' },
-      body: JSON.stringify({ password: plainPw })
-    });
-    if (!res.ok) return false;
-    const { token } = await res.json();
-    localStorage.setItem('knor:authToken', token);
-    setLocked(false);
-    return true;
-  } catch { return false; }
-};
+    try {
+      const res = await fetch('/.netlify/functions/pw', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify({ password: plainPw })
+      });
+      if (!res.ok) return false;
+      const { token } = await res.json();
+      localStorage.setItem('knor:authToken', token);
+      setLocked(false);
+      return true;
+    } catch { return false; }
+  };
 
-
-  // VASTE LOCK-ACTIES: geen eigen wachtwoord kiezen; altijd "Appelsap123!"
+  // Vergrendel: zet requirePassword aan en wis token
   const lockNow = async () => {
-    const FIXED_PW_HASH = "7aa45aa3ebf56136fbb2064bb0756d0cb29a472a7ab06c62f5ab8249c28749b5"; // "Appelsap123!"
-    try { await saveStateRemote({ ...state, rev: Date.now() }); } catch {}
-    setState(prev => ({
-      ...prev,
-      settings: { ...(prev.settings||{}), requirePassword: true, appPasswordHash: FIXED_PW_HASH }
-    }));
-    localStorage.removeItem("knor:auth");
+    try { await saveStateRemote({ ...state, settings: { ...(state.settings||{}), requirePassword: true }, rev: Date.now() }); } catch {}
+    setState(prev => ({ ...prev, settings: { ...(prev.settings||{}), requirePassword: true } }));
+    localStorage.removeItem("knor:authToken");
     setLocked(true);
     alert("Vergrendeld.");
   };
 
-  const unlockThisDevice = () => {
-    const h = state.settings?.appPasswordHash;
-    if (!h) { alert("Er is nog geen wachtwoord ingesteld."); return; }
-    localStorage.setItem("knor:auth", h);
-    setLocked(false);
-    alert("Dit apparaat is ontgrendeld.");
+  // Ontgrendel dit apparaat (vraag wachtwoord via prompt)
+  const unlockThisDevice = async () => {
+    const pw = prompt("Wachtwoord:");
+    if (!pw) return;
+    const ok = await handleUnlock(pw);
+    if (!ok) alert("Onjuist wachtwoord.");
   };
 
   // Auto-lock na 10 minuten inactiviteit (niet op share-pagina's)
@@ -575,7 +546,7 @@ function App() {
       clearTimeout(timer);
       events.forEach(ev => window.removeEventListener(ev, onEv));
     };
-  }, [shareTab, state.settings?.appPasswordHash]); // lockNow is stabiel genoeg in deze context
+  }, [shareTab]);
 
  // ====== SHARE ROUTES ======
 
@@ -901,6 +872,114 @@ function App() {
     );
   }
 
+  // ====== Export / Import helpers ======
+  const exportCurrentShow = () => {
+    if (!activeShow) return;
+    const sid = activeShow.id;
+    const payload = {
+      meta: { type: "knorplanner.show", version: 1 },
+      show: { id: sid, name: activeShow.name, date: activeShow.date, startTime: activeShow.startTime, headsetCount: activeShow.headsetCount || 0, handheldCount: activeShow.handheldCount || 0 },
+      people: (state.people || []).filter(p => p.showId === sid),
+      mics: (state.mics || []).filter(m => m.showId === sid),
+      sketches: (state.sketches || []).filter(s => s.showId === sid),
+      rehearsals: (state.rehearsals || []).filter(r => r.showId === sid),
+      prKit: (state.prKit || []).filter(i => i.showId === sid),
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    const safeName = (activeShow.name || "show").replace(/[^\w\-]+/g, "_");
+    a.download = `knorplanner-${safeName}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  const importShowData = (data) => {
+    if (!data || data.meta?.type !== "knorplanner.show") {
+      alert("Bestand lijkt geen KnorPlanner-show export.");
+      return;
+    }
+    const newShowId = uid();
+
+    // Maps
+    const personIdMap = {};
+    const sketchIdMap = {};
+
+    // People
+    const newPeople = (data.people || []).map(p => {
+      const nid = uid();
+      personIdMap[p.id] = nid;
+      return { ...p, id: nid, showId: newShowId };
+    });
+
+    // Sketches + nested refs
+    const newSketches = (data.sketches || []).map(s => {
+      const nid = uid();
+      sketchIdMap[s.id] = nid;
+
+      const roles = Array.isArray(s.roles) ? s.roles.map(r => ({
+        ...r,
+        personId: r.personId ? (personIdMap[r.personId] || "") : "",
+      })) : [];
+
+      // micAssignments: channel -> personId
+      const micAssignments = {};
+      const srcMA = s.micAssignments || {};
+      Object.keys(srcMA).forEach(ch => {
+        const pid = srcMA[ch];
+        micAssignments[ch] = pid ? (personIdMap[pid] || "") : "";
+      });
+
+      return { ...s, id: nid, showId: newShowId, roles, micAssignments };
+    });
+
+    // Rehearsals / PRKit / mics
+    const newRehearsals = (data.rehearsals || []).map(r => ({ ...r, id: uid(), showId: newShowId }));
+    const newPRKit = (data.prKit || []).map(i => ({ ...i, id: uid(), showId: newShowId }));
+    const newMics = (data.mics || []).map(m => ({ ...m, id: uid(), showId: newShowId }));
+
+    const newShow = {
+      id: newShowId,
+      name: `${data.show?.name || "Show"} (geïmporteerd)`,
+      date: data.show?.date || todayStr(),
+      startTime: data.show?.startTime || "19:30",
+      headsetCount: data.show?.headsetCount || 0,
+      handheldCount: data.show?.handheldCount || 0,
+    };
+
+    pushHistory(state);
+    setState(prev => ({
+      ...prev,
+      shows: [...(prev.shows || []), newShow],
+      people: [...(prev.people || []), ...newPeople],
+      mics: [...(prev.mics || []), ...newMics],
+      sketches: [...(prev.sketches || []), ...newSketches],
+      rehearsals: [...(prev.rehearsals || []), ...newRehearsals],
+      prKit: [...(prev.prKit || []), ...newPRKit],
+    }));
+    setActiveShowId(newShowId);
+    alert("Voorstelling geïmporteerd.");
+  };
+
+  const fileInputRef = React.useRef(null);
+  const onImportClick = () => fileInputRef.current?.click();
+  const onImportFileChange = (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(reader.result || "{}");
+        importShowData(data);
+      } catch {
+        alert("Kon JSON niet lezen.");
+      } finally {
+        e.target.value = "";
+      }
+    };
+    reader.readAsText(f, "utf-8");
+  };
+
   // ====== NORMALE APP ======
   return (
     <div className="mx-auto max-w-7xl p-4">
@@ -976,7 +1055,7 @@ function App() {
               </span>
             </div>
 
-            {/* NIEUW: Blok-overzicht (zelfde logica als bij Voorstellingen) */}
+            {/* Blok-overzicht */}
             <div className="rounded-2xl border p-3 bg-white/60">
               <div className="text-sm text-gray-700">
                 <b>Start:</b> {mmToHHMM(startMinRS)} • <b>Totale tijd:</b> {runSheet?.totalMin || 0} min
@@ -1105,7 +1184,7 @@ function App() {
 
       {/* Floating tools bottom-left */}
       <div className="fixed left-4 bottom-4 z-50">
-        <details className="group w-[min(92vw,380px)]">
+        <details className="group w-[min(92vw,420px)]">
           <summary className="cursor-pointer inline-flex items-center gap-2 rounded-full bg-black text-white px-4 py-2 shadow-lg select-none">
             <img src="https://cdn-icons-png.flaticon.com/512/616/616584.png" alt="" className="w-4 h-4" aria-hidden="true" />
             Hulpmiddelen
@@ -1128,6 +1207,26 @@ function App() {
               >
                 Kopieer link
               </button>
+            </div>
+
+            {/* Export / Import */}
+            <div className="rounded-lg border p-2 space-y-2">
+              <div className="font-semibold text-sm">Uitwisselen</div>
+              <div className="flex flex-wrap gap-2">
+                <button className="rounded-full border px-3 py-1 text-sm" onClick={exportCurrentShow}>
+                  Exporteer huidige voorstelling
+                </button>
+                <button className="rounded-full border px-3 py-1 text-sm" onClick={onImportClick}>
+                  Importeer voorstelling (JSON)
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="application/json"
+                  className="hidden"
+                  onChange={onImportFileChange}
+                />
+              </div>
             </div>
 
             <div className="text-xs text-gray-600">
@@ -1185,7 +1284,7 @@ function App() {
             <div className="rounded-lg border p-2 space-y-2">
               <div className="font-semibold text-sm">Beveiliging</div>
               <div className="text-xs text-gray-600">
-                Status: {state.settings?.requirePassword ? "Aan" : "Uit"} • Wachtwoord: <b>Appelsap123!</b>
+                Status: {state.settings?.requirePassword ? "Aan" : "Uit"}
               </div>
               <div className="flex flex-wrap gap-2">
                 <button className="rounded-full border px-3 py-1 text-sm" onClick={lockNow}>
