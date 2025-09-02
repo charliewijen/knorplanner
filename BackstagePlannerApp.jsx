@@ -182,7 +182,7 @@ const totalPages = Math.max(1, Math.ceil(versionsSorted.length / pageSize));
 const curPage    = Math.min(verPage, totalPages - 1);
 const pageStart  = curPage*pageSize;
 const visibleVersions = versionsSorted.slice(pageStart, pageStart + pageSize);
-React.useEffect(() => { setVerPage(0); }, [state.versions?.length]);
+React.useEffect(() => { setVerPage(0); }, [ (state.versions || []).length ]);
 
   
   const applyingRemoteRef = React.useRef(false);
@@ -317,21 +317,27 @@ const deleteCurrentShow = () => {
   if (!confirm(`Voorstelling “${activeShow.name}” en alle gekoppelde data verwijderen? Dit kan niet ongedaan worden gemaakt.`)) return;
 
   const delId = activeShow.id;
+  let nextActiveId = null;
+
   pushHistory(state);
   setState(prev => {
-    const shows = (prev.shows||[]).filter(s => s.id !== delId);
-    const nextActive = shows[shows.length-1]?.id || shows[0]?.id || null;
+    const showsAfter = (prev.shows||[]).filter(s => s.id !== delId);
+    nextActiveId = showsAfter[showsAfter.length-1]?.id || showsAfter[0]?.id || null;
+
     return {
       ...prev,
-      shows,
-      people: (prev.people||[]).filter(x => x.showId !== delId),
-      mics: (prev.mics||[]).filter(x => x.showId !== delId),
-      sketches: (prev.sketches||[]).filter(x => x.showId !== delId),
-      rehearsals: (prev.rehearsals||[]).filter(x => x.showId !== delId),
-      prKit: (prev.prKit||[]).filter(x => x.showId !== delId),
+      shows: showsAfter,
+      people:     (prev.people     || []).filter(x => x.showId !== delId),
+      mics:       (prev.mics       || []).filter(x => x.showId !== delId),
+      sketches:   (prev.sketches   || []).filter(x => x.showId !== delId),
+      rehearsals: (prev.rehearsals || []).filter(x => x.showId !== delId),
+      prKit:      (prev.prKit      || []).filter(x => x.showId !== delId),
     };
   });
-  setActiveShowId(prev => prev === delId ? (state.shows.find(s=>s.id!==delId)?.id || null) : prev);
+
+  // zet actief na de setState op basis van de NIEUWE lijst
+  setTimeout(() => setActiveShowId(nextActiveId), 0);
+  alert("Show verwijderd.");
 };
 
   
@@ -374,35 +380,7 @@ const deleteCurrentShow = () => {
     alert("Show gedupliceerd. Je kijkt nu naar de kopie.");
   };
 
-  // Show verwijderen (inclusief gekoppelde data)
-const deleteCurrentShow = () => {
-  if (!activeShow) return alert("Geen actieve show om te verwijderen.");
-  if (!confirm(`Let op!\n\nDit verwijdert “${activeShow.name}” inclusief spelers, sketches, repetities, mics en PR-items.\n\nDoorgaan?`)) return;
-
-  pushHistory(state);
-  setState(prev => {
-    const sid = activeShow.id;
-    const shows = (prev.shows || []).filter(s => s.id !== sid);
-    if (!shows.length) shows.push(newEmptyShow()); // laat nooit 0 shows over
-
-    return {
-      ...prev,
-      shows,
-      people:     (prev.people     || []).filter(x => x.showId !== sid),
-      mics:       (prev.mics       || []).filter(x => x.showId !== sid),
-      sketches:   (prev.sketches   || []).filter(x => x.showId !== sid),
-      rehearsals: (prev.rehearsals || []).filter(x => x.showId !== sid),
-      prKit:      (prev.prKit      || []).filter(x => x.showId !== sid),
-    };
-  });
-
-  // selecteer de eerste overgebleven show
-  setActiveShowId(prev => {
-    const next = (state.shows || []).find(s => s.id !== activeShow.id)?.id;
-    return next || (state.shows[0]?.id) || null;
-  });
-  alert("Show verwijderd.");
-};
+ 
 
 
   // SHARE-MODE
