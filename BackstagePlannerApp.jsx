@@ -731,45 +731,54 @@ if (shareTab === "deck") {
   return (
     <div className="mx-auto max-w-7xl p-4">
       <header className="sticky top-0 z-40 w-full border-b bg-white/80 backdrop-blur brand-header">
-        <div className="mx-auto max-w-7xl px-4">
-          <div className="h-14 flex items-center gap-3">
-            <div className="brand flex items-center gap-2 flex-none">
-              <img src="https://cdn-icons-png.flaticon.com/512/616/616584.png" alt="" className="brand-logo w-7 h-7 md:w-8 md:h-8" aria-hidden="true" />
-              <div className="brand-title font-extrabold tracking-wide">KnorPlanner</div>
-            </div>
-            <nav className="flex gap-2 overflow-x-auto flex-1">
-              {[
-                { key: "planner",       label: "Voorstellingen" },
-                { key: "runsheet",      label: "Programma" },
-                { key: "cast",          label: "Biggenconvent" },
-                { key: "mics",          label: "Microfoons" },
-                { key: "rolverdeling",  label: "Rolverdeling" },
-                { key: "scripts",       label: "Sketches" },
-                { key: "rehearsals",    label: "Agenda" },
-                { key: "prkit",         label: "PR-Kit" },
-              ].map(({ key, label }) => (
-                <button key={key}
-                  className={`rounded-full px-4 py-2 text-sm transition ${tab === key ? "bg-black text-white shadow" : "bg-gray-100 hover:bg-gray-200"}`}
-                  onClick={() => setTab(key)}>
-                  {label}
-                </button>
-              ))}
-            </nav>
-            <div className="hidden md:flex items-center gap-2 flex-none">
-  <span className="rounded-full border px-3 py-1 text-sm bg-gray-50">
-    Show: <b>{activeShow?.name || "—"}</b>
-  </span>
-  <img
-    src="https://cdn-icons-png.flaticon.com/512/616/616584.png"
-    alt=""
-    className="w-6 h-6 opacity-70"
-    aria-hidden="true"
-  />
-</div>
+  <div className="mx-auto max-w-7xl px-4">
 
-          </div>
-        </div>
-      </header>
+    {/* Rij 1: logo + actieve show */}
+    <div className="h-12 flex items-center justify-between">
+      <div className="flex items-center gap-2">
+        <img
+          src="https://cdn-icons-png.flaticon.com/512/616/616584.png"
+          alt=""
+          className="w-7 h-7 md:w-8 md:h-8"
+          aria-hidden="true"
+        />
+        <div className="font-extrabold tracking-wide">KnorPlanner</div>
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="rounded-full border px-3 py-1 text-sm bg-gray-50">
+          Show: <b>{activeShow?.name || "—"}</b>
+        </span>
+      </div>
+    </div>
+
+    {/* Rij 2: menu */}
+    <div className="h-12 flex items-center overflow-x-auto">
+      <nav className="flex gap-2 w-full">
+        {[
+          { key: "planner",       label: "Voorstellingen" },
+          { key: "runsheet",      label: "Programma" },
+          { key: "cast",          label: "Biggenconvent" },
+          { key: "mics",          label: "Microfoons" },
+          { key: "rolverdeling",  label: "Rolverdeling" },
+          { key: "scripts",       label: "Sketches" },
+          { key: "rehearsals",    label: "Agenda" },
+          { key: "prkit",         label: "PR-Kit" },
+        ].map(({ key, label }) => (
+          <button
+            key={key}
+            className={`rounded-full px-4 py-2 text-sm transition ${
+              tab === key ? "bg-black text-white shadow" : "bg-gray-100 hover:bg-gray-200"
+            }`}
+            onClick={() => setTab(key)}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
+    </div>
+  </div>
+</header>
+
 
       <div className="text-xs text-gray-500 mt-1">{syncStatus}</div>
 
@@ -872,10 +881,10 @@ if (shareTab === "deck") {
       setState={(fn)=>{ pushHistory(state); setState(fn(state)); }}
       activeShowId={activeShowId}
       setActiveShowId={setActiveShowId}
-      onDuplicateShow={duplicateCurrentShow}
     />
   </div>
 )}
+
 
 
         {tab === "prkit" && (
