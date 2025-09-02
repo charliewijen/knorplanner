@@ -195,6 +195,108 @@ React.useEffect(() => {
   setSelectedSketchId(prev => (prev && ids.includes(prev)) ? prev : (ids[0] || null));
 }, [showSketches]);
 
+  // === DOM refs voor injecties ===
+const scriptsHostRef = React.useRef(null);
+const plannerRef     = React.useRef(null);
+
+// Huidige selectie uit de select van C_ScriptsView ophalen (fallback = onze state)
+const getSelectedSketchIdDOM = React.useCallback(() => {
+  const host = scriptsHostRef.current;
+  if (!host) return selectedSketchId;
+  const selects = Array.from(host.querySelectorAll('select'));
+  const sel = selects.find(s => {
+    const label = s.closest('div')?.querySelector('label')?.textContent?.toLowerCase() || '';
+    return label.includes('selecteer') && label.includes('sketch');
+  }) || selects[0];
+  return sel?.value || selectedSketchId;
+}, [selectedSketchId]);
+
+// Injecteer "Vervang uit library" + "Voeg toe aan library" naast de Selecteer-sketch dropdown
+React.useEffect(() => {
+  if (tab !== "scripts") return;
+  const host = scriptsHostRef.current;
+  if (!host) return;
+
+  const enhance = () => {
+    // 1) Verberg print-knoppen binnen C_ScriptsView
+    host.querySelectorAll('button').forEach(b => {
+      const t = (b.textContent || '').toLowerCase();
+      if (t.includes('print') || t.includes('🖨')) b.style.display = 'none';
+    });
+
+    // 2) Vind de "Selecteer sketch" <select>
+    const selects = Array.from(host.querySelectorAll('select'));
+    const sel = selects.find(s => {
+      const label = s.closest('div')?.querySelector('label')?.textContent?.toLowerCase() || '';
+      return label.includes('selecteer') && label.includes('sketch');
+    }) || selects[0];
+    if (!sel) return;
+
+    // Houd onze selectedSketchId in sync met de echte dropdown
+    const onChange = () => setSelectedSketchId(sel.value || null);
+    sel.removeEventListener('change', onChange);
+    sel.addEventListener('change', onChange);
+
+    // 3) Voeg onze twee knoppen éénmalig toe naast die select
+    if (!sel.parentElement.querySelector('.kp-lib-buttons')) {
+      const wrap = document.createElement('span');
+      wrap.className = 'kp-lib-buttons inline-flex gap-2 ml-2';
+
+      const mkBtn = (label) => {
+        const b = document.createElement('button');
+        b.className = "rounded-full px-3 py-1 text-sm border border-gray-300 bg-gray-100 hover:bg-gray-200";
+        b.textContent = label;
+        return b;
+      };
+
+      const btnReplace = mkBtn('⇄ Vervang uit library');
+      const btnAdd     = mkBtn('+ Voeg toe aan library');
+
+      btnReplace.addEventListener('click', () => {
+        const id = sel.value || getSelectedSketchIdDOM();
+        if (!id) return alert('Geen sketch geselecteerd.');
+        setReplaceLibChoice("");
+        setReplaceTarget(id);
+      });
+
+      btnAdd.addEventListener('click', () => {
+        const id = sel.value || getSelectedSketchIdDOM();
+        if (!id) return alert('Geen sketch geselecteerd.');
+        addSketchToLibrary(id);
+      });
+
+      wrap.appendChild(btnReplace);
+      wrap.appendChild(btnAdd);
+      sel.insertAdjacentElement('afterend', wrap);
+    }
+  };
+
+  enhance();
+  const mo = new MutationObserver(enhance);
+  mo.observe(host, { childList: true, subtree: true });
+  return () => mo.disconnect();
+}, [tab, getSelectedSketchIdDOM]);
+
+// Verberg de tweede "Dupliceer show" knop die uit PlannerMinimal komt
+React.useEffect(() => {
+  if (tab !== "planner") return;
+  const root = plannerRef.current;
+  if (!root) return;
+
+  const hideDup = () => {
+    root.querySelectorAll('button').forEach(btn => {
+      const t = (btn.textContent || '').toLowerCase();
+      if (t.includes('dupliceer') && !t.includes('huidige')) {
+        btn.style.display = 'none';
+      }
+    });
+  };
+  hideDup();
+  const mo = new MutationObserver(hideDup);
+  mo.observe(root, { childList: true, subtree: true });
+  return () => mo.disconnect();
+}, [tab]);
+
   
     // Button style helpers
   const btn       = "rounded-full px-3 py-1 text-sm border";
@@ -1021,9 +1123,12 @@ if (shareTab === "deck") {
 
 
     {/* Bestaande editor */}
-    <TabErrorBoundary>
-      <C_ScriptsView sketches={showSketches} people={showPeople} onUpdate={updateSketch} />
-    </TabErrorBoundary>
+    <div ref={scriptsHostRef}>
+  <TabErrorBoundary>
+    <C_ScriptsView sketches={showSketches} people={showPeople} onUpdate={updateSketch} />
+  </TabErrorBoundary>
+</div>
+
 
     {/* POP-UP: Sketch Library (globaal, bewerkbaar) */}
     {libraryOpen && (
@@ -1197,12 +1302,15 @@ if (shareTab === "deck") {
       </span>
     </div>
 
-    <C_PlannerMinimal
-      state={state}
-      setState={(fn)=>{ pushHistory(state); setState(fn(state)); }}
-      activeShowId={activeShowId}
-      setActiveShowId={setActiveShowId}
-    />
+    <div ref={plannerRef}>
+  <C_PlannerMinimal
+    state={state}
+    setState={(fn)=>{ pushHistory(state); setState(fn(state)); }}
+    activeShowId={activeShowId}
+    setActiveShowId={setActiveShowId}
+  />
+</div>
+
   </div>
 )}
 
