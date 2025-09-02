@@ -48,26 +48,29 @@ const loadState = async () => {
   }
 };
 
+// ---- saveStateRemote ----
 const saveStateRemote = async (state) => {
   try {
-    const token = localStorage.getItem('knor:authToken') || '';
+    const token = localStorage.getItem('knor:authToken');
+    const headers = { 'Content-Type': 'application/json' };
+    // alleen Authorization zetten als er een token is
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
     const res = await fetch('/.netlify/functions/save', {
       method: 'POST',
-      headers: {
-        'Content-Type':'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
+      headers,
       body: JSON.stringify(state),
     });
+
     if (!res.ok) {
       if (res.status === 401) throw new Error('unauthorized');
       throw new Error('save failed');
     }
   } finally {
-    // simpele cache (niet leidend)
     try { localStorage.setItem("sll-backstage-v2", JSON.stringify(state)); } catch {}
   }
 };
+
 
 // ---- Helpers ----
 const todayStr = () => new Date().toISOString().slice(0, 10);
@@ -496,28 +499,34 @@ function App() {
 
   // Opslaan bij elke lokale wijziging (debounced) — alleen met token
   React.useEffect(() => {
-    const p = new URLSearchParams((location.hash||"").replace("#",""));
-    const shareTabNow = p.get("share");
-    if (shareTabNow) return;                 // share-pagina's saven niet
-    if (applyingRemoteRef.current) return;
+  const p = new URLSearchParams((location.hash||"").replace("#",""));
+  const shareTabNow = p.get("share");
+  if (shareTabNow) return;
+  if (applyingRemoteRef.current) return;
 
-    const t = setTimeout(async () => {
-      try {
+  const t = setTimeout(async () => {
+    try {
+      const needsAuth = !!state.settings?.requirePassword;
+      // alleen eisen dat je ingelogd bent als vergrendeling aan staat
+      if (needsAuth) {
         const token = localStorage.getItem('knor:authToken') || '';
         if (!token) {
           setSyncStatus('🔒 Niet ingelogd — wijzigingen niet opgeslagen');
           return;
         }
-        const next = { ...state, rev: Date.now() };
-        await saveStateRemote(next);
-        setSyncStatus("✅ Gesynced om " + new Date().toLocaleTimeString());
-      } catch (e) {
-        console.error('save failed', e);
-        setSyncStatus("⚠️ Opslaan mislukt");
       }
-    }, 500);
-    return () => clearTimeout(t);
-  }, [state]);
+
+      const next = { ...state, rev: Date.now() };
+      await saveStateRemote(next);
+      setSyncStatus("✅ Gesynced om " + new Date().toLocaleTimeString());
+    } catch (e) {
+      console.error('save failed', e);
+      setSyncStatus("⚠️ Opslaan mislukt");
+    }
+  }, 500);
+  return () => clearTimeout(t);
+}, [state]);
+
 
   // ====== SHARE CONTEXT (deck en andere share pagina's) ======
   const _shareParams = React.useMemo(() => new URLSearchParams((location.hash || "").replace("#","")), [location.hash]);
