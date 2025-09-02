@@ -184,6 +184,17 @@ const [libraryOpen, setLibraryOpen]       = React.useState(false);
 const [replaceTargetId, setReplaceTarget] = React.useState(null);
 const [libraryQuery, setLibraryQuery]     = React.useState("");
 const [libEditId, setLibEditId]           = React.useState(null);
+
+  // Selectie & replace-popup
+const [selectedSketchId, setSelectedSketchId] = React.useState(null);
+const [replaceLibChoice, setReplaceLibChoice] = React.useState("");
+
+// hou geselecteerde sketch bij als de lijst wijzigt
+React.useEffect(() => {
+  const ids = (showSketches || []).map(s => s.id);
+  setSelectedSketchId(prev => (prev && ids.includes(prev)) ? prev : (ids[0] || null));
+}, [showSketches]);
+
   
     // Button style helpers
   const btn       = "rounded-full px-3 py-1 text-sm border";
@@ -997,7 +1008,7 @@ if (shareTab === "deck") {
       <div className="flex items-center gap-2">
         <button
           className="rounded-full px-4 py-2 text-sm font-semibold shadow bg-pink-600 text-white hover:bg-pink-700"
-          onClick={()=> setLibraryOpen(v => !v)}
+          onClick={()=> setLibraryOpen(true)}
           title="Open de Sketch Library (voor alle shows)"
         >
           📚 Sketch Library
@@ -1009,198 +1020,189 @@ if (shareTab === "deck") {
       </div>
     </div>
 
-    {/* Snelle acties per sketch in deze show */}
+    {/* Selectiebar: Selecteer sketch + knoppen ernaast */}
     <div className="rounded-xl border p-3">
-      <div className="font-semibold mb-2 text-sm">Sketches in deze show — snelle acties</div>
-      <div className="overflow-auto">
-        <table className="w-full text-sm border-collapse">
-          <thead>
-            <tr className="bg-gray-50">
-              <th className="border px-2 py-1 text-left">#</th>
-              <th className="border px-2 py-1 text-left">Titel</th>
-              <th className="border px-2 py-1 text-left">Duur</th>
-              <th className="border px-2 py-1 text-left">Acties</th>
-            </tr>
-          </thead>
-          <tbody>
-            {showSketches.map((sk) => (
-              <tr key={sk.id} className="odd:bg-gray-50">
-                <td className="border px-2 py-1">{sk.order ?? ""}</td>
-                <td className="border px-2 py-1">{sk.title || "(zonder titel)"}</td>
-                <td className="border px-2 py-1">{sk.durationMin || 0} min</td>
-                <td className="border px-2 py-1">
-                  <div className="flex flex-wrap gap-2">
-                    <button className={btnSec} onClick={() => addSketchToLibrary(sk.id)}>
-                      + Add this sketch to library
-                    </button>
-                    <button className={btnSec} onClick={() => setReplaceTarget(sk.id)}>
-                      ⇄ Replace by sketch from library
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {showSketches.length === 0 && (
-              <tr><td className="border px-2 py-2 text-gray-500" colSpan={4}>Nog geen sketches.</td></tr>
-            )}
-          </tbody>
-        </table>
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="text-sm text-gray-700">Selecteer sketch</label>
+        <select
+          className="rounded border px-2 py-1 text-sm"
+          value={selectedSketchId || ""}
+          onChange={(e)=> setSelectedSketchId(e.target.value || null)}
+        >
+          {(showSketches || []).map(s => (
+            <option key={s.id} value={s.id}>
+              {(s.order ?? "")} {s.title || "(zonder titel)"} — {(s.durationMin||0)} min
+            </option>
+          ))}
+        </select>
+
+        <button
+          className={btnSec}
+          disabled={!selectedSketchId}
+          onClick={() => { if (selectedSketchId) { setReplaceTarget(selectedSketchId); setReplaceLibChoice(""); } }}
+        >
+          ⇄ Vervang uit library
+        </button>
+
+        <button
+          className={btnSec}
+          disabled={!selectedSketchId}
+          onClick={() => { if (selectedSketchId) addSketchToLibrary(selectedSketchId); }}
+        >
+          + Voeg toe aan library
+        </button>
       </div>
     </div>
 
-    {/* Je bestaande Scripts editor blijft */}
+    {/* Bestaande editor */}
     <TabErrorBoundary>
       <C_ScriptsView sketches={showSketches} people={showPeople} onUpdate={updateSketch} />
     </TabErrorBoundary>
 
-    {/* Paneel: Sketch Library (globaal, bewerkbaar) */}
+    {/* POP-UP: Sketch Library (globaal, bewerkbaar) */}
     {libraryOpen && (
-      <div className="rounded-xl border p-3">
-        <div className="flex items-center justify-between gap-2 mb-2">
-          <div className="font-semibold">Sketch Library (voor alle shows)</div>
-          <div className="text-xs text-gray-500">Items: {(state.librarySketches||[]).length}</div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 mb-3">
-          <input
-            className="rounded border px-3 py-1 text-sm"
-            placeholder="Zoek titel of decor…"
-            value={libraryQuery}
-            onChange={(e)=> setLibraryQuery(e.target.value)}
-          />
-        </div>
-
-        <div className="overflow-auto">
-          <table className="w-full text-sm border-collapse">
-            <thead>
-              <tr className="bg-gray-50">
-                <th className="border px-2 py-1 text-left">Titel</th>
-                <th className="border px-2 py-1 text-left">Duur</th>
-                <th className="border px-2 py-1 text-left">Stage</th>
-                <th className="border px-2 py-1 text-left">Decor</th>
-                <th className="border px-2 py-1 text-left">Acties</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredLibrary.map(item => (
-                <tr key={item.libId || item.id} className="odd:bg-gray-50">
-                  <td className="border px-2 py-1">
-                    {libEditId === (item.libId || item.id) ? (
-                      <input
-                        className="w-full rounded border px-2 py-1"
-                        defaultValue={item.title || ""}
-                        onBlur={(e)=> saveLibItem(item.libId || item.id, { title: e.target.value })}
-                        autoFocus
-                      />
-                    ) : (
-                      <span className="font-medium">{item.title || "(zonder titel)"}</span>
-                    )}
-                  </td>
-                  <td className="border px-2 py-1">
-                    {libEditId === (item.libId || item.id) ? (
-                      <input
-                        type="number" min="0"
-                        className="w-24 rounded border px-2 py-1"
-                        defaultValue={item.durationMin || 0}
-                        onBlur={(e)=> saveLibItem(item.libId || item.id, { durationMin: parseInt(e.target.value||"0",10)||0 })}
-                      />
-                    ) : (
-                      <span>{item.durationMin || 0} min</span>
-                    )}
-                  </td>
-                  <td className="border px-2 py-1">
-                    {libEditId === (item.libId || item.id) ? (
-                      <select
-                        className="rounded border px-2 py-1"
-                        defaultValue={item.stagePlace || "podium"}
-                        onBlur={(e)=> saveLibItem(item.libId || item.id, { stagePlace: e.target.value })}
-                      >
-                        <option value="podium">Podium</option>
-                        <option value="voor">Voor de gordijn</option>
-                      </select>
-                    ) : (
-                      <span>{item.stagePlace === "voor" ? "Voor de gordijn" : "Podium"}</span>
-                    )}
-                  </td>
-                  <td className="border px-2 py-1">
-                    {libEditId === (item.libId || item.id) ? (
-                      <input
-                        className="w-full rounded border px-2 py-1"
-                        defaultValue={item.decor || ""}
-                        onBlur={(e)=> saveLibItem(item.libId || item.id, { decor: e.target.value })}
-                      />
-                    ) : (
-                      <span className="text-gray-700">{item.decor || "—"}</span>
-                    )}
-                  </td>
-                  <td className="border px-2 py-1">
-                    <div className="flex flex-wrap gap-2">
-                      {libEditId === (item.libId || item.id) ? (
-                        <button className={btnSec} onClick={stopEditLib}>Klaar</button>
-                      ) : (
-                        <button className={btnSec} onClick={()=> startEditLib(item.libId || item.id)}>Bewerk</button>
-                      )}
-                      <button
-                        className={btnPri}
-                        onClick={()=> insertLibraryIntoCurrentShow(item.libId || item.id)}
-                      >
-                        + Voeg toe aan huidige show
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {filteredLibrary.length === 0 && (
-                <tr><td className="border px-2 py-2 text-gray-500" colSpan={5}>Nog niets in de library.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="text-[11px] text-gray-500 mt-2">
-          Library is gedeeld tussen alle shows. Bewerken hier past <u>niet</u> automatisch kopieën in shows aan.
-        </div>
-      </div>
-    )}
-
-    {/* Modaal: Library kiezen om te vervangen */}
-    {replaceTargetId && (
       <div className="fixed inset-0 z-[10000] bg-black/30 backdrop-blur-sm flex items-center justify-center p-4">
-        <div className="w-[min(92vw,720px)] rounded-2xl bg-white border shadow-xl p-4">
-          <div className="flex items-center justify-between mb-2">
-            <div className="font-semibold">Vervang sketch vanuit library</div>
-            <button className={btnSec} onClick={()=> setReplaceTarget(null)}>Sluiten</button>
+        <div className="w-[min(96vw,1000px)] max-h-[85vh] overflow-hidden rounded-2xl bg-white border shadow-xl flex flex-col">
+          <div className="px-4 pt-3 pb-2 flex items-center justify-between border-b">
+            <div className="font-semibold">📚 Sketch Library (voor alle shows)</div>
+            <div className="flex items-center gap-2">
+              <input
+                className="rounded border px-3 py-1 text-sm"
+                placeholder="Zoek titel of decor…"
+                value={libraryQuery}
+                onChange={(e)=> setLibraryQuery(e.target.value)}
+              />
+              <button className={btnSec} onClick={()=> setLibraryOpen(false)}>Sluiten</button>
+            </div>
           </div>
-          <input
-            className="w-full rounded border px-3 py-2 text-sm mb-3"
-            placeholder="Zoek in library…"
-            value={libraryQuery}
-            onChange={(e)=> setLibraryQuery(e.target.value)}
-          />
-          <div className="max-h-[50vh] overflow-auto">
+
+          <div className="px-4 py-3 overflow-auto">
             <table className="w-full text-sm border-collapse">
-              <thead><tr className="bg-gray-50"><th className="border px-2 py-1 text-left">Titel</th><th className="border px-2 py-1 text-left">Duur</th><th className="border px-2 py-1 text-left">Actie</th></tr></thead>
+              <thead>
+                <tr className="bg-gray-50">
+                  <th className="border px-2 py-1 text-left">Titel</th>
+                  <th className="border px-2 py-1 text-left">Duur</th>
+                  <th className="border px-2 py-1 text-left">Stage</th>
+                  <th className="border px-2 py-1 text-left">Decor</th>
+                  <th className="border px-2 py-1 text-left">Acties</th>
+                </tr>
+              </thead>
               <tbody>
                 {filteredLibrary.map(item => (
                   <tr key={item.libId || item.id} className="odd:bg-gray-50">
-                    <td className="border px-2 py-1">{item.title || "(zonder titel)"}</td>
-                    <td className="border px-2 py-1">{item.durationMin || 0} min</td>
                     <td className="border px-2 py-1">
-                      <button
-                        className={btnPri}
-                        onClick={()=> replaceSketchWithLibrary(replaceTargetId, item.libId || item.id)}
-                      >
-                        Gebruik deze
-                      </button>
+                      {libEditId === (item.libId || item.id) ? (
+                        <input
+                          className="w-full rounded border px-2 py-1"
+                          defaultValue={item.title || ""}
+                          onBlur={(e)=> saveLibItem(item.libId || item.id, { title: e.target.value })}
+                          autoFocus
+                        />
+                      ) : (
+                        <span className="font-medium">{item.title || "(zonder titel)"}</span>
+                      )}
+                    </td>
+                    <td className="border px-2 py-1">
+                      {libEditId === (item.libId || item.id) ? (
+                        <input
+                          type="number" min="0"
+                          className="w-24 rounded border px-2 py-1"
+                          defaultValue={item.durationMin || 0}
+                          onBlur={(e)=> saveLibItem(item.libId || item.id, { durationMin: parseInt(e.target.value||"0",10)||0 })}
+                        />
+                      ) : (
+                        <span>{item.durationMin || 0} min</span>
+                      )}
+                    </td>
+                    <td className="border px-2 py-1">
+                      {libEditId === (item.libId || item.id) ? (
+                        <select
+                          className="rounded border px-2 py-1"
+                          defaultValue={item.stagePlace || "podium"}
+                          onBlur={(e)=> saveLibItem(item.libId || item.id, { stagePlace: e.target.value })}
+                        >
+                          <option value="podium">Podium</option>
+                          <option value="voor">Voor de gordijn</option>
+                        </select>
+                      ) : (
+                        <span>{item.stagePlace === "voor" ? "Voor de gordijn" : "Podium"}</span>
+                      )}
+                    </td>
+                    <td className="border px-2 py-1">
+                      {libEditId === (item.libId || item.id) ? (
+                        <input
+                          className="w-full rounded border px-2 py-1"
+                          defaultValue={item.decor || ""}
+                          onBlur={(e)=> saveLibItem(item.libId || item.id, { decor: e.target.value })}
+                        />
+                      ) : (
+                        <span className="text-gray-700">{item.decor || "—"}</span>
+                      )}
+                    </td>
+                    <td className="border px-2 py-1">
+                      <div className="flex flex-wrap gap-2">
+                        {libEditId === (item.libId || item.id) ? (
+                          <button className={btnSec} onClick={stopEditLib}>Klaar</button>
+                        ) : (
+                          <button className={btnSec} onClick={()=> startEditLib(item.libId || item.id)}>Bewerk</button>
+                        )}
+                        <button
+                          className={btnPri}
+                          onClick={()=> insertLibraryIntoCurrentShow(item.libId || item.id)}
+                        >
+                          + Voeg toe aan huidige show
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
                 {filteredLibrary.length === 0 && (
-                  <tr><td className="border px-2 py-2 text-gray-500" colSpan={3}>Geen resultaten.</td></tr>
+                  <tr><td className="border px-2 py-2 text-gray-500" colSpan={5}>Nog niets in de library.</td></tr>
                 )}
               </tbody>
             </table>
+            <div className="text-[11px] text-gray-500 mt-2">
+              Library is gedeeld tussen alle shows. Bewerken hier past <u>niet</u> automatisch kopieën in shows aan.
+            </div>
           </div>
+        </div>
+      </div>
+    )}
+
+    {/* POP-UP: eenvoudige dropdown om te vervangen vanuit library */}
+    {replaceTargetId && (
+      <div className="fixed inset-0 z-[10000] bg-black/30 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="w-[min(92vw,520px)] rounded-2xl bg-white border shadow-xl p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="font-semibold">Vervang sketch vanuit library</div>
+            <button className={btnSec} onClick={()=> { setReplaceTarget(null); setReplaceLibChoice(""); }}>Sluiten</button>
+          </div>
+
+          <label className="text-sm text-gray-700 block mb-1">Kies library-item</label>
+          <select
+            className="w-full rounded border px-3 py-2 text-sm"
+            value={replaceLibChoice}
+            onChange={(e)=> setReplaceLibChoice(e.target.value)}
+          >
+            <option value="">— Kies —</option>
+            {(state.librarySketches || []).map(item => (
+              <option key={item.libId || item.id} value={item.libId || item.id}>
+                {(item.title || "(zonder titel)")} — {(item.durationMin||0)} min
+              </option>
+            ))}
+          </select>
+
+          <div className="mt-3 flex items-center justify-end gap-2">
+            <button className={btnSec} onClick={()=> { setReplaceTarget(null); setReplaceLibChoice(""); }}>Annuleer</button>
+            <button
+              className={btnPri}
+              disabled={!replaceLibChoice}
+              onClick={()=> replaceSketchWithLibrary(replaceTargetId, replaceLibChoice)}
+            >
+              Vervang
+            </button>
+          </div>
+
           <div className="text-[11px] text-gray-500 mt-2">
             NB: Spelers die niet bestaan in deze show worden teruggezet naar “Kies speler/danser”.
           </div>
@@ -1209,6 +1211,7 @@ if (shareTab === "deck") {
     )}
   </div>
 )}
+
 
 
         {tab === "planner" && (
