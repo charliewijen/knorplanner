@@ -10,20 +10,15 @@ const {
   parseTimeToMin
 } = window;
 
-// ---------- Storage via Supabase (met lokale fallback) ----------
-const TABLE = "planner_data";
-const ROW_ID = 1;
-
+// ---------- Storage via Netlify Functions ----------
 const loadState = async () => {
   try {
-    const { data, error } = await window.SUPA
-      .from(TABLE)
-      .select("data")
-      .eq("id", ROW_ID)
-      .maybeSingle();
-    if (error) throw error;
-    return data?.data || null;
+    const res = await fetch('/.netlify/functions/load');
+    if (!res.ok) throw new Error('load failed');
+    const json = await res.json();
+    return json || null;
   } catch {
+    // optioneel mini fallback
     try {
       const raw = localStorage.getItem("sll-backstage-v2");
       return raw ? JSON.parse(raw) : null;
@@ -33,13 +28,25 @@ const loadState = async () => {
 
 const saveStateRemote = async (state) => {
   try {
-    await window.SUPA.from(TABLE).upsert({ id: ROW_ID, data: state });
-  } catch {}
-  // fallback cache (niet leidend)
-  try {
-    localStorage.setItem("sll-backstage-v2", JSON.stringify(state));
-  } catch {}
+    const token = localStorage.getItem('knor:authToken') || '';
+    const res = await fetch('/.netlify/functions/save', {
+      method: 'POST',
+      headers: {
+        'Content-Type':'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify(state),
+    });
+    if (!res.ok) {
+      if (res.status === 401) throw new Error('unauthorized');
+      throw new Error('save failed');
+    }
+  } finally {
+    // simpele cache (niet leidend)
+    try { localStorage.setItem("sll-backstage-v2", JSON.stringify(state)); } catch {}
+  }
 };
+
 
 // ---- Helpers ----
 const todayStr = () => new Date().toISOString().slice(0, 10);
@@ -104,14 +111,12 @@ function PasswordGate({ onUnlock }) {
   const tryUnlock = async () => {
     setErr("");
     try {
-      const h = await hashText(pw || "");
-      const ok = await onUnlock(h);
+      const ok = await onUnlock(pw);
       if (!ok) setErr("Onjuist wachtwoord.");
     } catch (e) {
       setErr("Er ging iets mis.");
     }
   };
-
   const onKey = (e) => { if (e.key === "Enter") tryUnlock(); };
 
   return (
@@ -136,6 +141,7 @@ function PasswordGate({ onUnlock }) {
     </div>
   );
 }
+
 
 // ---------- Root Component ----------
 function App() {
@@ -507,15 +513,21 @@ function App() {
     setLocked(!ok);
   }, [shareTab, state.settings]);
 
-  const handleUnlock = async (hash) => {
-    if (!state.settings?.appPasswordHash) return false;
-    const ok = (hash === state.settings.appPasswordHash);
-    if (ok) {
-      localStorage.setItem("knor:auth", hash);
-      setLocked(false);
-    }
-    return ok;
-  };
+  const handleUnlock = async (plainPw) => {
+  try {
+    const res = await fetch('/.netlify/functions/pw', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({ password: plainPw })
+    });
+    if (!res.ok) return false;
+    const { token } = await res.json();
+    localStorage.setItem('knor:authToken', token);
+    setLocked(false);
+    return true;
+  } catch { return false; }
+};
+
 
   // VASTE LOCK-ACTIES: geen eigen wachtwoord kiezen; altijd "Appelsap123!"
   const lockNow = async () => {
