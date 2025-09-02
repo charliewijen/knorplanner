@@ -316,6 +316,117 @@ React.useEffect(() => { setVerPage(0); }, [ (state.versions || []).length ]);
   // Sketch
   const updateSketch = (id, updates) => { pushHistory(state); setState((prev) => ({ ...prev, sketches: prev.sketches.map((s) => (s.id === id ? { ...s, ...updates } : s)) })); };
 
+  // Deep clone helper
+const deepClone = (x) => JSON.parse(JSON.stringify(x));
+
+// Rollen/mics normaliseren voor de huidige show
+const normalizeRolesForShow = (roles = [], peopleInShow = []) => {
+  const allowed = new Set(peopleInShow.map(p => p.id));
+  return (roles || []).map(r => ({
+    ...r,
+    personId: r.personId && allowed.has(r.personId) ? r.personId : "",
+  }));
+};
+const normalizeMicAssignmentsForShow = (micAssignments = {}, peopleInShow = []) => {
+  const allowed = new Set(peopleInShow.map(p => p.id));
+  const res = {};
+  Object.entries(micAssignments || {}).forEach(([ch, pid]) => {
+    res[ch] = pid && allowed.has(pid) ? pid : "";
+  });
+  return res;
+};
+
+// Sketch van huidige show -> Library
+const addSketchToLibrary = (sketchId) => {
+  const src = (state.sketches || []).find(s => s.id === sketchId);
+  if (!src) return;
+  const libItem = deepClone(src);
+  libItem.libId = uid(); // eigen id in library
+  // showId mag blijven, geen probleem, maar is niet nodig
+  pushHistory(state);
+  setState(prev => ({
+    ...prev,
+    librarySketches: [...(prev.librarySketches || []), libItem],
+  }));
+  alert("Sketch opgeslagen in de library.");
+};
+
+// Library-item als NIEUWE sketch in de actieve show plaatsen
+const insertLibraryIntoCurrentShow = (libId) => {
+  if (!activeShow) return alert("Geen actieve show.");
+  const lib = (state.librarySketches || []).find(l => (l.libId || l.id) === libId);
+  if (!lib) return alert("Library item niet gevonden.");
+
+  const peopleInShow = showPeople;
+  const nextOrder = Math.max(0, ...(state.sketches||[]).filter(s=>s.showId===activeShow.id).map(s=>s.order||0)) + 1;
+
+  const copy = deepClone(lib);
+  copy.id = uid();
+  copy.showId = activeShow.id;
+  copy.order = nextOrder;
+  copy.roles = normalizeRolesForShow(copy.roles, peopleInShow);
+  copy.micAssignments = normalizeMicAssignmentsForShow(copy.micAssignments, peopleInShow);
+
+  pushHistory(state);
+  setState(prev => ({ ...prev, sketches: [...(prev.sketches || []), copy] }));
+  alert("Sketch toegevoegd aan deze show.");
+};
+
+// Bestaande sketch in show vervangen door Library-item
+const replaceSketchWithLibrary = (targetSketchId, libId) => {
+  if (!activeShow) return alert("Geen actieve show.");
+  const lib = (state.librarySketches || []).find(l => (l.libId || l.id) === libId);
+  if (!lib) return alert("Library item niet gevonden.");
+
+  const peopleInShow = showPeople;
+  const base = deepClone(lib);
+
+  pushHistory(state);
+  setState(prev => ({
+    ...prev,
+    sketches: (prev.sketches || []).map(s => {
+      if (s.id !== targetSketchId) return s;
+      return {
+        ...s,
+        title: base.title,
+        durationMin: base.durationMin,
+        stagePlace: base.stagePlace,
+        decor: base.decor,
+        links: base.links,
+        sounds: base.sounds,
+        roles: normalizeRolesForShow(base.roles, peopleInShow),
+        micAssignments: normalizeMicAssignmentsForShow(base.micAssignments, peopleInShow),
+      };
+    })
+  }));
+  setReplaceTarget(null);
+  alert("Sketch vervangen vanuit de library.");
+};
+
+// Filter + inline edit helper
+const filteredLibrary = React.useMemo(() => {
+  const q = (libraryQuery || "").toLowerCase();
+  const arr = state.librarySketches || [];
+  if (!q) return arr;
+  return arr.filter(s =>
+    String(s.title||"").toLowerCase().includes(q) ||
+    String(s.decor||"").toLowerCase().includes(q)
+  );
+}, [state.librarySketches, libraryQuery]);
+
+const startEditLib = (id) => setLibEditId(id);
+const stopEditLib  = () => setLibEditId(null);
+const saveLibItem = (id, patch) => {
+  setState(prev => ({
+    ...prev,
+    librarySketches: (prev.librarySketches || []).map(s =>
+      (s.libId === id || s.id === id) ? { ...s, ...patch } : s
+    )
+  }));
+  stopEditLib();
+};
+
+  
   // Show
   const updateActiveShow = (patch) => {
     if (!activeShow) return;
@@ -879,11 +990,226 @@ if (shareTab === "deck") {
             onAdd={addRehearsal} onUpdate={updateRehearsal} onRemove={removeRehearsal} />
         )}
 
-        {tab === "scripts" && (
-          <TabErrorBoundary>
-            <C_ScriptsView sketches={showSketches} people={showPeople} onUpdate={updateSketch} />
-          </TabErrorBoundary>
-        )}
+       {tab === "scripts" && (
+  <div className="space-y-3">
+    {/* Toolbar: Library (links) + Print (rechts) */}
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <div className="flex items-center gap-2">
+        <button
+          className="rounded-full px-4 py-2 text-sm font-semibold shadow bg-pink-600 text-white hover:bg-pink-700"
+          onClick={()=> setLibraryOpen(v => !v)}
+          title="Open de Sketch Library (voor alle shows)"
+        >
+          📚 Sketch Library
+        </button>
+        <span className="text-xs text-gray-500">Actieve show: <b>{activeShow?.name || "—"}</b></span>
+      </div>
+      <div className="flex items-center gap-2">
+        <button className={btnSec} onClick={()=> window.print()}>🖨️ Print</button>
+      </div>
+    </div>
+
+    {/* Snelle acties per sketch in deze show */}
+    <div className="rounded-xl border p-3">
+      <div className="font-semibold mb-2 text-sm">Sketches in deze show — snelle acties</div>
+      <div className="overflow-auto">
+        <table className="w-full text-sm border-collapse">
+          <thead>
+            <tr className="bg-gray-50">
+              <th className="border px-2 py-1 text-left">#</th>
+              <th className="border px-2 py-1 text-left">Titel</th>
+              <th className="border px-2 py-1 text-left">Duur</th>
+              <th className="border px-2 py-1 text-left">Acties</th>
+            </tr>
+          </thead>
+          <tbody>
+            {showSketches.map((sk) => (
+              <tr key={sk.id} className="odd:bg-gray-50">
+                <td className="border px-2 py-1">{sk.order ?? ""}</td>
+                <td className="border px-2 py-1">{sk.title || "(zonder titel)"}</td>
+                <td className="border px-2 py-1">{sk.durationMin || 0} min</td>
+                <td className="border px-2 py-1">
+                  <div className="flex flex-wrap gap-2">
+                    <button className={btnSec} onClick={() => addSketchToLibrary(sk.id)}>
+                      + Add this sketch to library
+                    </button>
+                    <button className={btnSec} onClick={() => setReplaceTarget(sk.id)}>
+                      ⇄ Replace by sketch from library
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {showSketches.length === 0 && (
+              <tr><td className="border px-2 py-2 text-gray-500" colSpan={4}>Nog geen sketches.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    {/* Je bestaande Scripts editor blijft */}
+    <TabErrorBoundary>
+      <C_ScriptsView sketches={showSketches} people={showPeople} onUpdate={updateSketch} />
+    </TabErrorBoundary>
+
+    {/* Paneel: Sketch Library (globaal, bewerkbaar) */}
+    {libraryOpen && (
+      <div className="rounded-xl border p-3">
+        <div className="flex items-center justify-between gap-2 mb-2">
+          <div className="font-semibold">Sketch Library (voor alle shows)</div>
+          <div className="text-xs text-gray-500">Items: {(state.librarySketches||[]).length}</div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <input
+            className="rounded border px-3 py-1 text-sm"
+            placeholder="Zoek titel of decor…"
+            value={libraryQuery}
+            onChange={(e)=> setLibraryQuery(e.target.value)}
+          />
+        </div>
+
+        <div className="overflow-auto">
+          <table className="w-full text-sm border-collapse">
+            <thead>
+              <tr className="bg-gray-50">
+                <th className="border px-2 py-1 text-left">Titel</th>
+                <th className="border px-2 py-1 text-left">Duur</th>
+                <th className="border px-2 py-1 text-left">Stage</th>
+                <th className="border px-2 py-1 text-left">Decor</th>
+                <th className="border px-2 py-1 text-left">Acties</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredLibrary.map(item => (
+                <tr key={item.libId || item.id} className="odd:bg-gray-50">
+                  <td className="border px-2 py-1">
+                    {libEditId === (item.libId || item.id) ? (
+                      <input
+                        className="w-full rounded border px-2 py-1"
+                        defaultValue={item.title || ""}
+                        onBlur={(e)=> saveLibItem(item.libId || item.id, { title: e.target.value })}
+                        autoFocus
+                      />
+                    ) : (
+                      <span className="font-medium">{item.title || "(zonder titel)"}</span>
+                    )}
+                  </td>
+                  <td className="border px-2 py-1">
+                    {libEditId === (item.libId || item.id) ? (
+                      <input
+                        type="number" min="0"
+                        className="w-24 rounded border px-2 py-1"
+                        defaultValue={item.durationMin || 0}
+                        onBlur={(e)=> saveLibItem(item.libId || item.id, { durationMin: parseInt(e.target.value||"0",10)||0 })}
+                      />
+                    ) : (
+                      <span>{item.durationMin || 0} min</span>
+                    )}
+                  </td>
+                  <td className="border px-2 py-1">
+                    {libEditId === (item.libId || item.id) ? (
+                      <select
+                        className="rounded border px-2 py-1"
+                        defaultValue={item.stagePlace || "podium"}
+                        onBlur={(e)=> saveLibItem(item.libId || item.id, { stagePlace: e.target.value })}
+                      >
+                        <option value="podium">Podium</option>
+                        <option value="voor">Voor de gordijn</option>
+                      </select>
+                    ) : (
+                      <span>{item.stagePlace === "voor" ? "Voor de gordijn" : "Podium"}</span>
+                    )}
+                  </td>
+                  <td className="border px-2 py-1">
+                    {libEditId === (item.libId || item.id) ? (
+                      <input
+                        className="w-full rounded border px-2 py-1"
+                        defaultValue={item.decor || ""}
+                        onBlur={(e)=> saveLibItem(item.libId || item.id, { decor: e.target.value })}
+                      />
+                    ) : (
+                      <span className="text-gray-700">{item.decor || "—"}</span>
+                    )}
+                  </td>
+                  <td className="border px-2 py-1">
+                    <div className="flex flex-wrap gap-2">
+                      {libEditId === (item.libId || item.id) ? (
+                        <button className={btnSec} onClick={stopEditLib}>Klaar</button>
+                      ) : (
+                        <button className={btnSec} onClick={()=> startEditLib(item.libId || item.id)}>Bewerk</button>
+                      )}
+                      <button
+                        className={btnPri}
+                        onClick={()=> insertLibraryIntoCurrentShow(item.libId || item.id)}
+                      >
+                        + Voeg toe aan huidige show
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {filteredLibrary.length === 0 && (
+                <tr><td className="border px-2 py-2 text-gray-500" colSpan={5}>Nog niets in de library.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="text-[11px] text-gray-500 mt-2">
+          Library is gedeeld tussen alle shows. Bewerken hier past <u>niet</u> automatisch kopieën in shows aan.
+        </div>
+      </div>
+    )}
+
+    {/* Modaal: Library kiezen om te vervangen */}
+    {replaceTargetId && (
+      <div className="fixed inset-0 z-[10000] bg-black/30 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="w-[min(92vw,720px)] rounded-2xl bg-white border shadow-xl p-4">
+          <div className="flex items-center justify-between mb-2">
+            <div className="font-semibold">Vervang sketch vanuit library</div>
+            <button className={btnSec} onClick={()=> setReplaceTarget(null)}>Sluiten</button>
+          </div>
+          <input
+            className="w-full rounded border px-3 py-2 text-sm mb-3"
+            placeholder="Zoek in library…"
+            value={libraryQuery}
+            onChange={(e)=> setLibraryQuery(e.target.value)}
+          />
+          <div className="max-h-[50vh] overflow-auto">
+            <table className="w-full text-sm border-collapse">
+              <thead><tr className="bg-gray-50"><th className="border px-2 py-1 text-left">Titel</th><th className="border px-2 py-1 text-left">Duur</th><th className="border px-2 py-1 text-left">Actie</th></tr></thead>
+              <tbody>
+                {filteredLibrary.map(item => (
+                  <tr key={item.libId || item.id} className="odd:bg-gray-50">
+                    <td className="border px-2 py-1">{item.title || "(zonder titel)"}</td>
+                    <td className="border px-2 py-1">{item.durationMin || 0} min</td>
+                    <td className="border px-2 py-1">
+                      <button
+                        className={btnPri}
+                        onClick={()=> replaceSketchWithLibrary(replaceTargetId, item.libId || item.id)}
+                      >
+                        Gebruik deze
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {filteredLibrary.length === 0 && (
+                  <tr><td className="border px-2 py-2 text-gray-500" colSpan={3}>Geen resultaten.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <div className="text-[11px] text-gray-500 mt-2">
+            NB: Spelers die niet bestaan in deze show worden teruggezet naar “Kies speler/danser”.
+          </div>
+        </div>
+      </div>
+    )}
+  </div>
+)}
+
 
         {tab === "planner" && (
   <div className="grid gap-3">
