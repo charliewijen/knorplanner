@@ -170,6 +170,14 @@ function App() {
   const [tab, setTab] = React.useState("planner");
   const [syncStatus, setSyncStatus] = React.useState("Nog niet gesynced");
 
+    // Button style helpers
+  const btn       = "rounded-full px-3 py-1 text-sm border";
+  const btnPri    = "rounded-full px-3 py-1 text-sm border border-black bg-black text-white hover:opacity-90";
+  const btnSec    = "rounded-full px-3 py-1 text-sm border border-gray-300 bg-gray-100 hover:bg-gray-200";
+  const btnGhost  = "rounded-full px-3 py-1 text-sm border border-transparent hover:bg-gray-100";
+  const btnDanger = "rounded-full px-3 py-1 text-sm border border-red-600 bg-red-600 text-white hover:bg-red-700";
+
+
   const [panelOpen, setPanelOpen] = React.useState("versions");
 const [verPage, setVerPage]     = React.useState(0);
 
@@ -564,7 +572,9 @@ React.useEffect(() => {
   if (shareTab === "rehearsals") {
     return (
       <div className="mx-auto max-w-6xl p-4 share-only">
-        <h1 className="text-2xl font-bold mb-4">Repetitieschema (live)</h1>
+        <h1 className="text-2xl font-bold mb-4">
+  Repetitieschema (live) <span className="text-base font-normal text-gray-500">— {shareShow?.name}</span>
+</h1>
         <C_RehearsalPlanner rehearsals={shareRehearsals} people={sharePeople} onAdd={()=>{}} onUpdate={()=>{}} onRemove={()=>{}} />
         <div className="text-sm text-gray-500 mt-6">Dit is een gedeelde link, alleen-lezen. Wijzigingen kunnen alleen in de hoofd-app.</div>
       </div>
@@ -573,7 +583,9 @@ React.useEffect(() => {
   if (shareTab === "rolverdeling") {
     return (
       <div className="mx-auto max-w-6xl p-4">
-        <h1 className="text-2xl font-bold mb-4">Rolverdeling (live)</h1>
+<h1 className="text-2xl font-bold mb-4">
+  Rolverdeling (live) <span className="text-base font-normal text-gray-500">— {shareShow?.name}</span>
+</h1>
         <C_RoleDistributionView currentShowId={shareShow?.id} sketches={shareSketches} people={sharePeople} setState={()=>{}} />
         <div className="text-sm text-gray-500 mt-6">Dit is een gedeelde link, alleen-lezen. Wijzigingen kunnen alleen in de hoofd-app.</div>
       </div>
@@ -582,7 +594,9 @@ React.useEffect(() => {
   if (shareTab === "prkit") {
     return (
       <div className="mx-auto max-w-6xl p-4">
-        <h1 className="text-2xl font-bold mb-4">PR-Kit (live)</h1>
+<h1 className="text-2xl font-bold mb-4">
+  PR-Kit (live) <span className="text-base font-normal text-gray-500">— {shareShow?.name}</span>
+</h1>
         <C_PRKitView items={sharePRKit} showId={shareShow?.id} readOnly={true} onChange={()=>{}} />
         <div className="text-sm text-gray-500 mt-6">Dit is een gedeelde link, alleen-lezen. Wijzigingen kunnen alleen in de hoofd-app.</div>
       </div>
@@ -591,7 +605,9 @@ React.useEffect(() => {
   if (shareTab === "runsheet") {
     return (
       <div className="mx-auto max-w-6xl p-4 share-only">
-        <h1 className="text-2xl font-bold mb-4">Programma (live)</h1>
+<h1 className="text-2xl font-bold mb-4">
+  Programma (live) <span className="text-base font-normal text-gray-500">— {shareShow?.name}</span>
+</h1>
         <RunSheetView runSheet={runSheetShare} show={shareShow} />
         <div className="text-sm text-gray-500 mt-6">Dit is een gedeelde link, alleen-lezen.</div>
       </div>
@@ -600,7 +616,9 @@ React.useEffect(() => {
   if (shareTab === "mics") {
     return (
       <div className="mx-auto max-w-6xl p-4 share-only">
-        <h1 className="text-2xl font-bold mb-4">Microfoons (live)</h1>
+<h1 className="text-2xl font-bold mb-4">
+  Microfoons (live) <span className="text-base font-normal text-gray-500">— {shareShow?.name}</span>
+</h1>
         <style>{`.share-only select,.share-only input,.share-only button{pointer-events:none!important;}`}</style>
         <C_MicMatrixView currentShowId={shareShow?.id} sketches={shareSketches} people={sharePeople} shows={state.shows} setState={() => {}} />
         <div className="text-sm text-gray-500 mt-6">Dit is een gedeelde link, alleen-lezen.</div>
@@ -623,7 +641,9 @@ React.useEffect(() => {
     const onlySketches = (shareSketches || []).filter(s => (s?.kind || "sketch") === "sketch");
     return (
       <div className="mx-auto max-w-6xl p-4">
-        <h1 className="text-2xl font-bold mb-4">Sketches (live)</h1>
+<h1 className="text-2xl font-bold mb-4">
+  Sketches (live) <span className="text-base font-normal text-gray-500">— {shareShow?.name}</span>
+</h1>
         <div className="space-y-6">
           {onlySketches.map((sk, i) => {
             const s = ensureDefaultsLocal(sk);
@@ -736,8 +756,17 @@ if (shareTab === "deck") {
               ))}
             </nav>
             <div className="hidden md:flex items-center gap-2 flex-none">
-              <img src="https://cdn-icons-png.flaticon.com/512/616/616584.png" alt="" className="w-6 h-6 opacity-70" aria-hidden="true" />
-            </div>
+  <span className="rounded-full border px-3 py-1 text-sm bg-gray-50">
+    Show: <b>{activeShow?.name || "—"}</b>
+  </span>
+  <img
+    src="https://cdn-icons-png.flaticon.com/512/616/616584.png"
+    alt=""
+    className="w-6 h-6 opacity-70"
+    aria-hidden="true"
+  />
+</div>
+
           </div>
         </div>
       </header>
@@ -869,20 +898,26 @@ if (shareTab === "deck") {
         )}
       </main>
 
-      {/* Floating tools (accordion) */}
-<div className="fixed left-4 bottom-4 z-50">
-  <details className="group w-[min(92vw,420px)]">
+     {/* Floating tools (accordion) */}
+<div className="fixed left-4 bottom-4 z-50 pointer-events-none">
+  <details className="group w-[min(92vw,460px)] pointer-events-auto">
     <summary className="cursor-pointer inline-flex items-center gap-2 rounded-full bg-black text-white px-4 py-2 shadow-lg select-none">
       <img src="https://cdn-icons-png.flaticon.com/512/616/616584.png" alt="" className="w-4 h-4" aria-hidden="true" />
       Hulpmiddelen
       <span className="text-xs opacity-80">{syncStatus}</span>
     </summary>
 
-    <div className="mt-2 rounded-xl border bg-white/95 backdrop-blur shadow-xl max-h-[70vh] overflow-auto">
+    <div className="mt-2 rounded-2xl border bg-white/95 backdrop-blur p-3 shadow-xl max-h-[70vh] overflow-auto space-y-3">
+      {/* Quick actions (altijd zichtbaar) */}
+      <div className="flex flex-wrap gap-2">
+        <button className={btnPri} onClick={undo}>↶ Undo</button>
+        <button className={btnPri} onClick={redo}>↷ Redo</button>
+      </div>
+
       {/* ACC: Versies */}
-      <div className="border-b">
+      <div className="border rounded-xl overflow-hidden">
         <button
-          className="w-full flex items-center justify-between px-3 py-2 text-left"
+          className="w-full flex items-center justify-between px-3 py-2 text-left bg-gray-50"
           onClick={()=> setPanelOpen(p => p==="versions" ? null : "versions")}
         >
           <span className="font-semibold text-sm">Versies</span>
@@ -900,31 +935,24 @@ if (shareTab === "deck") {
                     {v.name} <span className="text-gray-500">({new Date(v.ts).toLocaleString()})</span>
                   </span>
                   <span className="flex gap-2 shrink-0">
-                    <button className="rounded-full border px-2 py-0.5" onClick={()=>restoreVersion(v.id)}>Herstel</button>
-                    <button className="rounded-full border px-2 py-0.5" onClick={()=>deleteVersion(v.id)}>Del</button>
+                    <button className={btnSec} onClick={()=>restoreVersion(v.id)}>Herstel</button>
+                    <button className={btnDanger} onClick={()=>deleteVersion(v.id)}>Del</button>
                   </span>
                 </li>
               ))}
               {versionsSorted.length===0 && <li className="text-gray-500">Nog geen versies.</li>}
             </ul>
             <div className="flex items-center justify-between pt-1">
-              <button
-                className="rounded-full border px-2 py-0.5 text-xs"
-                disabled={curPage===0}
-                onClick={()=> setVerPage(p => Math.max(0, p-1))}
-              >← 1–{pageSize*curPage || pageSize}</button>
-              <div className="text-xs text-gray-600">
-                Pagina {curPage+1} / {totalPages}
-              </div>
-              <button
-                className="rounded-full border px-2 py-0.5 text-xs"
-                disabled={curPage >= totalPages-1}
-                onClick={()=> setVerPage(p => Math.min(totalPages-1, p+1))}
-              >{pageSize*(curPage+1)+1}–{Math.min(pageSize*(curPage+2), versionsSorted.length)} →</button>
+              <button className={btnSec} disabled={curPage===0} onClick={()=> setVerPage(p => Math.max(0, p-1))}>
+                ← Vorige
+              </button>
+              <div className="text-xs text-gray-600">Pagina {curPage+1} / {totalPages}</div>
+              <button className={btnSec} disabled={curPage >= totalPages-1} onClick={()=> setVerPage(p => Math.min(totalPages-1, p+1))}>
+                Volgende →
+              </button>
             </div>
             <div className="flex gap-2 flex-wrap">
-              <button className="rounded-full border px-3 py-1 text-sm"
-                onClick={()=>{ const n = prompt('Naam voor versie:','Snapshot'); if(n!==null) saveVersion(n); }}>
+              <button className={btnPri} onClick={()=>{ const n = prompt('Naam voor versie:','Snapshot'); if(n!==null) saveVersion(n); }}>
                 Save version (gedeeld)
               </button>
             </div>
@@ -933,9 +961,9 @@ if (shareTab === "deck") {
       </div>
 
       {/* ACC: Import/Export */}
-      <div className="border-b">
+      <div className="border rounded-xl overflow-hidden">
         <button
-          className="w-full flex items-center justify-between px-3 py-2 text-left"
+          className="w-full flex items-center justify-between px-3 py-2 text-left bg-gray-50"
           onClick={()=> setPanelOpen(p => p==="impex" ? null : "impex")}
         >
           <span className="font-semibold text-sm">Import / Export</span>
@@ -944,8 +972,8 @@ if (shareTab === "deck") {
         {panelOpen==="impex" && (
           <div className="px-3 pb-3 space-y-2">
             <div className="flex flex-wrap gap-2">
-              <button className="rounded-full border px-3 py-1 text-sm" onClick={exportShow}>Exporteer huidige voorstelling</button>
-              <button className="rounded-full border px-3 py-1 text-sm" onClick={importShow}>Importeer voorstelling (.json)</button>
+              <button className={btnPri} onClick={exportShow}>Exporteer huidige voorstelling</button>
+              <button className={btnSec} onClick={importShow}>Importeer voorstelling (.json)</button>
             </div>
             <div className="text-[11px] text-gray-500">
               Export is leesbare JSON met data van de gekozen show (spelers, sketches, repetities, mics, PR-kit).
@@ -955,9 +983,9 @@ if (shareTab === "deck") {
       </div>
 
       {/* ACC: Deel links */}
-      <div className="border-b">
+      <div className="border rounded-xl overflow-hidden">
         <button
-          className="w-full flex items-center justify-between px-3 py-2 text-left"
+          className="w-full flex items-center justify-between px-3 py-2 text-left bg-gray-50"
           onClick={()=> setPanelOpen(p => p==="share" ? null : "share")}
         >
           <span className="font-semibold text-sm">Deel links (alleen-lezen)</span>
@@ -977,7 +1005,7 @@ if (shareTab === "deck") {
               ].map(({key,label}) => (
                 <button
                   key={key}
-                  className="rounded-full border px-3 py-1 text-sm"
+                  className={btnSec}
                   onClick={()=>{
                     const sid = activeShowId ? `&sid=${activeShowId}` : "";
                     const url = `${location.origin}${location.pathname}#share=${key}${sid}`;
@@ -994,9 +1022,9 @@ if (shareTab === "deck") {
       </div>
 
       {/* ACC: Beveiliging */}
-      <div>
+      <div className="border rounded-xl overflow-hidden">
         <button
-          className="w-full flex items-center justify-between px-3 py-2 text-left"
+          className="w-full flex items-center justify-between px-3 py-2 text-left bg-gray-50"
           onClick={()=> setPanelOpen(p => p==="sec" ? null : "sec")}
         >
           <span className="font-semibold text-sm">Beveiliging</span>
@@ -1009,9 +1037,9 @@ if (shareTab === "deck") {
               {" "}Ingelogd: {localStorage.getItem('knor:authToken') ? "Ja" : "Nee"}
             </div>
             <div className="flex flex-wrap gap-2">
-              <button className="rounded-full border px-3 py-1 text-sm" onClick={()=>setLocked(true)}>Log in</button>
-              <button className="rounded-full border px-3 py-1 text-sm" onClick={logout}>Log uit</button>
-              <button className="rounded-full border px-3 py-1 text-sm" onClick={lockNow}>Vergrendel nu</button>
+              <button className={btnPri} onClick={()=>setLocked(true)}>Log in</button>
+              <button className={btnDanger} onClick={logout}>Log uit</button>
+              <button className={btnSec} onClick={lockNow}>Vergrendel nu</button>
             </div>
             <div className="text-[11px] text-gray-500">
               “Log uit” verwijdert alleen je token (opslaan/export/import werken dan niet).
