@@ -408,12 +408,30 @@ function App() {
   
   // Export / Import
   const exportShow = async () => {
-    if (!activeShow) return;
-    const ts = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
-    const safe = (activeShow.name || 'show').replace(/[^\w\-]+/g,'_');
-    const url = `/.netlify/functions/export-show?showId=${encodeURIComponent(activeShow.id)}&t=${ts}`;
-    const a = document.createElement('a'); a.href = url; a.download = `knorplanner-${safe}-${ts}.json`; document.body.appendChild(a); a.click(); a.remove();
-  };
+  if (!activeShow) return;
+  const token = localStorage.getItem('knor:authToken') || '';
+  if (!token) { alert('Ontgrendel eerst (wachtwoord) om te exporteren.'); return; }
+
+  const ts   = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+  const safe = (activeShow.name || 'show').replace(/[^\w\-]+/g,'_');
+
+  const res = await fetch(`/.netlify/functions/export-show?showId=${encodeURIComponent(activeShow.id)}`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+
+  if (!res.ok) { alert('Export mislukt'); return; }
+
+  const blob = await res.blob();
+  const url  = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `knorplanner-${safe}-${ts}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+};
+
 
   const importShow = async () => {
     const token = localStorage.getItem('knor:authToken') || '';
