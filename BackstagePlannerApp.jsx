@@ -1003,56 +1003,22 @@ if (shareTab === "deck") {
 
        {tab === "scripts" && (
   <div className="space-y-3">
-    {/* Toolbar: Library (links) + Print (rechts) */}
-    <div className="flex flex-wrap items-center justify-between gap-2">
-      <div className="flex items-center gap-2">
-        <button
-          className="rounded-full px-4 py-2 text-sm font-semibold shadow bg-pink-600 text-white hover:bg-pink-700"
-          onClick={()=> setLibraryOpen(true)}
-          title="Open de Sketch Library (voor alle shows)"
-        >
-          📚 Sketch Library
-        </button>
-        <span className="text-xs text-gray-500">Actieve show: <b>{activeShow?.name || "—"}</b></span>
-      </div>
-      <div className="flex items-center gap-2">
-        <button className={btnSec} onClick={()=> window.print()}>🖨️ Print</button>
-      </div>
-    </div>
+   {/* Toolbar: alleen Library-knop (print weg) */}
+<div className="flex flex-wrap items-center justify-between gap-2">
+  <div className="flex items-center gap-2">
+    <button
+      className="rounded-full px-4 py-2 text-sm font-semibold shadow bg-pink-600 text-white hover:bg-pink-700"
+      onClick={()=> setLibraryOpen(true)}
+      title="Open de Sketch Library (voor alle shows)"
+    >
+      📚 Sketch Library
+    </button>
+    <span className="text-xs text-gray-500">Actieve show: <b>{activeShow?.name || "—"}</b></span>
+  </div>
+</div>
 
-    {/* Selectiebar: Selecteer sketch + knoppen ernaast */}
-    <div className="rounded-xl border p-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <label className="text-sm text-gray-700">Selecteer sketch</label>
-        <select
-          className="rounded border px-2 py-1 text-sm"
-          value={selectedSketchId || ""}
-          onChange={(e)=> setSelectedSketchId(e.target.value || null)}
-        >
-          {(showSketches || []).map(s => (
-            <option key={s.id} value={s.id}>
-              {(s.order ?? "")} {s.title || "(zonder titel)"} — {(s.durationMin||0)} min
-            </option>
-          ))}
-        </select>
 
-        <button
-          className={btnSec}
-          disabled={!selectedSketchId}
-          onClick={() => { if (selectedSketchId) { setReplaceTarget(selectedSketchId); setReplaceLibChoice(""); } }}
-        >
-          ⇄ Vervang uit library
-        </button>
 
-        <button
-          className={btnSec}
-          disabled={!selectedSketchId}
-          onClick={() => { if (selectedSketchId) addSketchToLibrary(selectedSketchId); }}
-        >
-          + Voeg toe aan library
-        </button>
-      </div>
-    </div>
 
     {/* Bestaande editor */}
     <TabErrorBoundary>
