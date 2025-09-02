@@ -310,6 +310,37 @@ function App() {
     alert("Show gedupliceerd. Je kijkt nu naar de kopie.");
   };
 
+  // Show verwijderen (inclusief gekoppelde data)
+const deleteCurrentShow = () => {
+  if (!activeShow) return alert("Geen actieve show om te verwijderen.");
+  if (!confirm(`Let op!\n\nDit verwijdert “${activeShow.name}” inclusief spelers, sketches, repetities, mics en PR-items.\n\nDoorgaan?`)) return;
+
+  pushHistory(state);
+  setState(prev => {
+    const sid = activeShow.id;
+    const shows = (prev.shows || []).filter(s => s.id !== sid);
+    if (!shows.length) shows.push(newEmptyShow()); // laat nooit 0 shows over
+
+    return {
+      ...prev,
+      shows,
+      people:     (prev.people     || []).filter(x => x.showId !== sid),
+      mics:       (prev.mics       || []).filter(x => x.showId !== sid),
+      sketches:   (prev.sketches   || []).filter(x => x.showId !== sid),
+      rehearsals: (prev.rehearsals || []).filter(x => x.showId !== sid),
+      prKit:      (prev.prKit      || []).filter(x => x.showId !== sid),
+    };
+  });
+
+  // selecteer de eerste overgebleven show
+  setActiveShowId(prev => {
+    const next = (state.shows || []).find(s => s.id !== activeShow.id)?.id;
+    return next || (state.shows[0]?.id) || null;
+  });
+  alert("Show verwijderd.");
+};
+
+
   // SHARE-MODE
   const shareTab = React.useMemo(() => {
     const p = new URLSearchParams((location.hash || "").replace("#",""));
@@ -377,30 +408,40 @@ function App() {
     return () => { clearTimeout(timer); ["mousemove","keydown","mousedown","touchstart","visibilitychange"].forEach(ev => window.removeEventListener(ev, onEv)); };
   }, [shareTab, state.settings?.requirePassword]);
 
-  // Opslaan (debounced)
-  React.useEffect(() => {
-    const p = new URLSearchParams((location.hash||"").replace("#",""));
-    const shareTabNow = p.get("share");
-    if (shareTabNow) return;
-    if (applyingRemoteRef.current) return;
+ // Opslaan (debounced) — vereist altijd token; bij 401 toon login
+React.useEffect(() => {
+  const p = new URLSearchParams((location.hash||"").replace("#",""));
+  const shareTabNow = p.get("share");
+  if (shareTabNow) return;
+  if (applyingRemoteRef.current) return;
 
-    const t = setTimeout(async () => {
-      try {
-        const needsAuth = !!state.settings?.requirePassword;
-        if (needsAuth) {
-          const token = localStorage.getItem('knor:authToken') || '';
-          if (!token) { setSyncStatus('🔒 Niet ingelogd — wijzigingen niet opgeslagen'); return; }
-        }
-        const next = { ...state, rev: Date.now() };
-        await saveStateRemote(next);
-        setSyncStatus("✅ Gesynced om " + new Date().toLocaleTimeString());
-      } catch (e) {
+  const t = setTimeout(async () => {
+    try {
+      const token = localStorage.getItem('knor:authToken') || '';
+      if (!token) {
+        setSyncStatus('🔒 Niet ingelogd — wijzigingen niet opgeslagen');
+        // toon login overlay zodat je meteen kunt inloggen
+        setLocked(true);
+        return;
+      }
+      const next = { ...state, rev: Date.now() };
+      await saveStateRemote(next);
+      setSyncStatus("✅ Gesynced om " + new Date().toLocaleTimeString());
+    } catch (e) {
+      // 401 → token ongeldig/exp: login forceren
+      if (String(e.message || '').toLowerCase().includes('unauthorized')) {
+        setSyncStatus("🔒 Sessie verlopen — log opnieuw in");
+        setLocked(true);
+      } else {
         console.error('save failed', e);
         setSyncStatus("⚠️ Opslaan mislukt");
       }
-    }, 500);
-    return () => clearTimeout(t);
-  }, [state]);
+    }
+  }, 500);
+
+  return () => clearTimeout(t);
+}, [state, setLocked]);
+
 
   // Als vergrendeld en niet in share: overlay tonen
   if (!shareTab && locked) return <PasswordGate onUnlock={handleUnlock} />;
@@ -410,16 +451,17 @@ function App() {
   const exportShow = async () => {
   if (!activeShow) return;
   const token = localStorage.getItem('knor:authToken') || '';
-  if (!token) { alert('Ontgrendel eerst (wachtwoord) om te exporteren.'); return; }
+  if (!token) { setLocked(true); return alert('Log eerst in om te exporteren.'); }
 
   const ts   = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
   const safe = (activeShow.name || 'show').replace(/[^\w\-]+/g,'_');
 
-  const res = await fetch(`/.netlify/functions/export-show?showId=${encodeURIComponent(activeShow.id)}`, {
-    headers: { Authorization: `Bearer ${token}` }
+  const res = await fetch(`/.netlify/functions/export-show?showId=${encodeURIComponent(activeShow.id)}&t=${Date.now()}`, {
+    headers: { authorization: `Bearer ${token}` } // lower-case werkt sowieso bij Netlify
   });
 
-  if (!res.ok) { alert('Export mislukt'); return; }
+  if (res.status === 401) { setLocked(true); return alert('Sessie verlopen — log opnieuw in.'); }
+  if (!res.ok) { return alert('Export mislukt'); }
 
   const blob = await res.blob();
   const url  = URL.createObjectURL(blob);
@@ -433,23 +475,48 @@ function App() {
 };
 
 
+
   const importShow = async () => {
-    const token = localStorage.getItem('knor:authToken') || '';
-    if (!token) { alert('Ontgrendel eerst (wachtwoord) om te importeren.'); return; }
-    const pick = document.createElement('input'); pick.type = 'file'; pick.accept = 'application/json';
-    pick.onchange = async (e) => {
-      const file = e.target.files?.[0]; if (!file) return;
-      try {
-        const text = await file.text(); const payload = JSON.parse(text);
-        const res = await fetch('/.netlify/functions/import-show', { method: 'POST', headers: { 'Content-Type':'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify(payload) });
-        if (!res.ok) throw new Error('import failed');
-        const fresh = await loadState();
-        setState(withDefaults(fresh || {}));
-        alert('Import gelukt.');
-      } catch (err) { console.error(err); alert('Import mislukt. Is dit een geldige export?'); }
-    };
-    pick.click();
+  const token = localStorage.getItem('knor:authToken') || '';
+  if (!token) { setLocked(true); return alert('Log eerst in om te importeren.'); }
+
+  const pick = document.createElement('input');
+  pick.type = 'file';
+  pick.accept = 'application/json';
+
+  pick.onchange = async (e) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    try {
+      const text = await file.text();
+      const payload = JSON.parse(text);
+
+      const res = await fetch('/.netlify/functions/import-show', {
+        method: 'POST',
+        headers: {
+          'Content-Type':'application/json',
+          authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (res.status === 401) { setLocked(true); return alert('Sessie verlopen — log opnieuw in.'); }
+      if (!res.ok) {
+        const msg = await res.text().catch(()=> 'Import error');
+        throw new Error(msg);
+      }
+
+      const fresh = await loadState();
+      setState(withDefaults(fresh || {}));
+      alert('Import gelukt.');
+    } catch (err) {
+      console.error(err);
+      alert('Import mislukt. Gebruik een exportbestand van KnorPlanner (json).');
+    }
   };
+
+  pick.click();
+};
+
 
   // --- Share pages ---
   if (shareTab === "rehearsals") {
@@ -561,6 +628,43 @@ function App() {
     );
   }
 
+/** ---------- Draaiboek (alle share-links gebundeld) ---------- */
+if (shareTab === "deck") {
+  const mk = (k) => `${location.origin}${location.pathname}#share=${k}&sid=${shareShow?.id || ""}`;
+  return (
+    <div className="mx-auto max-w-6xl p-4 share-only">
+      <div className="flex items-center gap-2 mb-1">
+        <img src="https://cdn-icons-png.flaticon.com/512/616/616584.png" alt="" className="w-7 h-7" aria-hidden="true" />
+        <h1 className="text-2xl font-bold">Draaiboek: {shareShow?.name || "Show"}</h1>
+      </div>
+      <p className="text-sm text-gray-600 mb-4">
+        Beste artiesten en medewerkers — hieronder vind je alle links die nodig zijn voor deze show.
+      </p>
+      <div className="grid gap-3 md:grid-cols-2">
+        {[
+          { key:"runsheet",     title:"Programma",     desc:"Volgorde en tijden van de avond." },
+          { key:"mics",         title:"Microfoons",    desc:"Wie op welk kanaal (alleen-lezen)." },
+          { key:"rehearsals",   title:"Agenda",        desc:"Repetities, locaties en tijden." },
+          { key:"rolverdeling", title:"Rolverdeling",  desc:"Wie speelt welke rol per sketch." },
+          { key:"scripts",      title:"Sketches",      desc:"Alle sketches met rollen, links en geluiden." },
+          { key:"prkit",        title:"PR-Kit",        desc:"Posters/afbeeldingen, interviews en video’s." },
+        ].map(({key, title, desc}) => (
+          <div key={key} className="rounded-xl border p-4 flex items-start justify-between gap-3">
+            <div>
+              <div className="font-semibold">{title}</div>
+              <div className="text-sm text-gray-600">{desc}</div>
+            </div>
+            <a href={mk(key)} className="shrink-0 rounded-full border px-3 py-1 text-sm hover:bg-gray-50" target="_blank" rel="noopener noreferrer">
+              Open
+            </a>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+  
   // ====== NORMALE APP ======
   return (
     <div className="mx-auto max-w-7xl p-4">
@@ -705,71 +809,119 @@ function App() {
         )}
       </main>
 
-      {/* Floating tools */}
-      <div className="fixed left-4 bottom-4 z-50">
-        <details className="group w-[min(92vw,420px)]">
-          <summary className="cursor-pointer inline-flex items-center gap-2 rounded-full bg-black text-white px-4 py-2 shadow-lg select-none">
-            <img src="https://cdn-icons-png.flaticon.com/512/616/616584.png" alt="" className="w-4 h-4" aria-hidden="true" />
-            Hulpmiddelen
-            <span className="text-xs opacity-80">{syncStatus}</span>
-          </summary>
+      {/* Floating tools (scrollbaar + sluitknop) */}
+<div className="fixed left-4 bottom-4 z-50">
+  <details id="tools-panel" className="group w-[min(92vw,420px)]">
+    <summary className="cursor-pointer inline-flex items-center gap-2 rounded-full bg-black text-white px-4 py-2 shadow-lg select-none">
+      <img src="https://cdn-icons-png.flaticon.com/512/616/616584.png" alt="" className="w-4 h-4" aria-hidden="true" />
+      Hulpmiddelen
+      <span className="text-xs opacity-80">{syncStatus}</span>
+    </summary>
 
-          <div className="mt-2 rounded-xl border bg-white/95 backdrop-blur p-3 shadow-xl space-y-3">
-            <div className="flex gap-2 flex-wrap">
-              <button className="rounded-full border px-3 py-1 text-sm" onClick={undo}>Undo</button>
-              <button className="rounded-full border px-3 py-1 text-sm" onClick={redo}>Redo</button>
-              <button className="rounded-full border px-3 py-1 text-sm" onClick={()=>{ const n = prompt('Naam voor versie:','Snapshot'); if(n!==null) saveVersion(n); }}>
-                Save version (gedeeld)
-              </button>
-              <button className="rounded-full border px-3 py-1 text-sm" onClick={()=>{ navigator.clipboard?.writeText(location.href); }}>
-                Kopieer link
-              </button>
-            </div>
-
-            <div className="text-xs text-gray-600">Sync: <span className="font-medium">{syncStatus}</span></div>
-
-            <div className="rounded-lg border p-2">
-              <div className="font-semibold text-sm mb-1">Versies (gedeeld)</div>
-              <ul className="space-y-1 text-sm max-h-48 overflow-auto pr-1">
-                {(state.versions || []).map(v=> (
-                  <li key={v.id} className="flex items-center justify-between gap-2">
-                    <span className="truncate">{v.name} <span className="text-gray-500">({new Date(v.ts).toLocaleString()})</span></span>
-                    <span className="flex gap-2 shrink-0">
-                      <button className="rounded-full border px-2 py-0.5" onClick={()=>restoreVersion(v.id)}>Herstel</button>
-                      <button className="rounded-full border px-2 py-0.5" onClick={()=>deleteVersion(v.id)}>Del</button>
-                    </span>
-                  </li>
-                ))}
-                {(state.versions || []).length===0 && <li className="text-gray-500">Nog geen versies.</li>}
-              </ul>
-            </div>
-
-            {/* Import / Export */}
-            <div className="rounded-lg border p-2 space-y-2">
-              <div className="font-semibold text-sm">Import / Export</div>
-              <div className="flex flex-wrap gap-2">
-                <button className="rounded-full border px-3 py-1 text-sm" onClick={exportShow}>Exporteer huidige voorstelling</button>
-                <button className="rounded-full border px-3 py-1 text-sm" onClick={importShow}>Importeer voorstelling (.json)</button>
-              </div>
-              <div className="text-[11px] text-gray-500">Export is leesbare JSON met alleen data van de gekozen show.</div>
-            </div>
-
-            {/* Beveiliging */}
-            <div className="rounded-lg border p-2 space-y-2">
-              <div className="font-semibold text-sm">Beveiliging</div>
-              <div className="text-xs text-gray-600">
-                Vergrendeling: {state.settings?.requirePassword ? "Aan" : "Uit"} • Ingelogd: {localStorage.getItem('knor:authToken') ? "Ja" : "Nee"}
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button className="rounded-full border px-3 py-1 text-sm" onClick={openLogin}>Log in</button>
-                <button className="rounded-full border px-3 py-1 text-sm" onClick={logout}>Log uit</button>
-                <button className="rounded-full border px-3 py-1 text-sm" onClick={lockNow}>Vergrendel nu</button>
-              </div>
-              <div className="text-[11px] text-gray-500">Deel-links blijven werken zonder wachtwoord. Na 10 min. inactiviteit vergrendelt de app automatisch.</div>
-            </div>
-          </div>
-        </details>
+    <div className="mt-2 rounded-xl border bg-white/95 backdrop-blur shadow-xl max-h-[70vh] overflow-auto">
+      {/* sticky header met sluitknop (werkt ook mobiel) */}
+      <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b bg-white/95 px-3 py-2">
+        <div className="font-semibold text-sm">Hulpmiddelen</div>
+        <button
+          className="rounded-full border px-2 py-0.5 text-sm"
+          onClick={() => document.getElementById('tools-panel')?.removeAttribute('open')}
+        >
+          Sluit ×
+        </button>
       </div>
+
+      <div className="p-3 space-y-3">
+        {/* Undo/Redo/Versies */}
+        <div className="flex gap-2 flex-wrap">
+          <button className="rounded-full border px-3 py-1 text-sm" onClick={undo}>Undo</button>
+          <button className="rounded-full border px-3 py-1 text-sm" onClick={redo}>Redo</button>
+          <button className="rounded-full border px-3 py-1 text-sm" onClick={()=>{ const n = prompt('Naam voor versie:','Snapshot'); if(n!==null) saveVersion(n); }}>Save version (gedeeld)</button>
+          <button className="rounded-full border px-3 py-1 text-sm" onClick={()=>{ navigator.clipboard?.writeText(location.href); }}>Kopieer link</button>
+        </div>
+
+        <div className="text-xs text-gray-600">
+          Sync: <span className="font-medium">{syncStatus}</span>
+        </div>
+
+        <div className="rounded-lg border p-2">
+          <div className="font-semibold text-sm mb-1">Versies (gedeeld)</div>
+          <ul className="space-y-1 text-sm max-h-48 overflow-auto pr-1">
+            {(state.versions || []).map(v=> (
+              <li key={v.id} className="flex items-center justify-between gap-2">
+                <span className="truncate">{v.name} <span className="text-gray-500">({new Date(v.ts).toLocaleString()})</span></span>
+                <span className="flex gap-2 shrink-0">
+                  <button className="rounded-full border px-2 py-0.5" onClick={()=>restoreVersion(v.id)}>Herstel</button>
+                  <button className="rounded-full border px-2 py-0.5" onClick={()=>deleteVersion(v.id)}>Del</button>
+                </span>
+              </li>
+            ))}
+            {(state.versions || []).length===0 && <li className="text-gray-500">Nog geen versies.</li>}
+          </ul>
+        </div>
+
+        {/* Import / Export */}
+        <div className="rounded-lg border p-2 space-y-2">
+          <div className="font-semibold text-sm">Import / Export</div>
+          <div className="flex flex-wrap gap-2">
+            <button className="rounded-full border px-3 py-1 text-sm" onClick={exportShow}>Exporteer huidige voorstelling</button>
+            <button className="rounded-full border px-3 py-1 text-sm" onClick={importShow}>Importeer voorstelling (.json)</button>
+          </div>
+          <div className="text-[11px] text-gray-500">Export is leesbare JSON met alleen data van de gekozen show.</div>
+        </div>
+
+        {/* Deel-links */}
+        <div className="rounded-lg border p-2 space-y-2">
+          <div className="font-semibold text-sm">Deel links (alleen-lezen)</div>
+          <div className="flex flex-wrap gap-2">
+            {[
+              { key:"runsheet",     label:"Programma" },
+              { key:"mics",         label:"Microfoons" },
+              { key:"rehearsals",   label:"Agenda" },
+              { key:"rolverdeling", label:"Rolverdeling" },
+              { key:"scripts",      label:"Sketches" },
+              { key:"prkit",        label:"PR-Kit" },
+              { key:"deck",         label:"Draaiboek (alles)" },
+            ].map(({key,label}) => (
+              <button key={key} className="rounded-full border px-3 py-1 text-sm"
+                onClick={()=>{
+                  const sid = activeShowId ? `&sid=${activeShowId}` : "";
+                  const url = `${location.origin}${location.pathname}#share=${key}${sid}`;
+                  navigator.clipboard?.writeText(url);
+                  alert("Gekopieerd:\n" + url);
+                }}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Beveiliging */}
+        <div className="rounded-lg border p-2 space-y-2">
+          <div className="font-semibold text-sm">Beveiliging</div>
+          <div className="text-xs text-gray-600">
+            Vergrendeling: {state.settings?.requirePassword ? "Aan" : "Uit"} • Ingelogd: {localStorage.getItem('knor:authToken') ? "Ja" : "Nee"}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button className="rounded-full border px-3 py-1 text-sm" onClick={()=>setLocked(true)}>Log in</button>
+            <button className="rounded-full border px-3 py-1 text-sm" onClick={()=>{ localStorage.removeItem('knor:authToken'); localStorage.removeItem('knor:authExp'); setLocked(true); setSyncStatus('🔒 Uitgelogd — wijzigingen niet opgeslagen'); }}>Log uit</button>
+            <button className="rounded-full border px-3 py-1 text-sm" onClick={lockNow}>Vergrendel nu</button>
+          </div>
+          <div className="text-[11px] text-gray-500">Deel-links blijven werken zonder wachtwoord. Na 10 min. inactiviteit vergrendelt de app automatisch.</div>
+        </div>
+
+        {/* Gevaarlijk */}
+        <div className="rounded-lg border p-2 space-y-2">
+          <div className="font-semibold text-sm text-red-700">Gevaarlijke acties</div>
+          <button className="rounded-full border border-red-300 text-red-700 px-3 py-1 text-sm"
+            onClick={deleteCurrentShow}>
+            Verwijder huidige voorstelling
+          </button>
+        </div>
+      </div>
+    </div>
+  </details>
+</div>
+
     </div>
   );
 }
