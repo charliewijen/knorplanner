@@ -1,9 +1,9 @@
-// RehearsalPlanner.jsx — fix: geen verspringen, direct opslaan (behalve notes),
-// "vandaag" hoort bij komende items, NL-weekdag prominent, dropdowns + verplicht aanwezig.
+// RehearsalPlanner.jsx — compact, NL-weekdag zonder verspringen,
+// live updates die NIET terugstuiteren, “Vandaag” telt als komend.
 (function () {
   const { useEffect, useMemo, useRef, useState } = React;
 
-  /* ---------- constanten ---------- */
+  /* -------------------- keuzelijsten -------------------- */
   const LOCATION_OPTIONS = [
     "Grote zaal - Buurthuis",
     "Biljartruimte - Buurthuis",
@@ -22,7 +22,7 @@
     "Anders: zie comments",
   ];
 
-  /* ---------- helpers ---------- */
+  /* -------------------- helpers -------------------- */
   const fmtWeekdayNL = (dateStr) => {
     try {
       if (!dateStr) return "—";
@@ -30,24 +30,20 @@
       return new Intl.DateTimeFormat("nl-NL", { weekday: "long" }).format(d);
     } catch { return "—"; }
   };
+  const toDayTs = (dateStr) => {
+    if (!dateStr) return 0;
+    return new Date(`${dateStr}T00:00:00`).getTime();
+  };
+  const startOfToday = (() => { const d = new Date(); d.setHours(0,0,0,0); return d.getTime(); })();
   const fullName = (p) => {
     if (!p) return "";
     const fn = (p.firstName || "").trim();
     const ln = (p.lastName || p.name || "").trim();
     return [fn, ln].filter(Boolean).join(" ") || (p.name || "");
   };
-  const toDayTs = (dateStr) => {
-    if (!dateStr) return 0;
-    const d = new Date(`${dateStr}T00:00:00`);
-    return d.getTime();
-  };
-  const startOfToday = (() => {
-    const d = new Date();
-    d.setHours(0,0,0,0);
-    return d.getTime();
-  })();
   const isOneOf = (val, arr) => arr.some(o => String(o).toLowerCase() === String(val||"").toLowerCase());
 
+  /* -------------------- component -------------------- */
   function RehearsalPlanner({
     rehearsals = [],
     people = [],
@@ -60,9 +56,9 @@
       roProp ??
       (typeof location !== "undefined" && (location.hash || "").includes("share="));
 
-    /* ---------- compacte CSS + uitlijning ---------- */
+    /* ---------- styling ---------- */
     const css = `
-      .rp-wrap{position:relative;z-index:0}
+      .rp-wrap{position:relative}
       .rp-card{padding:10px;border-radius:12px;background:#fff;border:1px solid #e5e7eb}
       .rp-card.required{background:#fff7ed;border-color:#f59e0b;box-shadow:0 0 0 2px #fde68a inset}
       .rp-label{font-size:11px;color:#6b7280;margin-bottom:2px;line-height:1}
@@ -76,21 +72,22 @@
       .rp-actions .btn{border:1px solid #d1d5db;background:#f3f4f6;border-radius:9999px;padding:6px 12px;font-size:12px}
       .rp-badge-req{font-size:11px;font-weight:800;color:#7c2d12;background:#ffedd5;border:1px solid #fdba74;border-radius:9999px;padding:3px 8px;white-space:nowrap}
 
-      /* R1: onderkanten gelijk + weekdag zonder hoogte-sprong */
-      .rp-top{display:grid;gap:8px;align-items:end}
-      .rp-date{position:relative;padding-bottom:18px} /* ruimte reserveren */
-      .rp-week{position:absolute;left:0;bottom:-2px}  /* staat visueel onder de input, maar telt niet mee in hoogte */
-      @media(min-width:1024px){
-        .rp-top{grid-template-columns:160px 110px 1fr 200px 170px auto}
-      }
-      @media(min-width:768px) and (max-width:1023px){
-        .rp-top{grid-template-columns:150px 110px 1fr 200px 170px}
+      /* R1: grid met 2 rijen -> weekdag in rij 2; overal een pad zodat niks 'zakt' */
+      .rp-top{display:grid;gap:8px;align-items:end;
+        grid-template-columns:160px 110px 1fr 220px 220px auto;
+        grid-auto-rows:auto}
+      .rp-week{grid-column:1/2;align-self:start;margin-top:-2px}
+      .rp-pad{height:18px} /* zelfde hoogte als weekregel */
+      @media(min-width:768px) and (max-width:1200px){
+        .rp-top{grid-template-columns:150px 110px 1fr 200px 200px auto}
       }
       @media(max-width:767px){
-        .rp-top{grid-template-columns:1fr 1fr}
+        .rp-top{grid-template-columns:1fr 1fr;align-items:end}
         .rp-location{grid-column:1 / -1}
         .rp-type{grid-column:1 / 2}
         .rp-req{grid-column:2 / 3;justify-self:end}
+        .rp-actions{grid-column:2 / 3;justify-self:end}
+        .rp-pad{display:block}
       }
 
       .rp-row{display:grid;gap:8px;align-items:end;margin-top:8px}
@@ -105,24 +102,29 @@
       input[type="time"]::-webkit-datetime-edit{padding:0}
     `;
 
-    /* ---------- drafts ---------- */
+    /* ---------- lokale drafts (overschrijven NIET elke render) ---------- */
     const [drafts, setDrafts] = useState(() => {
       const o = {};
-      (rehearsals || []).forEach((r) => (o[r.id] = { requiredPresent:false, absentees:[], ...r }));
+      (rehearsals || []).forEach((r) => (o[r.id] = { ...r }));
       return o;
     });
+
+    // Sync: voeg nieuwe/weggehaalde items bij, maar overschrijf bestaande velden NIET.
     useEffect(() => {
       setDrafts((prev) => {
         const next = { ...prev };
-        const ids = new Set(rehearsals.map((r) => r.id));
-        rehearsals.forEach((r) => {
-          next[r.id] = { requiredPresent:false, absentees:[], ...next[r.id], ...r };
+        const ids = new Set(rehearsals.map(r => r.id));
+        // add missing
+        rehearsals.forEach(r => {
+          if (!next[r.id]) next[r.id] = { ...r };
         });
-        Object.keys(next).forEach((id) => { if (!ids.has(id)) delete next[id]; });
+        // remove deleted
+        Object.keys(next).forEach(id => { if (!ids.has(id)) delete next[id]; });
         return next;
       });
     }, [rehearsals]);
 
+    // commit helpers
     const timersRef = useRef({});
     const commitNow = (id) => {
       if (readOnly || !onUpdate) return;
@@ -144,10 +146,7 @@
     };
 
     const setField = (id, field, value, immediate = false) => {
-      setDrafts((prev) => {
-        const base = prev[id] ?? rehearsals.find((r) => r.id === id) ?? {};
-        return { ...prev, [id]: { requiredPresent:false, absentees:[], ...base, [field]: value } };
-      });
+      setDrafts((prev) => ({ ...prev, [id]: { ...(prev[id] || {}), [field]: value } }));
       if (!readOnly) immediate ? commitNow(id) : commitDebounced(id);
     };
 
@@ -161,7 +160,7 @@
     };
     const clearAbsentees = (id) => setField(id, "absentees", [], true);
 
-    /* ---------- sortering / splitsing (op dag-niveau) ---------- */
+    /* ---------- sortering / splitsing ---------- */
     const sortedAll = useMemo(() => {
       const arr = [...(rehearsals || [])];
       arr.sort(
@@ -184,7 +183,7 @@
 
       return (
         <div key={r.id} className={`rp-card ${d.requiredPresent ? "required" : ""}`}>
-          {/* R1 */}
+          {/* R1 (inputs) + R2 (weekdag + pads) */}
           <div className="rp-top">
             <div className="rp-date">
               <div className="rp-label">Datum</div>
@@ -195,7 +194,6 @@
                 onChange={(e) => setField(r.id, "date", e.target.value, true)}
                 disabled={readOnly}
               />
-              <div className="rp-week rp-sub">{weekday}</div>
             </div>
 
             <div>
@@ -217,7 +215,8 @@
                 onChange={(e) => {
                   const v = e.target.value;
                   if (v === "__other__") {
-                    if (isOneOf(d.location, LOCATION_OPTIONS)) setField(r.id, "location", "Anders: Zie comments", true);
+                    if (isOneOf(d.location, LOCATION_OPTIONS))
+                      setField(r.id, "location", "Anders: Zie comments", true);
                   } else {
                     setField(r.id, "location", v, true);
                   }
@@ -237,7 +236,8 @@
                 onChange={(e) => {
                   const v = e.target.value;
                   if (v === "__otherType__") {
-                    if (isOneOf(d.type, TYPE_OPTIONS)) setField(r.id, "type", "Anders: zie comments", true);
+                    if (isOneOf(d.type, TYPE_OPTIONS))
+                      setField(r.id, "type", "Anders: zie comments", true);
                   } else {
                     setField(r.id, "type", v, true);
                   }
@@ -270,9 +270,17 @@
                 </button>
               </div>
             )}
+
+            {/* Rij 2: weekdag + pads zodat niets verspringt */}
+            <div className="rp-week rp-sub">{weekday}</div>
+            <div className="rp-pad"></div>
+            <div className="rp-pad"></div>
+            <div className="rp-pad"></div>
+            <div className="rp-pad"></div>
+            <div className="rp-pad"></div>
           </div>
 
-          {/* R2 */}
+          {/* R3: notities + afwezig */}
           <div className="rp-row">
             <div>
               <div className="rp-label">Notities</div>
