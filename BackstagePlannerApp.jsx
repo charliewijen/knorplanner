@@ -28,13 +28,13 @@ const Missing = (name) => (props) => (
 const Use = (Comp, name) => (Comp ? Comp : Missing(name));
 
 // Gebruik overal de “veilige” varianten
-const C_PlannerMinimal      = Use(PlannerMinimal,      "PlannerMinimal");
-const C_CastMatrixView      = Use(CastMatrixView,      "CastMatrixView");
-const C_MicMatrixView       = Use(MicMatrixView,       "MicMatrixView");
-const C_RoleDistributionView= Use(RoleDistributionView,"RoleDistributionView");
-const C_RehearsalPlanner    = Use(RehearsalPlanner,    "RehearsalPlanner");
-const C_ScriptsView         = Use(ScriptsView,         "ScriptsView");
-const C_PRKitView           = Use(PRKitView,           "PRKitView");
+const C_PlannerMinimal       = Use(PlannerMinimal,      "PlannerMinimal");
+const C_CastMatrixView       = Use(CastMatrixView,      "CastMatrixView");
+const C_MicMatrixView        = Use(MicMatrixView,       "MicMatrixView");
+const C_RoleDistributionView = Use(RoleDistributionView,"RoleDistributionView");
+const C_RehearsalPlanner     = Use(RehearsalPlanner,    "RehearsalPlanner");
+const C_ScriptsView          = Use(ScriptsView,         "ScriptsView");
+const C_PRKitView            = Use(PRKitView,           "PRKitView");
 
 /* =========================================================================================
    PERSISTENT STORAGE via Netlify Functions
@@ -584,111 +584,36 @@ function App() {
   }, [shareTab, state.settings?.autoLockMin]);
 
   // Opslaan (debounced) — werkt offline zonder overlay; bij 401 alleen status tonen
-React.useEffect(() => {
-  const p = new URLSearchParams((location.hash||"").replace("#",""));
-  const shareTabNow = p.get("share");
-  if (shareTabNow) return;
-  if (applyingRemoteRef.current) return;
+  React.useEffect(() => {
+    const p = new URLSearchParams((location.hash||"").replace("#",""));
+    const shareTabNow = p.get("share");
+    if (shareTabNow) return;
+    if (applyingRemoteRef.current) return;
 
-  const t = setTimeout(async () => {
-    try {
-      const token = localStorage.getItem('knor:authToken') || '';
-      if (!token) {
-        // Geen overlay meer — gewoon lokaal blijven werken
-        setSyncStatus('💾 Lokaal — log in om te syncen');
-        return;
+    const t = setTimeout(async () => {
+      try {
+        const token = localStorage.getItem('knor:authToken') || '';
+        if (!token) {
+          // Geen overlay meer — gewoon lokaal blijven werken
+          setSyncStatus('💾 Lokaal — log in om te syncen');
+          return;
+        }
+        const next = { ...state, rev: Date.now() };
+        await saveStateRemote(next);
+        setSyncStatus("✅ Gesynced om " + new Date().toLocaleTimeString());
+      } catch (e) {
+        if (String(e.message || '').toLowerCase().includes('unauthorized')) {
+          setSyncStatus("🔒 Sessie verlopen — log opnieuw in");
+          // géén setLocked(true) hier
+        } else {
+          console.error('save failed', e);
+          setSyncStatus("⚠️ Opslaan mislukt (lokaal bewaard)");
+        }
       }
-      const next = { ...state, rev: Date.now() };
-      await saveStateRemote(next);
-      setSyncStatus("✅ Gesynced om " + new Date().toLocaleTimeString());
-    } catch (e) {
-      if (String(e.message || '').toLowerCase().includes('unauthorized')) {
-        setSyncStatus("🔒 Sessie verlopen — log opnieuw in");
-        // géén setLocked(true) hier
-      } else {
-        console.error('save failed', e);
-        setSyncStatus("⚠️ Opslaan mislukt (lokaal bewaard)");
-      }
-    }
-  }, 500);
-
-  return () => clearTimeout(t);
-}, [state]);
-
+    }, 500);
 
     return () => clearTimeout(t);
-  }, [state, setLocked]);
-
-  // Als vergrendeld en niet in share: overlay tonen
-  if (!shareTab && locked) return <PasswordGate onUnlock={handleUnlock} />;
-
-  // Export / Import (ongewijzigd)
-  const exportShow = async () => {
-    if (!activeShow) return;
-    const token = localStorage.getItem('knor:authToken') || '';
-    if (!token) { setLocked(true); return alert('Log eerst in om te exporteren.'); }
-
-    const ts   = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
-    const safe = (activeShow.name || 'show').replace(/[^\w\-]+/g,'_');
-
-    const res = await fetch(`/.netlify/functions/export-show?showId=${encodeURIComponent(activeShow.id)}&t=${Date.now()}`, {
-      headers: { authorization: `Bearer ${token}` }
-    });
-
-    if (res.status === 401) { setLocked(true); return alert('Sessie verlopen — log opnieuw in.'); }
-    if (!res.ok) { return alert('Export mislukt'); }
-
-    const blob = await res.blob();
-    const url  = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `knorplanner-${safe}-${ts}.json`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  };
-
-  const importShow = async () => {
-    const token = localStorage.getItem('knor:authToken') || '';
-    if (!token) { setLocked(true); return alert('Log eerst in om te importeren.'); }
-
-    const pick = document.createElement('input');
-    pick.type = 'file';
-    pick.accept = 'application/json';
-
-    pick.onchange = async (e) => {
-      const file = e.target.files?.[0]; if (!file) return;
-      try {
-        const text = await file.text();
-        const payload = JSON.parse(text);
-
-        const res = await fetch('/.netlify/functions/import-show', {
-          method: 'POST',
-          headers: {
-            'Content-Type':'application/json',
-            authorization: `Bearer ${token}`
-          },
-          body: JSON.stringify(payload)
-        });
-
-        if (res.status === 401) { setLocked(true); return alert('Sessie verlopen — log opnieuw in.'); }
-        if (!res.ok) {
-          const msg = await res.text().catch(()=> 'Import error');
-          throw new Error(msg);
-        }
-
-        const fresh = await loadState();
-        setState(withDefaults(fresh || {}));
-        alert('Import gelukt.');
-      } catch (err) {
-        console.error(err);
-        alert('Import mislukt. Gebruik een exportbestand van KnorPlanner (json).');
-      }
-    };
-
-    pick.click();
-  };
+  }, [state]);
 
   /* =================== SHARE PAGES (ongewijzigd) =================== */
   if (shareTab === "rehearsals") {
@@ -812,42 +737,6 @@ React.useEffect(() => {
     );
   }
 
-  /** ---------- Draaiboek (alle share-links gebundeld) ---------- */
-  if (shareTab === "deck") {
-    const mk = (k) => `${location.origin}${location.pathname}#share=${k}&sid=${shareShow?.id || ""}`;
-    return (
-      <div className="mx-auto max-w-6xl p-4 share-only">
-        <div className="flex items-center gap-2 mb-1">
-          <img src="https://cdn-icons-png.flaticon.com/512/616/616584.png" alt="" className="w-7 h-7" aria-hidden="true" />
-          <h1 className="text-2xl font-bold">Draaiboek: {shareShow?.name || "Show"}</h1>
-        </div>
-        <p className="text-sm text-gray-600 mb-4">
-          Beste artiesten en medewerkers — hieronder vind je alle links die nodig zijn voor deze show.
-        </p>
-        <div className="grid gap-3 md:grid-cols-2">
-          {[
-            { key:"runsheet",     title:"Programma",     desc:"Volgorde en tijden van de avond." },
-            { key:"mics",         title:"Microfoons",    desc:"Wie op welk kanaal (alleen-lezen)." },
-            { key:"rehearsals",   title:"Agenda",        desc:"Repetities, locaties en tijden." },
-            { key:"rolverdeling", title:"Rolverdeling",  desc:"Wie speelt welke rol per sketch." },
-            { key:"scripts",      title:"Sketches",      desc:"Alle sketches met rollen, links en geluiden." },
-            { key:"prkit",        title:"PR-Kit",        desc:"Posters/afbeeldingen, interviews en video’s." },
-          ].map(({key, title, desc}) => (
-            <div key={key} className="rounded-xl border p-4 flex items-start justify-between gap-3">
-              <div>
-                <div className="font-semibold">{title}</div>
-                <div className="text-sm text-gray-600">{desc}</div>
-              </div>
-              <a href={mk(key)} className="shrink-0 rounded-full border px-3 py-1 text-sm hover:bg-gray-50" target="_blank" rel="noopener noreferrer">
-                Open
-              </a>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
   // ====== NORMALE APP ======
 
   // PORTAL: mount plek naast "Selecteer sketch" (géén eigen change listener meer!)
@@ -884,7 +773,6 @@ React.useEffect(() => {
       els.forEach(el => {
         const t = (el.textContent || "").toLowerCase().replace(/\s+/g,' ').trim();
         if (t.includes("dupliceer") && t.includes("show")) {
-          // eerst verbergen, dan uit DOM halen
           el.style.display = "none";
           try { el.remove(); } catch {}
         }
@@ -1234,18 +1122,18 @@ React.useEffect(() => {
             </div>
 
             {/* Planner zonder de (interne) Dupliceer-knop */}
-<div className="knor-planner" ref={plannerRef}>
-  <style>{`
-    /* verberg het element direct NA de show-select (dat is die knop) */
-    .knor-planner select + * { display:none !important; }
-  `}</style>
-  <C_PlannerMinimal
-    state={state}
-    setState={(fn)=>{ pushHistory(state); setState(fn(state)); }}
-    activeShowId={activeShowId}
-    setActiveShowId={setActiveShowId}
-  />
-</div>
+            <div className="knor-planner" ref={plannerRef}>
+              <style>{`
+                /* verberg het element direct NA de show-select (dat is die knop) */
+                .knor-planner select + * { display:none !important; }
+              `}</style>
+              <C_PlannerMinimal
+                state={state}
+                setState={(fn)=>{ pushHistory(state); setState(fn(state)); }}
+                activeShowId={activeShowId}
+                setActiveShowId={setActiveShowId}
+              />
+            </div>
           </div>
         )}
 
