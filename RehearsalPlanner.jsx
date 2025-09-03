@@ -1,5 +1,5 @@
-// RehearsalPlanner.jsx — compact, NL-weekdag, presets voor locatie/type,
-// "VERPLICHT AANWEZIG", en rood/large afwezig-chips. Werkt ook readOnly (share).
+// RehearsalPlanner.jsx — fix: geen verspringen, direct opslaan (behalve notes),
+// "vandaag" hoort bij komende items, NL-weekdag prominent, dropdowns + verplicht aanwezig.
 (function () {
   const { useEffect, useMemo, useRef, useState } = React;
 
@@ -36,11 +36,16 @@
     const ln = (p.lastName || p.name || "").trim();
     return [fn, ln].filter(Boolean).join(" ") || (p.name || "");
   };
-  const toTs = (dateStr, timeStr) => {
+  const toDayTs = (dateStr) => {
     if (!dateStr) return 0;
-    const t = (timeStr && /^\d{2}:\d{2}$/.test(timeStr)) ? timeStr : "23:59";
-    return new Date(`${dateStr}T${t}:00`).getTime();
+    const d = new Date(`${dateStr}T00:00:00`);
+    return d.getTime();
   };
+  const startOfToday = (() => {
+    const d = new Date();
+    d.setHours(0,0,0,0);
+    return d.getTime();
+  })();
   const isOneOf = (val, arr) => arr.some(o => String(o).toLowerCase() === String(val||"").toLowerCase());
 
   function RehearsalPlanner({
@@ -55,13 +60,13 @@
       roProp ??
       (typeof location !== "undefined" && (location.hash || "").includes("share="));
 
-    /* ---------- compacte CSS & accenten ---------- */
+    /* ---------- compacte CSS + uitlijning ---------- */
     const css = `
       .rp-wrap{position:relative;z-index:0}
       .rp-card{padding:10px;border-radius:12px;background:#fff;border:1px solid #e5e7eb}
       .rp-card.required{background:#fff7ed;border-color:#f59e0b;box-shadow:0 0 0 2px #fde68a inset}
       .rp-label{font-size:11px;color:#6b7280;margin-bottom:2px;line-height:1}
-      .rp-sub{font-size:12px;color:#111827;font-weight:600;text-transform:capitalize;margin-top:4px;min-height:16px}
+      .rp-sub{font-size:12px;color:#111827;font-weight:700;text-transform:capitalize}
       .rp-ctrl{height:36px;padding:6px 8px;line-height:1.15;font-size:14px}
       .rp-note{min-height:36px;padding:6px 8px;font-size:14px;line-height:1.2}
       .rp-chip{display:inline-flex;align-items:center;font-size:12px;border:1px solid #e5e7eb;border-radius:9999px;padding:2px 8px;margin:2px;background:#f9fafb;white-space:nowrap}
@@ -71,8 +76,10 @@
       .rp-actions .btn{border:1px solid #d1d5db;background:#f3f4f6;border-radius:9999px;padding:6px 12px;font-size:12px}
       .rp-badge-req{font-size:11px;font-weight:800;color:#7c2d12;background:#ffedd5;border:1px solid #fdba74;border-radius:9999px;padding:3px 8px;white-space:nowrap}
 
-      /* Grid: rij 1 onderkanten uitlijnen om verspringen te voorkomen */
+      /* R1: onderkanten gelijk + weekdag zonder hoogte-sprong */
       .rp-top{display:grid;gap:8px;align-items:end}
+      .rp-date{position:relative;padding-bottom:18px} /* ruimte reserveren */
+      .rp-week{position:absolute;left:0;bottom:-2px}  /* staat visueel onder de input, maar telt niet mee in hoogte */
       @media(min-width:1024px){
         .rp-top{grid-template-columns:160px 110px 1fr 200px 170px auto}
       }
@@ -87,24 +94,21 @@
       }
 
       .rp-row{display:grid;gap:8px;align-items:end;margin-top:8px}
-      @media(min-width:768px){
-        .rp-row{grid-template-columns:1fr 1fr auto}
-      }
+      @media(min-width:768px){ .rp-row{grid-template-columns:1fr 1fr auto} }
       @media(max-width:767px){
         .rp-row{grid-template-columns:1fr 1fr}
         .rp-row .rp-edit{grid-column:1 / -1;justify-self:end}
       }
 
-      /* iOS date/time kleiner houden */
       input[type="date"].rp-ctrl, input[type="time"].rp-ctrl{appearance:none;-webkit-appearance:none;height:36px}
       input[type="date"]::-webkit-datetime-edit,
       input[type="time"]::-webkit-datetime-edit{padding:0}
     `;
 
-    /* ---------- drafts + debounce (smooth, geen focusverlies) ---------- */
+    /* ---------- drafts ---------- */
     const [drafts, setDrafts] = useState(() => {
       const o = {};
-      (rehearsals || []).forEach((r) => (o[r.id] = { requiredPresent:false, ...r }));
+      (rehearsals || []).forEach((r) => (o[r.id] = { requiredPresent:false, absentees:[], ...r }));
       return o;
     });
     useEffect(() => {
@@ -112,7 +116,7 @@
         const next = { ...prev };
         const ids = new Set(rehearsals.map((r) => r.id));
         rehearsals.forEach((r) => {
-          next[r.id] = { requiredPresent:false, ...next[r.id], ...r };
+          next[r.id] = { requiredPresent:false, absentees:[], ...next[r.id], ...r };
         });
         Object.keys(next).forEach((id) => { if (!ids.has(id)) delete next[id]; });
         return next;
@@ -120,7 +124,7 @@
     }, [rehearsals]);
 
     const timersRef = useRef({});
-    const commit = (id) => {
+    const commitNow = (id) => {
       if (readOnly || !onUpdate) return;
       const d = drafts[id];
       if (!d) return;
@@ -134,16 +138,17 @@
         requiredPresent: !!d.requiredPresent,
       });
     };
-    const scheduleCommit = (id, ms = 250) => {
+    const commitDebounced = (id, ms = 300) => {
       clearTimeout(timersRef.current[id]);
-      timersRef.current[id] = setTimeout(() => commit(id), ms);
+      timersRef.current[id] = setTimeout(() => commitNow(id), ms);
     };
-    const setField = (id, field, value, instant = false) => {
+
+    const setField = (id, field, value, immediate = false) => {
       setDrafts((prev) => {
         const base = prev[id] ?? rehearsals.find((r) => r.id === id) ?? {};
-        return { ...prev, [id]: { requiredPresent:false, ...base, [field]: value } };
+        return { ...prev, [id]: { requiredPresent:false, absentees:[], ...base, [field]: value } };
       });
-      if (!readOnly) instant ? commit(id) : scheduleCommit(id);
+      if (!readOnly) immediate ? commitNow(id) : commitDebounced(id);
     };
 
     /* ---------- afwezig ---------- */
@@ -152,73 +157,45 @@
       const cur = drafts[id]?.absentees || [];
       const has = cur.includes(personId);
       const next = has ? cur.filter((x) => x !== personId) : [...cur, personId];
-      setField(id, "absentees", next);
+      setField(id, "absentees", next, true);
     };
     const clearAbsentees = (id) => setField(id, "absentees", [], true);
 
-    /* ---------- sortering & splitsing ---------- */
-    const now = Date.now();
+    /* ---------- sortering / splitsing (op dag-niveau) ---------- */
     const sortedAll = useMemo(() => {
       const arr = [...(rehearsals || [])];
       arr.sort(
         (a, b) =>
-          toTs(a.date, a.time) - toTs(b.date, b.time) ||
+          toDayTs(a.date) - toDayTs(b.date) ||
           String(a.id).localeCompare(String(b.id))
       );
       return arr;
     }, [rehearsals]);
-    const upcoming = useMemo(() => sortedAll.filter((r) => toTs(r.date, r.time) >= now), [sortedAll, now]);
-    const past = useMemo(() => sortedAll.filter((r) => toTs(r.date, r.time) < now).reverse(), [sortedAll, now]);
+    const upcoming = useMemo(() => sortedAll.filter((r) => toDayTs(r.date) >= startOfToday), [sortedAll]);
+    const past     = useMemo(() => sortedAll.filter((r) => toDayTs(r.date) <  startOfToday).reverse(), [sortedAll]);
 
     /* ---------- kaart ---------- */
     const Card = (r) => {
       const d = drafts[r.id] || r;
       const weekday = fmtWeekdayNL(d.date);
 
-      // Locatie: kies preset als exact match, anders "__other__"
-      const locValue = isOneOf(d.location, LOCATION_OPTIONS) ? d.location : "__other__";
-      const onLocChange = (val) => {
-        if (val === "__other__") {
-          // Als het voorheen een preset was, zet expliciet op "Anders: Zie comments"
-          if (isOneOf(d.location, LOCATION_OPTIONS)) {
-            setField(r.id, "location", "Anders: Zie comments", true);
-          } // anders behouden we de vrije tekst die er al stond
-        } else {
-          setField(r.id, "location", val);
-        }
-      };
-
-      // Type
-      const typeValue = isOneOf(d.type, TYPE_OPTIONS) ? d.type : "__otherType__";
-      const onTypeChange = (val) => {
-        if (val === "__otherType__") {
-          if (isOneOf(d.type, TYPE_OPTIONS)) setField(r.id, "type", "Anders: zie comments", true);
-        } else {
-          setField(r.id, "type", val);
-        }
-      };
-
-      const absNames = (d.absentees || [])
-        .map((id) => people.find((x) => x.id === id))
-        .filter(Boolean)
-        .map(fullName);
-      const hasAbs = absNames.length > 0;
+      const locValue  = isOneOf(d.location, LOCATION_OPTIONS) ? d.location : "__other__";
+      const typeValue = isOneOf(d.type, TYPE_OPTIONS)         ? d.type     : "__otherType__";
 
       return (
         <div key={r.id} className={`rp-card ${d.requiredPresent ? "required" : ""}`}>
           {/* R1 */}
           <div className="rp-top">
-            <div>
+            <div className="rp-date">
               <div className="rp-label">Datum</div>
               <input
                 type="date"
                 className="w-full rounded border rp-ctrl"
                 value={d.date || ""}
-                onChange={(e) => setField(r.id, "date", e.target.value)}
-                onBlur={() => commit(r.id)}
+                onChange={(e) => setField(r.id, "date", e.target.value, true)}
                 disabled={readOnly}
               />
-              <div className="rp-sub">{weekday}</div>
+              <div className="rp-week rp-sub">{weekday}</div>
             </div>
 
             <div>
@@ -227,8 +204,7 @@
                 type="time"
                 className="w-full rounded border rp-ctrl"
                 value={d.time || ""}
-                onChange={(e) => setField(r.id, "time", e.target.value)}
-                onBlur={() => commit(r.id)}
+                onChange={(e) => setField(r.id, "time", e.target.value, true)}
                 disabled={readOnly}
               />
             </div>
@@ -238,18 +214,19 @@
               <select
                 className="w-full rounded border rp-ctrl"
                 value={locValue}
-                onChange={(e) => onLocChange(e.target.value)}
-                onBlur={() => commit(r.id)}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v === "__other__") {
+                    if (isOneOf(d.location, LOCATION_OPTIONS)) setField(r.id, "location", "Anders: Zie comments", true);
+                  } else {
+                    setField(r.id, "location", v, true);
+                  }
+                }}
                 disabled={readOnly}
               >
                 {LOCATION_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                 <option value="__other__">Anders (vrije tekst)</option>
               </select>
-              {locValue === "__other__" && d.location && !isOneOf(d.location, LOCATION_OPTIONS) && (
-                <div className="rp-muted" style={{marginTop:4}}>
-                  Vrije tekst: <span style={{fontWeight:600}}>{d.location}</span>
-                </div>
-              )}
             </div>
 
             <div className="rp-type">
@@ -257,18 +234,19 @@
               <select
                 className="w-full rounded border rp-ctrl"
                 value={typeValue}
-                onChange={(e) => onTypeChange(e.target.value)}
-                onBlur={() => commit(r.id)}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v === "__otherType__") {
+                    if (isOneOf(d.type, TYPE_OPTIONS)) setField(r.id, "type", "Anders: zie comments", true);
+                  } else {
+                    setField(r.id, "type", v, true);
+                  }
+                }}
                 disabled={readOnly}
               >
                 {TYPE_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                 <option value="__otherType__">Anders (vrije tekst)</option>
               </select>
-              {typeValue === "__otherType__" && d.type && !isOneOf(d.type, TYPE_OPTIONS) && (
-                <div className="rp-muted" style={{marginTop:4}}>
-                  Vrije tekst type: <span style={{fontWeight:600}}>{d.type}</span>
-                </div>
-              )}
             </div>
 
             <div className="rp-req" style={{display:'flex',gap:8,alignItems:'center',justifySelf:'start'}}>
@@ -303,8 +281,8 @@
                 className="w-full rounded border rp-note"
                 placeholder="Korte notitie…"
                 value={d.comments || ""}
-                onChange={(e) => setField(r.id, "comments", e.target.value)}
-                onBlur={() => commit(r.id)}
+                onChange={(e) => setField(r.id, "comments", e.target.value, false)}
+                onBlur={() => commitNow(r.id)}
                 disabled={readOnly}
               />
             </div>
@@ -312,9 +290,13 @@
             <div>
               <div className="rp-label">Afwezig</div>
               <div className="truncate">
-                {!hasAbs ? <span className="rp-chip">—</span> : absNames.map((n, i) => (
-                  <span key={i} className="rp-chip rp-chip-abs">{n}</span>
-                ))}
+                {!(d.absentees||[]).length ? <span className="rp-chip">—</span> :
+                  (d.absentees||[]).map(pid => {
+                    const p = people.find(x => x.id === pid);
+                    if (!p) return null;
+                    return <span key={pid} className="rp-chip rp-chip-abs">{fullName(p)}</span>;
+                  })
+                }
               </div>
             </div>
 
@@ -348,7 +330,7 @@
               >
                 {people.length === 0 && <div className="rp-muted">Geen spelers voor deze show.</div>}
                 {people.map(p => {
-                  const checked = (d.absentees || []).includes(p.id);
+                  const checked = (drafts[r.id]?.absentees || []).includes(p.id);
                   return (
                     <label key={p.id} className="inline-flex items-center gap-2 text-sm">
                       <input
@@ -385,7 +367,7 @@
         )}
 
         <div className="text-base font-semibold mb-1">Komende repetities</div>
-        {useMemo(()=>upcoming, [upcoming]).length === 0 ? (
+        {upcoming.length === 0 ? (
           <div className="rounded-xl border p-3 rp-muted">Geen komende repetities.</div>
         ) : (
           <div className="grid gap-2">{upcoming.map(Card)}</div>
@@ -395,9 +377,9 @@
           <summary className="cursor-pointer rounded-xl border px-3 py-2 bg-gray-50">
             Vorige repetities <span className="rp-muted">({past.length})</span>
           </summary>
-          <div className="grid gap-2 mt-2">{past.length ? past.map(Card) : (
-            <div className="rounded-xl border p-3 rp-muted">Geen vorige items.</div>
-          )}</div>
+          <div className="grid gap-2 mt-2">
+            {past.length ? past.map(Card) : <div className="rounded-xl border p-3 rp-muted">Geen vorige items.</div>}
+          </div>
         </details>
       </div>
     );
