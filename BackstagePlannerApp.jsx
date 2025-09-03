@@ -16,6 +16,7 @@ const {
   ScriptsView,
   PRKitView,
   PlannerMinimal,
+  ReactDOM, // gebruik global ReactDOM voor portals
 } = window;
 
 /* ---------- VEILIGE WRAPPERS: crash voorkomen als component ontbreekt ---------- */
@@ -28,27 +29,16 @@ const Missing = (name) => (props) => (
 const Use = (Comp, name) => (Comp ? Comp : Missing(name));
 
 // Gebruik overal de “veilige” varianten
-const C_PlannerMinimal      = Use(PlannerMinimal,      "PlannerMinimal");
-const C_CastMatrixView      = Use(CastMatrixView,      "CastMatrixView");
-const C_MicMatrixView       = Use(MicMatrixView,       "MicMatrixView");
-const C_RoleDistributionView= Use(RoleDistributionView,"RoleDistributionView");
-const C_RehearsalPlanner    = Use(RehearsalPlanner,    "RehearsalPlanner");
-const C_ScriptsView         = Use(ScriptsView,         "ScriptsView");
-const C_PRKitView           = Use(PRKitView,           "PRKitView");
+const C_PlannerMinimal       = Use(PlannerMinimal,       "PlannerMinimal");
+const C_CastMatrixView       = Use(CastMatrixView,       "CastMatrixView");
+const C_MicMatrixView        = Use(MicMatrixView,        "MicMatrixView");
+const C_RoleDistributionView = Use(RoleDistributionView, "RoleDistributionView");
+const C_RehearsalPlanner     = Use(RehearsalPlanner,     "RehearsalPlanner");
+const C_ScriptsView          = Use(ScriptsView,          "ScriptsView");
+const C_PRKitView            = Use(PRKitView,            "PRKitView");
 
 /* =========================================================================================
    PERSISTENT STORAGE via Netlify Functions
-   Vereist op Netlify (Environment variables):
-     - SUPABASE_URL
-     - SUPABASE_SERVICE_ROLE
-     - APP_PASSWORD
-     - APP_SECRET
-   Functions:
-     - /.netlify/functions/load         (GET)
-     - /.netlify/functions/save         (POST, Authorization: Bearer <token>)
-     - /.netlify/functions/pw           (POST, {password} -> {token, exp})
-     - /.netlify/functions/export-show  (GET,  ?showId=...)
-     - /.netlify/functions/import-show  (POST, body = leesbare JSON)
 ========================================================================================= */
 
 const loadState = async () => {
@@ -100,7 +90,6 @@ function uniquePigShowName(shows=[]) {
   return `Voorstelling Knor-${Math.floor(Math.random()*10000)}`;
 }
 
-
 function withDefaults(s = {}) {
   return {
     people: Array.isArray(s.people) ? s.people : [],
@@ -112,16 +101,14 @@ function withDefaults(s = {}) {
     versions: Array.isArray(s.versions) ? s.versions : [],
     rev: Number.isFinite(s.rev) ? s.rev : 0,
     lastSavedBy: s.lastSavedBy || null,
-
-librarySketches: Array.isArray(s.librarySketches) ? s.librarySketches : [],
-    
-settings: {
-  ...(s.settings || {}),
-  requirePassword: !!(s.settings?.requirePassword),
-  autoLockMin: Number.isFinite(s.settings?.autoLockMin)
-    ? Math.max(1, Math.min(120, s.settings.autoLockMin))
-    : 20, // standaard 20 minuten
-},
+    librarySketches: Array.isArray(s.librarySketches) ? s.librarySketches : [],
+    settings: {
+      ...(s.settings || {}),
+      requirePassword: !!(s.settings?.requirePassword),
+      autoLockMin: Number.isFinite(s.settings?.autoLockMin)
+        ? Math.max(1, Math.min(120, s.settings.autoLockMin))
+        : 20,
+    },
   };
 }
 
@@ -179,88 +166,284 @@ function App() {
   const [tab, setTab] = React.useState("planner");
   const [syncStatus, setSyncStatus] = React.useState("Nog niet gesynced");
 
-// Sketch Library UI state
-const [libraryOpen, setLibraryOpen]       = React.useState(false);
-const [replaceTargetId, setReplaceTarget] = React.useState(null);
-const [libraryQuery, setLibraryQuery]     = React.useState("");
-const [libEditId, setLibEditId]           = React.useState(null);
+  // Button style helpers
+  const btn       = "rounded-full px-3 py-1 text-sm border";
+  const btnPri    = "rounded-full px-3 py-1 text-sm border border-black bg-black text-white hover:opacity-90";
+  const btnSec    = "rounded-full px-3 py-1 text-sm border border-gray-300 bg-gray-100 hover:bg-gray-200";
+  const btnGhost  = "rounded-full px-3 py-1 text-sm border border-transparent hover:bg-gray-100";
+  const btnDanger = "rounded-full px-3 py-1 text-sm border border-red-600 bg-red-600 text-white hover:bg-red-700";
 
-// Selectie & replace-popup + portal target
-const [selectedSketchId, setSelectedSketchId] = React.useState(null);
-const [replaceLibChoice, setReplaceLibChoice] = React.useState("");
+  // Sketch Library UI state
+  const [libraryOpen, setLibraryOpen]       = React.useState(false);
+  const [replaceTargetId, setReplaceTarget] = React.useState(null);
+  const [libraryQuery, setLibraryQuery]     = React.useState("");
+  const [libEditId, setLibEditId]           = React.useState(null);
 
-// host voor DOM-portal waar de knoppen naast de dropdown komen
-const scriptsHostRef = React.useRef(null);
-const [scriptsPortalEl, setScriptsPortalEl] = React.useState(null);
+  const applyingRemoteRef = React.useRef(false);
 
-// koppel aan de "Selecteer sketch" <select> in ScriptsView
-React.useEffect(() => {
-  if (tab !== "scripts") return;
-  const host = scriptsHostRef.current;
-  if (!host) return;
+  // History
+  const [past, setPast] = React.useState([]);
+  const [future, setFuture] = React.useState([]);
+  const pushHistory = (prev) => setPast((p) => [...p.slice(-49), prev]);
+  const applyState = (next) => { setState(next); setFuture([]); };
+  const undo = () => { if (!past.length) return; const prev = past[past.length-1]; setPast(past.slice(0,-1)); setFuture((f)=>[state, ...f]); setState(prev); };
+  const redo = () => { if (!future.length) return; const nxt = future[0]; setFuture(future.slice(1)); setPast((p)=>[...p, state]); setState(nxt); };
 
-  // neem de eerste select in de ScriptsView (dat is de "Selecteer sketch")
-  const select = host.querySelector("select");
-  if (!select) return;
-
-  // mountplek direct NA de select
-  let mount = host.querySelector("#knor-lib-ctrls");
-  if (!mount) {
-    mount = document.createElement("span");
-    mount.id = "knor-lib-ctrls";
-    mount.style.marginLeft = "8px";
-    select.insertAdjacentElement("afterend", mount);
-  }
-  setScriptsPortalEl(mount);
-
-  // luister naar veranderingen in de dropdown
-  const onChange = () => setSelectedSketchId(select.value || null);
-  onChange(); // initial sync
-  select.addEventListener("change", onChange);
-  return () => select.removeEventListener("change", onChange);
-}, [tab, showSketches]);
-
-// fallback: als DOM-select niet gevonden is, kies eerste sketch uit lijst
-React.useEffect(() => {
-  if (selectedSketchId) return;
-  const ids = (showSketches || []).map(s => s.id);
-  setSelectedSketchId(ids[0] || null);
-}, [showSketches]);
-
-// Filter + inline edit helper
-const filteredLibrary = React.useMemo(() => {
-  const q = (libraryQuery || "").toLowerCase();
-  const arr = state.librarySketches || [];
-  if (!q) return arr;
-  return arr.filter(s =>
-    String(s.title||"").toLowerCase().includes(q) ||
-    String(s.decor||"").toLowerCase().includes(q)
+  // Versies
+  const [panelOpen, setPanelOpen] = React.useState("versions");
+  const [verPage, setVerPage]     = React.useState(0);
+  const pageSize = 5;
+  const versionsSorted = React.useMemo(
+    () => [...(state.versions || [])].sort((a,b)=> b.ts - a.ts),
+    [state.versions]
   );
-}, [state.librarySketches, libraryQuery]);
+  const totalPages = Math.max(1, Math.ceil(versionsSorted.length / pageSize));
+  const curPage    = Math.min(verPage, totalPages - 1);
+  const pageStart  = curPage*pageSize;
+  const visibleVersions = versionsSorted.slice(pageStart, pageStart + pageSize);
+  React.useEffect(() => { setVerPage(0); }, [ (state.versions || []).length ]);
 
-const startEditLib = (id) => setLibEditId(id);
-const stopEditLib  = () => setLibEditId(null);
-const saveLibItem = (id, patch) => {
-  setState(prev => ({
-    ...prev,
-    librarySketches: (prev.librarySketches || []).map(s =>
-      (s.libId === id || s.id === id) ? { ...s, ...patch } : s
-    )
-  }));
-  stopEditLib();
-};
+  // Eerste load
+  React.useEffect(() => {
+    (async () => {
+      const remote = await loadState();
+      const merged = withDefaults(remote || {});
+      const firstShowId = merged.shows[0]?.id;
+      const fix = (arr=[]) => arr.map(x => x && (x.showId ? x : { ...x, showId: firstShowId }));
+      const migrated = { ...merged,
+        sketches: fix(merged.sketches), people: fix(merged.people), mics: fix(merged.mics),
+        rehearsals: fix(merged.rehearsals), prKit: fix(merged.prKit),
+      };
+      setState(migrated);
+      setActiveShowId((prev) => (prev && migrated.shows.some(s => s.id === prev)) ? prev : (migrated.shows[0]?.id || null));
+    })();
+  }, []);
 
-// NIEUW: verwijderen uit library
-const deleteLibItem = (id) => {
-  if (!confirm("Verwijder dit library-stuk? Dit is permanent.")) return;
-  setState(prev => ({
-    ...prev,
-    librarySketches: (prev.librarySketches || []).filter(s => (s.libId || s.id) !== id)
-  }));
-};
+  // URL-tab in hash
+  React.useEffect(()=>{ const fromHash = new URLSearchParams((location.hash||'').replace('#','')).get('tab'); if (fromHash) setTab(fromHash); },[]);
+  React.useEffect(()=>{ const sp = new URLSearchParams((location.hash||'').replace('#','')); sp.set('tab', tab); history.replaceState(null, '', `#${sp.toString()}`); },[tab]);
 
+  const activeShow = React.useMemo(() => {
+    const arr = state.shows || [];
+    if (!arr.length) return null;
+    const found = activeShowId ? arr.find(s => s.id === activeShowId) : null;
+    return found || arr[0] || null;
+  }, [state.shows, activeShowId]);
 
-  
+  // Per show
+  const showSketches = React.useMemo(() => {
+    if (!activeShow) return [];
+    const all = Array.isArray(state.sketches) ? state.sketches : [];
+    return all.filter(sk => sk.showId === activeShow.id).sort((a,b)=>(a.order||0)-(b.order||0));
+  }, [state.sketches, activeShow]);
+
+  const showPeople = React.useMemo(() => (!activeShow ? [] : (state.people || []).filter(p => p.showId === activeShow.id)), [state.people, activeShow]);
+  const showMics   = React.useMemo(() => (!activeShow ? [] : (state.mics   || []).filter(m => m.showId === activeShow.id)), [state.mics,   activeShow]);
+  const showRehearsals = React.useMemo(() => (!activeShow ? [] : (state.rehearsals || []).filter(r => r.showId === activeShow.id).sort((a,b)=> String(a.date).localeCompare(String(b.date)))), [state.rehearsals, activeShow]);
+  const showPRKit = React.useMemo(() => (!activeShow ? [] : (state.prKit || []).filter(i => i.showId === activeShow.id).sort((a,b)=> String(a.dateStart || "").localeCompare(String(b.dateStart || "")))), [state.prKit, activeShow]);
+
+  const runSheet = React.useMemo(() => activeShow ? buildRunSheet(activeShow, showSketches) : {items:[],totalMin:0}, [activeShow, showSketches]);
+  const micWarnings  = React.useMemo(() => detectMicConflicts(showSketches), [showSketches]);
+  const castWarnings = React.useMemo(() => detectCastConflicts(showSketches), [showSketches]);
+
+  // Blok-tijden helpers
+  const mmToHHMM = (m) => `${String(Math.floor((m % 1440) / 60)).padStart(2,"0")}:${String(m % 60).padStart(2,"0")}`;
+  const startMinRS = (typeof parseTimeToMin === "function")
+    ? parseTimeToMin(activeShow?.startTime || "19:30")
+    : (() => { const [h=19,m=30] = String(activeShow?.startTime||"19:30").split(":").map(n=>parseInt(n,10)); return h*60+m; })();
+
+  const segmentsRS = React.useMemo(() => {
+    const segs = []; let block = [];
+    const flush = () => { if (!block.length) return; const duration = block.reduce((sum,it)=> sum + (parseInt(it.durationMin||0,10)||0), 0); segs.push({ type:"block", count:block.length, durationMin:duration }); block = []; };
+    for (const it of (showSketches||[])) {
+      const kind = String(it?.kind||"sketch").toLowerCase();
+      if (kind === "break") { flush(); segs.push({ type:"pause", durationMin: parseInt(it.durationMin||0,10)||0 }); }
+      else { block.push(it); }
+    }
+    flush(); return segs;
+  }, [showSketches]);
+
+  const timedSegmentsRS = React.useMemo(() => {
+    let cur = startMinRS, blk = 0;
+    return segmentsRS.map(seg => {
+      const start = cur, end = cur + (seg.durationMin||0); cur = end;
+      const label = seg.type === "pause" ? "Pauze" : `Blok ${++blk}`;
+      return { ...seg, label, startStr: mmToHHMM(start), endStr: mmToHHMM(end) };
+    });
+  }, [segmentsRS, startMinRS]);
+
+  // Rehearsals
+  const addRehearsal = () => {
+    if (!activeShow) return;
+    pushHistory(state);
+    setState((prev) => ({
+      ...prev,
+      rehearsals: [...(prev.rehearsals || []), { id: uid(), showId: activeShow.id, date: todayStr(), time: "19:00", location: "Grote zaal - Buurthuis", comments: "", absentees: [], type: "Reguliere Repetitie" }]
+    }));
+  };
+  const updateRehearsal = (id, updates) => { pushHistory(state); setState((prev) => ({ ...prev, rehearsals: prev.rehearsals.map((r) => (r.id === id ? { ...r, ...updates } : r)) })); };
+  const removeRehearsal = (id) => { pushHistory(state); setState((prev) => ({ ...prev, rehearsals: prev.rehearsals.filter((r) => r.id !== id) })); };
+
+  // Sketch
+  const updateSketch = (id, updates) => { pushHistory(state); setState((prev) => ({ ...prev, sketches: prev.sketches.map((s) => (s.id === id ? { ...s, ...updates } : s)) })); };
+
+  // Deep clone helper
+  const deepClone = (x) => JSON.parse(JSON.stringify(x));
+
+  // Rollen/mics normaliseren voor de huidige show
+  const normalizeRolesForShow = (roles = [], peopleInShow = []) => {
+    const allowed = new Set(peopleInShow.map(p => p.id));
+    return (roles || []).map(r => ({
+      ...r,
+      personId: r.personId && allowed.has(r.personId) ? r.personId : "",
+    }));
+  };
+  const normalizeMicAssignmentsForShow = (micAssignments = {}, peopleInShow = []) => {
+    const allowed = new Set(peopleInShow.map(p => p.id));
+    const res = {};
+    Object.entries(micAssignments || {}).forEach(([ch, pid]) => {
+      res[ch] = pid && allowed.has(pid) ? pid : "";
+    });
+    return res;
+  };
+
+  // Sketch van huidige show -> Library
+  const addSketchToLibrary = (sketchId) => {
+    const src = (state.sketches || []).find(s => s.id === sketchId);
+    if (!src) return;
+    const libItem = deepClone(src);
+    libItem.libId = uid(); // eigen id in library
+    pushHistory(state);
+    setState(prev => ({
+      ...prev,
+      librarySketches: [...(prev.librarySketches || []), libItem],
+    }));
+    alert("Sketch opgeslagen in de library.");
+  };
+
+  // Library-item als NIEUWE sketch in de actieve show plaatsen
+  const insertLibraryIntoCurrentShow = (libId) => {
+    if (!activeShow) return alert("Geen actieve show.");
+    const lib = (state.librarySketches || []).find(l => (l.libId || l.id) === libId);
+    if (!lib) return alert("Library item niet gevonden.");
+
+    const peopleInShow = showPeople;
+    const nextOrder = Math.max(0, ...(state.sketches||[]).filter(s=>s.showId===activeShow.id).map(s=>s.order||0)) + 1;
+
+    const copy = deepClone(lib);
+    copy.id = uid();
+    copy.showId = activeShow.id;
+    copy.order = nextOrder;
+    copy.roles = normalizeRolesForShow(copy.roles, peopleInShow);
+    copy.micAssignments = normalizeMicAssignmentsForShow(copy.micAssignments, peopleInShow);
+
+    pushHistory(state);
+    setState(prev => ({ ...prev, sketches: [...(prev.sketches || []), copy] }));
+    alert("Sketch toegevoegd aan deze show.");
+  };
+
+  // Bestaande sketch in show vervangen door Library-item
+  const replaceSketchWithLibrary = (targetSketchId, libId) => {
+    if (!activeShow) return alert("Geen actieve show.");
+    const lib = (state.librarySketches || []).find(l => (l.libId || l.id) === libId);
+    if (!lib) return alert("Library item niet gevonden.");
+
+    const peopleInShow = showPeople;
+    const base = deepClone(lib);
+
+    pushHistory(state);
+    setState(prev => ({
+      ...prev,
+      sketches: (prev.sketches || []).map(s => {
+        if (s.id !== targetSketchId) return s;
+        return {
+          ...s,
+          title: base.title,
+          durationMin: base.durationMin,
+          stagePlace: base.stagePlace,
+          decor: base.decor,
+          links: base.links,
+          sounds: base.sounds,
+          roles: normalizeRolesForShow(base.roles, peopleInShow),
+          micAssignments: normalizeMicAssignmentsForShow(base.micAssignments, peopleInShow),
+        };
+      })
+    }));
+    setReplaceTarget(null);
+    alert("Sketch vervangen vanuit de library.");
+  };
+
+  // Filter + inline edit helper
+  const filteredLibrary = React.useMemo(() => {
+    const q = (libraryQuery || "").toLowerCase();
+    const arr = state.librarySketches || [];
+    if (!q) return arr;
+    return arr.filter(s =>
+      String(s.title||"").toLowerCase().includes(q) ||
+      String(s.decor||"").toLowerCase().includes(q)
+    );
+  }, [state.librarySketches, libraryQuery]);
+
+  const startEditLib = (id) => setLibEditId(id);
+  const stopEditLib  = () => setLibEditId(null);
+  const saveLibItem = (id, patch) => {
+    setState(prev => ({
+      ...prev,
+      librarySketches: (prev.librarySketches || []).map(s =>
+        (s.libId === id || s.id === id) ? { ...s, ...patch } : s
+      )
+    }));
+    stopEditLib();
+  };
+  const deleteLibItem = (id) => {
+    if (!confirm("Verwijder dit library-stuk? Dit is permanent.")) return;
+    setState(prev => ({
+      ...prev,
+      librarySketches: (prev.librarySketches || []).filter(s => (s.libId || s.id) !== id)
+    }));
+  };
+
+  // ======= PORTAL/SELECT HOOKS — MOETTEN NA showSketches STAAN =======
+  const [selectedSketchId, setSelectedSketchId] = React.useState(null);
+  const [replaceLibChoice, setReplaceLibChoice] = React.useState("");
+
+  const scriptsHostRef = React.useRef(null);
+  const [scriptsPortalEl, setScriptsPortalEl] = React.useState(null);
+
+  React.useEffect(() => {
+    if (tab !== "scripts") return;
+    const host = scriptsHostRef.current;
+    if (!host) return;
+
+    // zoek de eerste select in ScriptsView (de "Selecteer sketch")
+    const select = host.querySelector("select");
+    if (!select) return;
+
+    // mountplek direct NA de select
+    let mount = host.querySelector("#knor-lib-ctrls");
+    if (!mount) {
+      mount = document.createElement("span");
+      mount.id = "knor-lib-ctrls";
+      mount.style.marginLeft = "8px";
+      select.insertAdjacentElement("afterend", mount);
+    }
+    setScriptsPortalEl(mount);
+
+    // sync geselecteerde id
+    const onChange = () => setSelectedSketchId(select.value || null);
+    onChange(); // init
+    select.addEventListener("change", onChange);
+    return () => select.removeEventListener("change", onChange);
+  }, [tab, showSketches]);
+
+  // fallback selectie
+  React.useEffect(() => {
+    if (selectedSketchId) return;
+    const ids = (showSketches || []).map(s => s.id);
+    setSelectedSketchId(ids[0] || null);
+  }, [showSketches, selectedSketchId]);
+  // ================================================================
+
   // Show
   const updateActiveShow = (patch) => {
     if (!activeShow) return;
@@ -268,47 +451,45 @@ const deleteLibItem = (id) => {
     setState((prev) => ({ ...prev, shows: (prev.shows || []).map((s) => (s.id === activeShow.id ? { ...s, ...patch } : s)) }));
   };
 
-const createNewShow = () => {
-  pushHistory(state);
-  const id = uid();
-  setState(prev => {
-    const name = uniquePigShowName(prev.shows || []);
-    const sh = { id, name, date: todayStr(), startTime: "19:30", headsetCount: 4, handheldCount: 2 };
-    return { ...prev, shows: [...(prev.shows||[]), sh] };
-  });
-  setActiveShowId(id);
-};
+  const createNewShow = () => {
+    pushHistory(state);
+    const id = uid();
+    setState(prev => {
+      const name = uniquePigShowName(prev.shows || []);
+      const sh = { id, name, date: todayStr(), startTime: "19:30", headsetCount: 4, handheldCount: 2 };
+      return { ...prev, shows: [...(prev.shows||[]), sh] };
+    });
+    setActiveShowId(id);
+  };
 
-const deleteCurrentShow = () => {
-  if (!activeShow) { alert("Geen actieve show geselecteerd."); return; }
-  if ((state.shows||[]).length <= 1) { alert("Je kunt de laatste show niet verwijderen."); return; }
-  if (!confirm(`Voorstelling “${activeShow.name}” en alle gekoppelde data verwijderen? Dit kan niet ongedaan worden gemaakt.`)) return;
+  const deleteCurrentShow = () => {
+    if (!activeShow) { alert("Geen actieve show geselecteerd."); return; }
+    if ((state.shows||[]).length <= 1) { alert("Je kunt de laatste show niet verwijderen."); return; }
+    if (!confirm(`Voorstelling “${activeShow.name}” en alle gekoppelde data verwijderen? Dit kan niet ongedaan worden gemaakt.`)) return;
 
-  const delId = activeShow.id;
-  let nextActiveId = null;
+    const delId = activeShow.id;
+    let nextActiveId = null;
 
-  pushHistory(state);
-  setState(prev => {
-    const showsAfter = (prev.shows||[]).filter(s => s.id !== delId);
-    nextActiveId = showsAfter[showsAfter.length-1]?.id || showsAfter[0]?.id || null;
+    pushHistory(state);
+    setState(prev => {
+      const showsAfter = (prev.shows||[]).filter(s => s.id !== delId);
+      nextActiveId = showsAfter[showsAfter.length-1]?.id || showsAfter[0]?.id || null;
 
-    return {
-      ...prev,
-      shows: showsAfter,
-      people:     (prev.people     || []).filter(x => x.showId !== delId),
-      mics:       (prev.mics       || []).filter(x => x.showId !== delId),
-      sketches:   (prev.sketches   || []).filter(x => x.showId !== delId),
-      rehearsals: (prev.rehearsals || []).filter(x => x.showId !== delId),
-      prKit:      (prev.prKit      || []).filter(x => x.showId !== delId),
-    };
-  });
+      return {
+        ...prev,
+        shows: showsAfter,
+        people:     (prev.people     || []).filter(x => x.showId !== delId),
+        mics:       (prev.mics       || []).filter(x => x.showId !== delId),
+        sketches:   (prev.sketches   || []).filter(x => x.showId !== delId),
+        rehearsals: (prev.rehearsals || []).filter(x => x.showId !== delId),
+        prKit:      (prev.prKit      || []).filter(x => x.showId !== delId),
+      };
+    });
 
-  // zet actief na de setState op basis van de NIEUWE lijst
-  setTimeout(() => setActiveShowId(nextActiveId), 0);
-  alert("Show verwijderd.");
-};
+    setTimeout(() => setActiveShowId(nextActiveId), 0);
+    alert("Show verwijderd.");
+  };
 
-  
   // Dupliceren
   const duplicateCurrentShow = () => {
     if (!activeShow) { alert("Geen actieve show om te dupliceren."); return; }
@@ -347,9 +528,6 @@ const deleteCurrentShow = () => {
     setActiveShowId(newShowId);
     alert("Show gedupliceerd. Je kijkt nu naar de kopie.");
   };
-
- 
-
 
   // SHARE-MODE
   const shareTab = React.useMemo(() => {
@@ -408,144 +586,136 @@ const deleteCurrentShow = () => {
 
   // Auto-lock
   React.useEffect(() => {
-  if (shareTab) return;
-  const mins = Number(state.settings?.autoLockMin) || 10;
-  const RESET_MS = Math.max(1, Math.min(120, mins)) * 60 * 1000;
+    if (shareTab) return;
+    const mins = Number(state.settings?.autoLockMin) || 10;
+    const RESET_MS = Math.max(1, Math.min(120, mins)) * 60 * 1000;
 
-  let timer;
-  const reset = () => {
-    clearTimeout(timer);
-    timer = setTimeout(async () => { await lockNow(); }, RESET_MS);
-  };
-  const onEv = () => { if (!document.hidden) reset(); };
+    let timer;
+    const reset = () => {
+      clearTimeout(timer);
+      timer = setTimeout(async () => { await lockNow(); }, RESET_MS);
+    };
+    const onEv = () => { if (!document.hidden) reset(); };
 
-  const events = ["mousemove","keydown","mousedown","touchstart","visibilitychange"];
-  events.forEach(ev => window.addEventListener(ev, onEv, { passive: true }));
-  reset();
-  return () => {
-    clearTimeout(timer);
-    events.forEach(ev => window.removeEventListener(ev, onEv));
-  };
-}, [shareTab, state.settings?.autoLockMin]);
+    const events = ["mousemove","keydown","mousedown","touchstart","visibilitychange"];
+    events.forEach(ev => window.addEventListener(ev, onEv, { passive: true }));
+    reset();
+    return () => {
+      clearTimeout(timer);
+      events.forEach(ev => window.removeEventListener(ev, onEv));
+    };
+  }, [shareTab, state.settings?.autoLockMin]);
 
+  // Opslaan (debounced)
+  React.useEffect(() => {
+    const p = new URLSearchParams((location.hash||"").replace("#",""));
+    const shareTabNow = p.get("share");
+    if (shareTabNow) return;
+    if (applyingRemoteRef.current) return;
 
- // Opslaan (debounced) — vereist altijd token; bij 401 toon login
-React.useEffect(() => {
-  const p = new URLSearchParams((location.hash||"").replace("#",""));
-  const shareTabNow = p.get("share");
-  if (shareTabNow) return;
-  if (applyingRemoteRef.current) return;
-
-  const t = setTimeout(async () => {
-    try {
-      const token = localStorage.getItem('knor:authToken') || '';
-      if (!token) {
-        setSyncStatus('🔒 Niet ingelogd — wijzigingen niet opgeslagen');
-        // toon login overlay zodat je meteen kunt inloggen
-        setLocked(true);
-        return;
+    const t = setTimeout(async () => {
+      try {
+        const token = localStorage.getItem('knor:authToken') || '';
+        if (!token) {
+          setSyncStatus('🔒 Niet ingelogd — wijzigingen niet opgeslagen');
+          setLocked(true);
+          return;
+        }
+        const next = { ...state, rev: Date.now() };
+        await saveStateRemote(next);
+        setSyncStatus("✅ Gesynced om " + new Date().toLocaleTimeString());
+      } catch (e) {
+        if (String(e.message || '').toLowerCase().includes('unauthorized')) {
+          setSyncStatus("🔒 Sessie verlopen — log opnieuw in");
+          setLocked(true);
+        } else {
+          console.error('save failed', e);
+          setSyncStatus("⚠️ Opslaan mislukt");
+        }
       }
-      const next = { ...state, rev: Date.now() };
-      await saveStateRemote(next);
-      setSyncStatus("✅ Gesynced om " + new Date().toLocaleTimeString());
-    } catch (e) {
-      // 401 → token ongeldig/exp: login forceren
-      if (String(e.message || '').toLowerCase().includes('unauthorized')) {
-        setSyncStatus("🔒 Sessie verlopen — log opnieuw in");
-        setLocked(true);
-      } else {
-        console.error('save failed', e);
-        setSyncStatus("⚠️ Opslaan mislukt");
-      }
-    }
-  }, 500);
+    }, 500);
 
-  return () => clearTimeout(t);
-}, [state, setLocked]);
-
+    return () => clearTimeout(t);
+  }, [state, setLocked]);
 
   // Als vergrendeld en niet in share: overlay tonen
   if (!shareTab && locked) return <PasswordGate onUnlock={handleUnlock} />;
 
-  
   // Export / Import
   const exportShow = async () => {
-  if (!activeShow) return;
-  const token = localStorage.getItem('knor:authToken') || '';
-  if (!token) { setLocked(true); return alert('Log eerst in om te exporteren.'); }
+    if (!activeShow) return;
+    const token = localStorage.getItem('knor:authToken') || '';
+    if (!token) { setLocked(true); return alert('Log eerst in om te exporteren.'); }
 
-  const ts   = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
-  const safe = (activeShow.name || 'show').replace(/[^\w\-]+/g,'_');
+    const ts   = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+    const safe = (activeShow.name || 'show').replace(/[^\w\-]+/g,'_');
 
-  const res = await fetch(`/.netlify/functions/export-show?showId=${encodeURIComponent(activeShow.id)}&t=${Date.now()}`, {
-    headers: { authorization: `Bearer ${token}` } // lower-case werkt sowieso bij Netlify
-  });
+    const res = await fetch(`/.netlify/functions/export-show?showId=${encodeURIComponent(activeShow.id)}&t=${Date.now()}`, {
+      headers: { authorization: `Bearer ${token}` }
+    });
 
-  if (res.status === 401) { setLocked(true); return alert('Sessie verlopen — log opnieuw in.'); }
-  if (!res.ok) { return alert('Export mislukt'); }
+    if (res.status === 401) { setLocked(true); return alert('Sessie verlopen — log opnieuw in.'); }
+    if (!res.ok) { return alert('Export mislukt'); }
 
-  const blob = await res.blob();
-  const url  = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `knorplanner-${safe}-${ts}.json`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-};
-
-
-
-  const importShow = async () => {
-  const token = localStorage.getItem('knor:authToken') || '';
-  if (!token) { setLocked(true); return alert('Log eerst in om te importeren.'); }
-
-  const pick = document.createElement('input');
-  pick.type = 'file';
-  pick.accept = 'application/json';
-
-  pick.onchange = async (e) => {
-    const file = e.target.files?.[0]; if (!file) return;
-    try {
-      const text = await file.text();
-      const payload = JSON.parse(text);
-
-      const res = await fetch('/.netlify/functions/import-show', {
-        method: 'POST',
-        headers: {
-          'Content-Type':'application/json',
-          authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify(payload)
-      });
-
-      if (res.status === 401) { setLocked(true); return alert('Sessie verlopen — log opnieuw in.'); }
-      if (!res.ok) {
-        const msg = await res.text().catch(()=> 'Import error');
-        throw new Error(msg);
-      }
-
-      const fresh = await loadState();
-      setState(withDefaults(fresh || {}));
-      alert('Import gelukt.');
-    } catch (err) {
-      console.error(err);
-      alert('Import mislukt. Gebruik een exportbestand van KnorPlanner (json).');
-    }
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `knorplanner-${safe}-${ts}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
   };
 
-  pick.click();
-};
+  const importShow = async () => {
+    const token = localStorage.getItem('knor:authToken') || '';
+    if (!token) { setLocked(true); return alert('Log eerst in om te importeren.'); }
 
+    const pick = document.createElement('input');
+    pick.type = 'file';
+    pick.accept = 'application/json';
+
+    pick.onchange = async (e) => {
+      const file = e.target.files?.[0]; if (!file) return;
+      try {
+        const text = await file.text();
+        const payload = JSON.parse(text);
+
+        const res = await fetch('/.netlify/functions/import-show', {
+          method: 'POST',
+          headers: {
+            'Content-Type':'application/json',
+            authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify(payload)
+        });
+
+        if (res.status === 401) { setLocked(true); return alert('Sessie verlopen — log opnieuw in.'); }
+        if (!res.ok) {
+          const msg = await res.text().catch(()=> 'Import error');
+          throw new Error(msg);
+        }
+
+        const fresh = await loadState();
+        setState(withDefaults(fresh || {}));
+        alert('Import gelukt.');
+      } catch (err) {
+        console.error(err);
+        alert('Import mislukt. Gebruik een exportbestand van KnorPlanner (json).');
+      }
+    };
+
+    pick.click();
+  };
 
   // --- Share pages ---
   if (shareTab === "rehearsals") {
     return (
       <div className="mx-auto max-w-6xl p-4 share-only">
         <h1 className="text-2xl font-bold mb-4">
-  Repetitieschema (live) <span className="text-base font-normal text-gray-500">— {shareShow?.name}</span>
-</h1>
+          Repetitieschema (live) <span className="text-base font-normal text-gray-500">— {shareShow?.name}</span>
+        </h1>
         <C_RehearsalPlanner rehearsals={shareRehearsals} people={sharePeople} onAdd={()=>{}} onUpdate={()=>{}} onRemove={()=>{}} />
         <div className="text-sm text-gray-500 mt-6">Dit is een gedeelde link, alleen-lezen. Wijzigingen kunnen alleen in de hoofd-app.</div>
       </div>
@@ -554,9 +724,9 @@ React.useEffect(() => {
   if (shareTab === "rolverdeling") {
     return (
       <div className="mx-auto max-w-6xl p-4">
-<h1 className="text-2xl font-bold mb-4">
-  Rolverdeling (live) <span className="text-base font-normal text-gray-500">— {shareShow?.name}</span>
-</h1>
+        <h1 className="text-2xl font-bold mb-4">
+          Rolverdeling (live) <span className="text-base font-normal text-gray-500">— {shareShow?.name}</span>
+        </h1>
         <C_RoleDistributionView currentShowId={shareShow?.id} sketches={shareSketches} people={sharePeople} setState={()=>{}} />
         <div className="text-sm text-gray-500 mt-6">Dit is een gedeelde link, alleen-lezen. Wijzigingen kunnen alleen in de hoofd-app.</div>
       </div>
@@ -565,9 +735,9 @@ React.useEffect(() => {
   if (shareTab === "prkit") {
     return (
       <div className="mx-auto max-w-6xl p-4">
-<h1 className="text-2xl font-bold mb-4">
-  PR-Kit (live) <span className="text-base font-normal text-gray-500">— {shareShow?.name}</span>
-</h1>
+        <h1 className="text-2xl font-bold mb-4">
+          PR-Kit (live) <span className="text-base font-normal text-gray-500">— {shareShow?.name}</span>
+        </h1>
         <C_PRKitView items={sharePRKit} showId={shareShow?.id} readOnly={true} onChange={()=>{}} />
         <div className="text-sm text-gray-500 mt-6">Dit is een gedeelde link, alleen-lezen. Wijzigingen kunnen alleen in de hoofd-app.</div>
       </div>
@@ -576,9 +746,9 @@ React.useEffect(() => {
   if (shareTab === "runsheet") {
     return (
       <div className="mx-auto max-w-6xl p-4 share-only">
-<h1 className="text-2xl font-bold mb-4">
-  Programma (live) <span className="text-base font-normal text-gray-500">— {shareShow?.name}</span>
-</h1>
+        <h1 className="text-2xl font-bold mb-4">
+          Programma (live) <span className="text-base font-normal text-gray-500">— {shareShow?.name}</span>
+        </h1>
         <RunSheetView runSheet={runSheetShare} show={shareShow} />
         <div className="text-sm text-gray-500 mt-6">Dit is een gedeelde link, alleen-lezen.</div>
       </div>
@@ -587,9 +757,9 @@ React.useEffect(() => {
   if (shareTab === "mics") {
     return (
       <div className="mx-auto max-w-6xl p-4 share-only">
-<h1 className="text-2xl font-bold mb-4">
-  Microfoons (live) <span className="text-base font-normal text-gray-500">— {shareShow?.name}</span>
-</h1>
+        <h1 className="text-2xl font-bold mb-4">
+          Microfoons (live) <span className="text-base font-normal text-gray-500">— {shareShow?.name}</span>
+        </h1>
         <style>{`.share-only select,.share-only input,.share-only button{pointer-events:none!important;}`}</style>
         <C_MicMatrixView currentShowId={shareShow?.id} sketches={shareSketches} people={sharePeople} shows={state.shows} setState={() => {}} />
         <div className="text-sm text-gray-500 mt-6">Dit is een gedeelde link, alleen-lezen.</div>
@@ -612,9 +782,9 @@ React.useEffect(() => {
     const onlySketches = (shareSketches || []).filter(s => (s?.kind || "sketch") === "sketch");
     return (
       <div className="mx-auto max-w-6xl p-4">
-<h1 className="text-2xl font-bold mb-4">
-  Sketches (live) <span className="text-base font-normal text-gray-500">— {shareShow?.name}</span>
-</h1>
+        <h1 className="text-2xl font-bold mb-4">
+          Sketches (live) <span className="text-base font-normal text-gray-500">— {shareShow?.name}</span>
+        </h1>
         <div className="space-y-6">
           {onlySketches.map((sk, i) => {
             const s = ensureDefaultsLocal(sk);
@@ -661,95 +831,93 @@ React.useEffect(() => {
     );
   }
 
-/** ---------- Draaiboek (alle share-links gebundeld) ---------- */
-if (shareTab === "deck") {
-  const mk = (k) => `${location.origin}${location.pathname}#share=${k}&sid=${shareShow?.id || ""}`;
-  return (
-    <div className="mx-auto max-w-6xl p-4 share-only">
-      <div className="flex items-center gap-2 mb-1">
-        <img src="https://cdn-icons-png.flaticon.com/512/616/616584.png" alt="" className="w-7 h-7" aria-hidden="true" />
-        <h1 className="text-2xl font-bold">Draaiboek: {shareShow?.name || "Show"}</h1>
-      </div>
-      <p className="text-sm text-gray-600 mb-4">
-        Beste artiesten en medewerkers — hieronder vind je alle links die nodig zijn voor deze show.
-      </p>
-      <div className="grid gap-3 md:grid-cols-2">
-        {[
-          { key:"runsheet",     title:"Programma",     desc:"Volgorde en tijden van de avond." },
-          { key:"mics",         title:"Microfoons",    desc:"Wie op welk kanaal (alleen-lezen)." },
-          { key:"rehearsals",   title:"Agenda",        desc:"Repetities, locaties en tijden." },
-          { key:"rolverdeling", title:"Rolverdeling",  desc:"Wie speelt welke rol per sketch." },
-          { key:"scripts",      title:"Sketches",      desc:"Alle sketches met rollen, links en geluiden." },
-          { key:"prkit",        title:"PR-Kit",        desc:"Posters/afbeeldingen, interviews en video’s." },
-        ].map(({key, title, desc}) => (
-          <div key={key} className="rounded-xl border p-4 flex items-start justify-between gap-3">
-            <div>
-              <div className="font-semibold">{title}</div>
-              <div className="text-sm text-gray-600">{desc}</div>
+  /** ---------- Draaiboek (alle share-links gebundeld) ---------- */
+  if (shareTab === "deck") {
+    const mk = (k) => `${location.origin}${location.pathname}#share=${k}&sid=${shareShow?.id || ""}`;
+    return (
+      <div className="mx-auto max-w-6xl p-4 share-only">
+        <div className="flex items-center gap-2 mb-1">
+          <img src="https://cdn-icons-png.flaticon.com/512/616/616584.png" alt="" className="w-7 h-7" aria-hidden="true" />
+          <h1 className="text-2xl font-bold">Draaiboek: {shareShow?.name || "Show"}</h1>
+        </div>
+        <p className="text-sm text-gray-600 mb-4">
+          Beste artiesten en medewerkers — hieronder vind je alle links die nodig zijn voor deze show.
+        </p>
+        <div className="grid gap-3 md:grid-cols-2">
+          {[
+            { key:"runsheet",     title:"Programma",     desc:"Volgorde en tijden van de avond." },
+            { key:"mics",         title:"Microfoons",    desc:"Wie op welk kanaal (alleen-lezen)." },
+            { key:"rehearsals",   title:"Agenda",        desc:"Repetities, locaties en tijden." },
+            { key:"rolverdeling", title:"Rolverdeling",  desc:"Wie speelt welke rol per sketch." },
+            { key:"scripts",      title:"Sketches",      desc:"Alle sketches met rollen, links en geluiden." },
+            { key:"prkit",        title:"PR-Kit",        desc:"Posters/afbeeldingen, interviews en video’s." },
+          ].map(({key, title, desc}) => (
+            <div key={key} className="rounded-xl border p-4 flex items-start justify-between gap-3">
+              <div>
+                <div className="font-semibold">{title}</div>
+                <div className="text-sm text-gray-600">{desc}</div>
+              </div>
+              <a href={mk(key)} className="shrink-0 rounded-full border px-3 py-1 text-sm hover:bg-gray-50" target="_blank" rel="noopener noreferrer">
+                Open
+              </a>
             </div>
-            <a href={mk(key)} className="shrink-0 rounded-full border px-3 py-1 text-sm hover:bg-gray-50" target="_blank" rel="noopener noreferrer">
-              Open
-            </a>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
-    </div>
-  );
-}
+    );
+  }
 
-  
   // ====== NORMALE APP ======
   return (
     <div className="mx-auto max-w-7xl p-4">
       <header className="sticky top-0 z-40 w-full border-b bg-white/80 backdrop-blur brand-header">
-  <div className="mx-auto max-w-7xl px-4">
+        <div className="mx-auto max-w-7xl px-4">
 
-    {/* Rij 1: logo + actieve show */}
-    <div className="h-12 flex items-center justify-between">
-      <div className="flex items-center gap-2">
-        <img
-          src="https://cdn-icons-png.flaticon.com/512/616/616584.png"
-          alt=""
-          className="w-7 h-7 md:w-8 md:h-8"
-          aria-hidden="true"
-        />
-        <div className="font-extrabold tracking-wide">KnorPlanner</div>
-      </div>
-      <div className="flex items-center gap-2">
-        <span className="rounded-full border px-3 py-1 text-sm bg-gray-50">
-          Show: <b>{activeShow?.name || "—"}</b>
-        </span>
-      </div>
-    </div>
+          {/* Rij 1: logo + actieve show */}
+          <div className="h-12 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <img
+                src="https://cdn-icons-png.flaticon.com/512/616/616584.png"
+                alt=""
+                className="w-7 h-7 md:w-8 md:h-8"
+                aria-hidden="true"
+              />
+              <div className="font-extrabold tracking-wide">KnorPlanner</div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="rounded-full border px-3 py-1 text-sm bg-gray-50">
+                Show: <b>{activeShow?.name || "—"}</b>
+              </span>
+            </div>
+          </div>
 
-    {/* Rij 2: menu */}
-    <div className="h-12 flex items-center overflow-x-auto">
-      <nav className="flex gap-2 w-full">
-        {[
-          { key: "planner",       label: "Voorstellingen" },
-          { key: "runsheet",      label: "Programma" },
-          { key: "cast",          label: "Biggenconvent" },
-          { key: "mics",          label: "Microfoons" },
-          { key: "rolverdeling",  label: "Rolverdeling" },
-          { key: "scripts",       label: "Sketches" },
-          { key: "rehearsals",    label: "Agenda" },
-          { key: "prkit",         label: "PR-Kit" },
-        ].map(({ key, label }) => (
-          <button
-            key={key}
-            className={`rounded-full px-4 py-2 text-sm transition ${
-              tab === key ? "bg-black text-white shadow" : "bg-gray-100 hover:bg-gray-200"
-            }`}
-            onClick={() => setTab(key)}
-          >
-            {label}
-          </button>
-        ))}
-      </nav>
-    </div>
-  </div>
-</header>
-
+          {/* Rij 2: menu */}
+          <div className="h-12 flex items-center overflow-x-auto">
+            <nav className="flex gap-2 w-full">
+              {[
+                { key: "planner",       label: "Voorstellingen" },
+                { key: "runsheet",      label: "Programma" },
+                { key: "cast",          label: "Biggenconvent" },
+                { key: "mics",          label: "Microfoons" },
+                { key: "rolverdeling",  label: "Rolverdeling" },
+                { key: "scripts",       label: "Sketches" },
+                { key: "rehearsals",    label: "Agenda" },
+                { key: "prkit",         label: "PR-Kit" },
+              ].map(({ key, label }) => (
+                <button
+                  key={key}
+                  className={`rounded-full px-4 py-2 text-sm transition ${
+                    tab === key ? "bg-black text-white shadow" : "bg-gray-100 hover:bg-gray-200"
+                  }`}
+                  onClick={() => setTab(key)}
+                >
+                  {label}
+                </button>
+              ))}
+            </nav>
+          </div>
+        </div>
+      </header>
 
       <div className="text-xs text-gray-500 mt-1">{syncStatus}</div>
 
@@ -824,242 +992,234 @@ if (shareTab === "deck") {
             onAdd={addRehearsal} onUpdate={updateRehearsal} onRemove={removeRehearsal} />
         )}
 
-      {tab === "scripts" && (
-  <div className="space-y-3">
+        {tab === "scripts" && (
+          <div className="space-y-3">
 
-    {/* Editor met portal-target om knoppen naast de select te plaatsen */}
-    <div ref={scriptsHostRef}>
-      <TabErrorBoundary>
-        <C_ScriptsView sketches={showSketches} people={showPeople} onUpdate={updateSketch} />
-      </TabErrorBoundary>
+            {/* Editor met portal-target om knoppen naast de select te plaatsen */}
+            <div ref={scriptsHostRef}>
+              <TabErrorBoundary>
+                <C_ScriptsView sketches={showSketches} people={showPeople} onUpdate={updateSketch} />
+              </TabErrorBoundary>
 
-      {/* PORTAL: knoppen direct naast "Selecteer sketch" dropdown */}
-      {scriptsPortalEl && ReactDOM.createPortal(
-        <span className="inline-flex items-center gap-2 ml-2">
-          <button
-            className="rounded-full px-3 py-1 text-sm border border-gray-300 bg-gray-100 hover:bg-gray-200"
-            onClick={() => {
-              if (!selectedSketchId) return alert("Kies eerst een sketch.");
-              setReplaceTarget(selectedSketchId);
-            }}
-            title="Vervang huidige selectie door item uit library"
-          >
-            ⇄ Vervang uit library
-          </button>
-          <button
-            className="rounded-full px-3 py-1 text-sm border border-gray-300 bg-gray-100 hover:bg-gray-200"
-            onClick={() => {
-              if (!selectedSketchId) return alert("Kies eerst een sketch.");
-              addSketchToLibrary(selectedSketchId);
-            }}
-            title="Sla huidige selectie op in de library"
-          >
-            + Voeg toe aan library
-          </button>
-          <button
-            className="rounded-full px-3 py-1 text-sm border border-black bg-black text-white hover:opacity-90"
-            onClick={() => setLibraryOpen(true)}
-            title="Open de Sketch Library (voor alle shows)"
-          >
-            📚 Library
-          </button>
-        </span>,
-        scriptsPortalEl
-      )}
-    </div>
-
-    {/* POP-UP: Sketch Library (globaal, bewerkbaar) */}
-    {libraryOpen && (
-      <div className="fixed inset-0 z-[10000] bg-black/30 backdrop-blur-sm flex items-center justify-center p-4">
-        <div className="w-[min(96vw,1000px)] max-h-[85vh] overflow-hidden rounded-2xl bg-white border shadow-xl flex flex-col">
-          <div className="px-4 pt-3 pb-2 flex items-center justify-between border-b">
-            <div className="font-semibold">📚 Sketch Library (voor alle shows)</div>
-            <div className="flex items-center gap-2">
-              <input
-                className="rounded border px-3 py-1 text-sm"
-                placeholder="Zoek titel of decor…"
-                value={libraryQuery}
-                onChange={(e)=> setLibraryQuery(e.target.value)}
-              />
-              <button className="rounded-full px-3 py-1 text-sm border border-gray-300 bg-gray-100 hover:bg-gray-200" onClick={()=> setLibraryOpen(false)}>Sluiten</button>
+              {/* PORTAL: knoppen direct naast "Selecteer sketch" dropdown */}
+              {scriptsPortalEl && ReactDOM && ReactDOM.createPortal(
+                <span className="inline-flex items-center gap-2 ml-2">
+                  <button
+                    className={btnSec}
+                    onClick={() => {
+                      if (!selectedSketchId) return alert("Kies eerst een sketch.");
+                      setReplaceTarget(selectedSketchId);
+                    }}
+                    title="Vervang huidige selectie door item uit library"
+                  >
+                    ⇄ Vervang uit library
+                  </button>
+                  <button
+                    className={btnSec}
+                    onClick={() => {
+                      if (!selectedSketchId) return alert("Kies eerst een sketch.");
+                      addSketchToLibrary(selectedSketchId);
+                    }}
+                    title="Sla huidige selectie op in de library"
+                  >
+                    + Voeg toe aan library
+                  </button>
+                  <button
+                    className={btnPri}
+                    onClick={() => setLibraryOpen(true)}
+                    title="Open de Sketch Library (voor alle shows)"
+                  >
+                    📚 Library
+                  </button>
+                </span>,
+                scriptsPortalEl
+              )}
             </div>
-          </div>
 
-          <div className="px-4 py-3 overflow-auto">
-            <table className="w-full text-sm border-collapse">
-              <thead>
-                <tr className="bg-gray-50">
-                  <th className="border px-2 py-1 text-left">Titel</th>
-                  <th className="border px-2 py-1 text-left">Duur</th>
-                  <th className="border px-2 py-1 text-left">Stage</th>
-                  <th className="border px-2 py-1 text-left">Decor</th>
-                  <th className="border px-2 py-1 text-left">Acties</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredLibrary.map(item => (
-                  <tr key={item.libId || item.id} className="odd:bg-gray-50">
-                    <td className="border px-2 py-1">
-                      {libEditId === (item.libId || item.id) ? (
-                        <input
-                          className="w-full rounded border px-2 py-1"
-                          defaultValue={item.title || ""}
-                          onBlur={(e)=> saveLibItem(item.libId || item.id, { title: e.target.value })}
-                          autoFocus
-                        />
-                      ) : (
-                        <span className="font-medium">{item.title || "(zonder titel)"}</span>
-                      )}
-                    </td>
-                    <td className="border px-2 py-1">
-                      {libEditId === (item.libId || item.id) ? (
-                        <input
-                          type="number" min="0"
-                          className="w-24 rounded border px-2 py-1"
-                          defaultValue={item.durationMin || 0}
-                          onBlur={(e)=> saveLibItem(item.libId || item.id, { durationMin: parseInt(e.target.value||"0",10)||0 })}
-                        />
-                      ) : (
-                        <span>{item.durationMin || 0} min</span>
-                      )}
-                    </td>
-                    <td className="border px-2 py-1">
-                      {libEditId === (item.libId || item.id) ? (
-                        <select
-                          className="rounded border px-2 py-1"
-                          defaultValue={item.stagePlace || "podium"}
-                          onBlur={(e)=> saveLibItem(item.libId || item.id, { stagePlace: e.target.value })}
-                        >
-                          <option value="podium">Podium</option>
-                          <option value="voor">Voor de gordijn</option>
-                        </select>
-                      ) : (
-                        <span>{item.stagePlace === "voor" ? "Voor de gordijn" : "Podium"}</span>
-                      )}
-                    </td>
-                    <td className="border px-2 py-1">
-                      {libEditId === (item.libId || item.id) ? (
-                        <input
-                          className="w-full rounded border px-2 py-1"
-                          defaultValue={item.decor || ""}
-                          onBlur={(e)=> saveLibItem(item.libId || item.id, { decor: e.target.value })}
-                        />
-                      ) : (
-                        <span className="text-gray-700">{item.decor || "—"}</span>
-                      )}
-                    </td>
-                    <td className="border px-2 py-1">
-                      <div className="flex flex-wrap gap-2">
-                        {libEditId === (item.libId || item.id) ? (
-                          <button className="rounded-full px-3 py-1 text-sm border border-gray-300 bg-gray-100 hover:bg-gray-200" onClick={stopEditLib}>Klaar</button>
-                        ) : (
-                          <button className="rounded-full px-3 py-1 text-sm border border-gray-300 bg-gray-100 hover:bg-gray-200" onClick={()=> startEditLib(item.libId || item.id)}>Bewerk</button>
+            {/* POP-UP: Sketch Library (globaal, bewerkbaar) */}
+            {libraryOpen && (
+              <div className="fixed inset-0 z-[10000] bg-black/30 backdrop-blur-sm flex items-center justify-center p-4">
+                <div className="w-[min(96vw,1000px)] max-h-[85vh] overflow-hidden rounded-2xl bg-white border shadow-xl flex flex-col">
+                  <div className="px-4 pt-3 pb-2 flex items-center justify-between border-b">
+                    <div className="font-semibold">📚 Sketch Library (voor alle shows)</div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        className="rounded border px-3 py-1 text-sm"
+                        placeholder="Zoek titel of decor…"
+                        value={libraryQuery}
+                        onChange={(e)=> setLibraryQuery(e.target.value)}
+                      />
+                      <button className={btnSec} onClick={()=> setLibraryOpen(false)}>Sluiten</button>
+                    </div>
+                  </div>
+
+                  <div className="px-4 py-3 overflow-auto">
+                    <table className="w-full text-sm border-collapse">
+                      <thead>
+                        <tr className="bg-gray-50">
+                          <th className="border px-2 py-1 text-left">Titel</th>
+                          <th className="border px-2 py-1 text-left">Duur</th>
+                          <th className="border px-2 py-1 text-left">Stage</th>
+                          <th className="border px-2 py-1 text-left">Decor</th>
+                          <th className="border px-2 py-1 text-left">Acties</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredLibrary.map(item => (
+                          <tr key={item.libId || item.id} className="odd:bg-gray-50">
+                            <td className="border px-2 py-1">
+                              {libEditId === (item.libId || item.id) ? (
+                                <input
+                                  className="w-full rounded border px-2 py-1"
+                                  defaultValue={item.title || ""}
+                                  onBlur={(e)=> saveLibItem(item.libId || item.id, { title: e.target.value })}
+                                  autoFocus
+                                />
+                              ) : (
+                                <span className="font-medium">{item.title || "(zonder titel)"}</span>
+                              )}
+                            </td>
+                            <td className="border px-2 py-1">
+                              {libEditId === (item.libId || item.id) ? (
+                                <input
+                                  type="number" min="0"
+                                  className="w-24 rounded border px-2 py-1"
+                                  defaultValue={item.durationMin || 0}
+                                  onBlur={(e)=> saveLibItem(item.libId || item.id, { durationMin: parseInt(e.target.value||"0",10)||0 })}
+                                />
+                              ) : (
+                                <span>{item.durationMin || 0} min</span>
+                              )}
+                            </td>
+                            <td className="border px-2 py-1">
+                              {libEditId === (item.libId || item.id) ? (
+                                <select
+                                  className="rounded border px-2 py-1"
+                                  defaultValue={item.stagePlace || "podium"}
+                                  onBlur={(e)=> saveLibItem(item.libId || item.id, { stagePlace: e.target.value })}
+                                >
+                                  <option value="podium">Podium</option>
+                                  <option value="voor">Voor de gordijn</option>
+                                </select>
+                              ) : (
+                                <span>{item.stagePlace === "voor" ? "Voor de gordijn" : "Podium"}</span>
+                              )}
+                            </td>
+                            <td className="border px-2 py-1">
+                              {libEditId === (item.libId || item.id) ? (
+                                <input
+                                  className="w-full rounded border px-2 py-1"
+                                  defaultValue={item.decor || ""}
+                                  onBlur={(e)=> saveLibItem(item.libId || item.id, { decor: e.target.value })}
+                                />
+                              ) : (
+                                <span className="text-gray-700">{item.decor || "—"}</span>
+                              )}
+                            </td>
+                            <td className="border px-2 py-1">
+                              <div className="flex flex-wrap gap-2">
+                                {libEditId === (item.libId || item.id) ? (
+                                  <button className={btnSec} onClick={stopEditLib}>Klaar</button>
+                                ) : (
+                                  <button className={btnSec} onClick={()=> startEditLib(item.libId || item.id)}>Bewerk</button>
+                                )}
+                                <button
+                                  className={btnPri}
+                                  onClick={()=> insertLibraryIntoCurrentShow(item.libId || item.id)}
+                                >
+                                  + Voeg toe aan huidige show
+                                </button>
+                                <button
+                                  className={btnDanger}
+                                  onClick={()=> deleteLibItem(item.libId || item.id)}
+                                >
+                                  Verwijder
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                        {filteredLibrary.length === 0 && (
+                          <tr><td className="border px-2 py-2 text-gray-500" colSpan={5}>Nog niets in de library.</td></tr>
                         )}
-                        <button
-                          className="rounded-full px-3 py-1 text-sm border border-black bg-black text-white hover:opacity-90"
-                          onClick={()=> insertLibraryIntoCurrentShow(item.libId || item.id)}
-                        >
-                          + Voeg toe aan huidige show
-                        </button>
-                        <button
-                          className="rounded-full px-3 py-1 text-sm border border-red-600 bg-red-600 text-white hover:bg-red-700"
-                          onClick={()=> deleteLibItem(item.libId || item.id)}
-                        >
-                          Verwijder
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {filteredLibrary.length === 0 && (
-                  <tr><td className="border px-2 py-2 text-gray-500" colSpan={5}>Nog niets in de library.</td></tr>
-                )}
-              </tbody>
-            </table>
-            <div className="text-[11px] text-gray-500 mt-2">
-              Library is gedeeld tussen alle shows. Bewerken hier past <u>niet</u> automatisch kopieën in shows aan.
-            </div>
+                      </tbody>
+                    </table>
+                    <div className="text-[11px] text-gray-500 mt-2">
+                      Library is gedeeld tussen alle shows. Bewerken hier past <u>niet</u> automatisch kopieën in shows aan.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* POP-UP: eenvoudige dropdown om te vervangen vanuit library */}
+            {replaceTargetId && (
+              <div className="fixed inset-0 z-[10000] bg-black/30 backdrop-blur-sm flex items-center justify-center p-4">
+                <div className="w-[min(92vw,520px)] rounded-2xl bg-white border shadow-xl p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="font-semibold">Vervang sketch vanuit library</div>
+                    <button className={btnSec} onClick={()=> { setReplaceTarget(null); setReplaceLibChoice(""); }}>Sluiten</button>
+                  </div>
+
+                  <label className="text-sm text-gray-700 block mb-1">Kies library-item</label>
+                  <select
+                    className="w-full rounded border px-3 py-2 text-sm"
+                    value={replaceLibChoice}
+                    onChange={(e)=> setReplaceLibChoice(e.target.value)}
+                  >
+                    <option value="">— Kies —</option>
+                    {(state.librarySketches || []).map(item => (
+                      <option key={item.libId || item.id} value={item.libId || item.id}>
+                        {(item.title || "(zonder titel)")} — {(item.durationMin||0)} min
+                      </option>
+                    ))}
+                  </select>
+
+                  <div className="mt-3 flex items-center justify-end gap-2">
+                    <button className={btnSec} onClick={()=> { setReplaceTarget(null); setReplaceLibChoice(""); }}>Annuleer</button>
+                    <button
+                      className={btnPri}
+                      disabled={!replaceLibChoice}
+                      onClick={()=> replaceSketchWithLibrary(replaceTargetId, replaceLibChoice)}
+                    >
+                      Vervang
+                    </button>
+                  </div>
+
+                  <div className="text-[11px] text-gray-500 mt-2">
+                    NB: Spelers die niet bestaan in deze show worden teruggezet naar “Kies speler/danser”.
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
-        </div>
-      </div>
-    )}
-
-    {/* POP-UP: eenvoudige dropdown om te vervangen vanuit library */}
-    {replaceTargetId && (
-      <div className="fixed inset-0 z-[10000] bg-black/30 backdrop-blur-sm flex items-center justify-center p-4">
-        <div className="w-[min(92vw,520px)] rounded-2xl bg-white border shadow-xl p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div className="font-semibold">Vervang sketch vanuit library</div>
-            <button className="rounded-full px-3 py-1 text-sm border border-gray-300 bg-gray-100 hover:bg-gray-200" onClick={()=> { setReplaceTarget(null); setReplaceLibChoice(""); }}>Sluiten</button>
-          </div>
-
-          <label className="text-sm text-gray-700 block mb-1">Kies library-item</label>
-          <select
-            className="w-full rounded border px-3 py-2 text-sm"
-            value={replaceLibChoice}
-            onChange={(e)=> setReplaceLibChoice(e.target.value)}
-          >
-            <option value="">— Kies —</option>
-            {(state.librarySketches || []).map(item => (
-              <option key={item.libId || item.id} value={item.libId || item.id}>
-                {(item.title || "(zonder titel)")} — {(item.durationMin||0)} min
-              </option>
-            ))}
-          </select>
-
-          <div className="mt-3 flex items-center justify-end gap-2">
-            <button className="rounded-full px-3 py-1 text-sm border border-gray-300 bg-gray-100 hover:bg-gray-200" onClick={()=> { setReplaceTarget(null); setReplaceLibChoice(""); }}>Annuleer</button>
-            <button
-              className="rounded-full px-3 py-1 text-sm border border-black bg-black text-white hover:opacity-90"
-              disabled={!replaceLibChoice}
-              onClick={()=> replaceSketchWithLibrary(replaceTargetId, replaceLibChoice)}
-            >
-              Vervang
-            </button>
-          </div>
-
-          <div className="text-[11px] text-gray-500 mt-2">
-            NB: Spelers die niet bestaan in deze show worden teruggezet naar “Kies speler/danser”.
-          </div>
-        </div>
-      </div>
-    )}
-  </div>
-)}
-
-
-
+        )}
 
         {tab === "planner" && (
-  <div className="grid gap-3">
-    <div className="rounded-2xl border p-3 flex flex-wrap items-center gap-2">
-      <button className="rounded-full border px-3 py-1 text-sm" onClick={createNewShow}>
-        Nieuwe voorstelling toevoegen
-      </button>
-      <button className="rounded-full border px-3 py-1 text-sm" onClick={duplicateCurrentShow}>
-        Dupliceer huidige voorstelling
-      </button>
-      <button className="rounded-full border px-3 py-1 text-sm text-red-700 border-red-300" onClick={deleteCurrentShow}>
-        Verwijder huidige voorstelling
-      </button>
-      <span className="text-xs text-gray-500 ml-auto">
-        Actief: {activeShow?.name || "—"}
-      </span>
-    </div>
+          <div className="grid gap-3">
+            <div className="rounded-2xl border p-3 flex flex-wrap items-center gap-2">
+              <button className="rounded-full border px-3 py-1 text-sm" onClick={createNewShow}>
+                Nieuwe voorstelling toevoegen
+              </button>
+              <button className="rounded-full border px-3 py-1 text-sm" onClick={duplicateCurrentShow}>
+                Dupliceer huidige voorstelling
+              </button>
+              <button className="rounded-full border px-3 py-1 text-sm text-red-700 border-red-300" onClick={deleteCurrentShow}>
+                Verwijder huidige voorstelling
+              </button>
+              <span className="text-xs text-gray-500 ml-auto">
+                Actief: {activeShow?.name || "—"}
+              </span>
+            </div>
 
-    <div ref={plannerRef}>
-  <C_PlannerMinimal
-    state={state}
-    setState={(fn)=>{ pushHistory(state); setState(fn(state)); }}
-    activeShowId={activeShowId}
-    setActiveShowId={setActiveShowId}
-  />
-</div>
-
-  </div>
-)}
-
-
+            <C_PlannerMinimal
+              state={state}
+              setState={(fn)=>{ pushHistory(state); setState(fn(state)); }}
+              activeShowId={activeShowId}
+              setActiveShowId={setActiveShowId}
+            />
+          </div>
+        )}
 
         {tab === "prkit" && (
           <TabErrorBoundary>
@@ -1081,181 +1241,178 @@ if (shareTab === "deck") {
         )}
       </main>
 
-     {/* Floating tools (accordion) */}
-<div className="fixed left-4 bottom-4 z-50 pointer-events-none">
-  <details className="group w-[min(92vw,460px)] pointer-events-auto">
-    <summary className="cursor-pointer inline-flex items-center gap-2 rounded-full bg-black text-white px-4 py-2 shadow-lg select-none">
-      <img src="https://cdn-icons-png.flaticon.com/512/616/616584.png" alt="" className="w-4 h-4" aria-hidden="true" />
-      Hulpmiddelen
-      <span className="text-xs opacity-80">{syncStatus}</span>
-    </summary>
+      {/* Floating tools (accordion) */}
+      <div className="fixed left-4 bottom-4 z-50 pointer-events-none">
+        <details className="group w-[min(92vw,460px)] pointer-events-auto">
+          <summary className="cursor-pointer inline-flex items-center gap-2 rounded-full bg-black text-white px-4 py-2 shadow-lg select-none">
+            <img src="https://cdn-icons-png.flaticon.com/512/616/616584.png" alt="" className="w-4 h-4" aria-hidden="true" />
+            Hulpmiddelen
+            <span className="text-xs opacity-80">{syncStatus}</span>
+          </summary>
 
-    <div className="mt-2 rounded-2xl border bg-white/95 backdrop-blur p-3 shadow-xl max-h-[70vh] overflow-auto space-y-3">
-      {/* Quick actions (altijd zichtbaar) */}
-      <div className="flex flex-wrap gap-2">
-        <button className={btnPri} onClick={undo}>↶ Undo</button>
-        <button className={btnPri} onClick={redo}>↷ Redo</button>
-      </div>
-
-      {/* ACC: Versies */}
-      <div className="border rounded-xl overflow-hidden">
-        <button
-          className="w-full flex items-center justify-between px-3 py-2 text-left bg-gray-50"
-          onClick={()=> setPanelOpen(p => p==="versions" ? null : "versions")}
-        >
-          <span className="font-semibold text-sm">Versies</span>
-          <span className={`transition-transform ${panelOpen==="versions" ? "rotate-90" : ""}`}>▸</span>
-        </button>
-        {panelOpen==="versions" && (
-          <div className="px-3 pb-3 space-y-2">
-            <div className="text-xs text-gray-600">
-              Toon {visibleVersions.length ? `${pageStart+1}–${pageStart+visibleVersions.length}` : "0"} van {versionsSorted.length}
-            </div>
-            <ul className="space-y-1 text-sm max-h-48 overflow-auto pr-1">
-              {visibleVersions.map(v=>(
-                <li key={v.id} className="flex items-center justify-between gap-2">
-                  <span className="truncate">
-                    {v.name} <span className="text-gray-500">({new Date(v.ts).toLocaleString()})</span>
-                  </span>
-                  <span className="flex gap-2 shrink-0">
-                    <button className={btnSec} onClick={()=>restoreVersion(v.id)}>Herstel</button>
-                    <button className={btnDanger} onClick={()=>deleteVersion(v.id)}>Del</button>
-                  </span>
-                </li>
-              ))}
-              {versionsSorted.length===0 && <li className="text-gray-500">Nog geen versies.</li>}
-            </ul>
-            <div className="flex items-center justify-between pt-1">
-              <button className={btnSec} disabled={curPage===0} onClick={()=> setVerPage(p => Math.max(0, p-1))}>
-                ← Vorige
-              </button>
-              <div className="text-xs text-gray-600">Pagina {curPage+1} / {totalPages}</div>
-              <button className={btnSec} disabled={curPage >= totalPages-1} onClick={()=> setVerPage(p => Math.min(totalPages-1, p+1))}>
-                Volgende →
-              </button>
-            </div>
-            <div className="flex gap-2 flex-wrap">
-              <button className={btnPri} onClick={()=>{ const n = prompt('Naam voor versie:','Snapshot'); if(n!==null) saveVersion(n); }}>
-                Save version (gedeeld)
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* ACC: Import/Export */}
-      <div className="border rounded-xl overflow-hidden">
-        <button
-          className="w-full flex items-center justify-between px-3 py-2 text-left bg-gray-50"
-          onClick={()=> setPanelOpen(p => p==="impex" ? null : "impex")}
-        >
-          <span className="font-semibold text-sm">Import / Export</span>
-          <span className={`transition-transform ${panelOpen==="impex" ? "rotate-90" : ""}`}>▸</span>
-        </button>
-        {panelOpen==="impex" && (
-          <div className="px-3 pb-3 space-y-2">
+          <div className="mt-2 rounded-2xl border bg-white/95 backdrop-blur p-3 shadow-xl max-h-[70vh] overflow-auto space-y-3">
+            {/* Quick actions */}
             <div className="flex flex-wrap gap-2">
-              <button className={btnPri} onClick={exportShow}>Exporteer huidige voorstelling</button>
-              <button className={btnSec} onClick={importShow}>Importeer voorstelling (.json)</button>
+              <button className={btnPri} onClick={undo}>↶ Undo</button>
+              <button className={btnPri} onClick={redo}>↷ Redo</button>
             </div>
-            <div className="text-[11px] text-gray-500">
-              Export is leesbare JSON met data van de gekozen show (spelers, sketches, repetities, mics, PR-kit).
+
+            {/* ACC: Versies */}
+            <div className="border rounded-xl overflow-hidden">
+              <button
+                className="w-full flex items-center justify-between px-3 py-2 text-left bg-gray-50"
+                onClick={()=> setPanelOpen(p => p==="versions" ? null : "versions")}
+              >
+                <span className="font-semibold text-sm">Versies</span>
+                <span className={`transition-transform ${panelOpen==="versions" ? "rotate-90" : ""}`}>▸</span>
+              </button>
+              {panelOpen==="versions" && (
+                <div className="px-3 pb-3 space-y-2">
+                  <div className="text-xs text-gray-600">
+                    Toon {visibleVersions.length ? `${pageStart+1}–${pageStart+visibleVersions.length}` : "0"} van {versionsSorted.length}
+                  </div>
+                  <ul className="space-y-1 text-sm max-h-48 overflow-auto pr-1">
+                    {visibleVersions.map(v=>(
+                      <li key={v.id} className="flex items-center justify-between gap-2">
+                        <span className="truncate">
+                          {v.name} <span className="text-gray-500">({new Date(v.ts).toLocaleString()})</span>
+                        </span>
+                        <span className="flex gap-2 shrink-0">
+                          <button className={btnSec} onClick={()=>restoreVersion(v.id)}>Herstel</button>
+                          <button className={btnDanger} onClick={()=>deleteVersion(v.id)}>Del</button>
+                        </span>
+                      </li>
+                    ))}
+                    {versionsSorted.length===0 && <li className="text-gray-500">Nog geen versies.</li>}
+                  </ul>
+                  <div className="flex items-center justify-between pt-1">
+                    <button className={btnSec} disabled={curPage===0} onClick={()=> setVerPage(p => Math.max(0, p-1))}>
+                      ← Vorige
+                    </button>
+                    <div className="text-xs text-gray-600">Pagina {curPage+1} / {totalPages}</div>
+                    <button className={btnSec} disabled={curPage >= totalPages-1} onClick={()=> setVerPage(p => Math.min(totalPages-1, p+1))}>
+                      Volgende →
+                    </button>
+                  </div>
+                  <div className="flex gap-2 flex-wrap">
+                    <button className={btnPri} onClick={()=>{ const n = prompt('Naam voor versie:','Snapshot'); if(n!==null) saveVersion(n); }}>
+                      Save version (gedeeld)
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ACC: Import/Export */}
+            <div className="border rounded-xl overflow-hidden">
+              <button
+                className="w-full flex items-center justify-between px-3 py-2 text-left bg-gray-50"
+                onClick={()=> setPanelOpen(p => p==="impex" ? null : "impex")}
+              >
+                <span className="font-semibold text-sm">Import / Export</span>
+                <span className={`transition-transform ${panelOpen==="impex" ? "rotate-90" : ""}`}>▸</span>
+              </button>
+              {panelOpen==="impex" && (
+                <div className="px-3 pb-3 space-y-2">
+                  <div className="flex flex-wrap gap-2">
+                    <button className={btnPri} onClick={exportShow}>Exporteer huidige voorstelling</button>
+                    <button className={btnSec} onClick={importShow}>Importeer voorstelling (.json)</button>
+                  </div>
+                  <div className="text-[11px] text-gray-500">
+                    Export is leesbare JSON met data van de gekozen show (spelers, sketches, repetities, mics, PR-kit).
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ACC: Deel links */}
+            <div className="border rounded-xl overflow-hidden">
+              <button
+                className="w-full flex items-center justify-between px-3 py-2 text-left bg-gray-50"
+                onClick={()=> setPanelOpen(p => p==="share" ? null : "share")}
+              >
+                <span className="font-semibold text-sm">Deel links (alleen-lezen)</span>
+                <span className={`transition-transform ${panelOpen==="share" ? "rotate-90" : ""}`}>▸</span>
+              </button>
+              {panelOpen==="share" && (
+                <div className="px-3 pb-3">
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { key:"runsheet",     label:"Programma" },
+                      { key:"mics",         label:"Microfoons" },
+                      { key:"rehearsals",   label:"Agenda" },
+                      { key:"rolverdeling", label:"Rolverdeling" },
+                      { key:"scripts",      label:"Sketches" },
+                      { key:"prkit",        label:"PR-Kit" },
+                      { key:"deck",         label:"Draaiboek (alles)" },
+                    ].map(({key,label}) => (
+                      <button
+                        key={key}
+                        className={btnSec}
+                        onClick={()=>{
+                          const sid = activeShowId ? `&sid=${activeShowId}` : "";
+                          const url = `${location.origin}${location.pathname}#share=${key}${sid}`;
+                          navigator.clipboard?.writeText(url);
+                          alert("Gekopieerd:\n" + url);
+                        }}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ACC: Beveiliging */}
+            <div className="border rounded-xl overflow-hidden">
+              <button
+                className="w-full flex items-center justify-between px-3 py-2 text-left bg-gray-50"
+                onClick={()=> setPanelOpen(p => p==="sec" ? null : "sec")}
+              >
+                <span className="font-semibold text-sm">Beveiliging</span>
+                <span className={`transition-transform ${panelOpen==="sec" ? "rotate-90" : ""}`}>▸</span>
+              </button>
+              {panelOpen==="sec" && (
+                <div className="px-3 pb-3 space-y-2">
+                  <div className="text-xs text-gray-600">
+                    Vergrendeling: {state.settings?.requirePassword ? "Aan" : "Uit"} •
+                    {" "}Ingelogd: {localStorage.getItem('knor:authToken') ? "Ja" : "Nee"}
+                  </div>
+
+                  <div className="flex items-center gap-2 text-sm">
+                    <label className="text-gray-700">Auto-lock na (min):</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="120"
+                      className="w-20 rounded border px-2 py-1"
+                      value={state.settings?.autoLockMin ?? 10}
+                      onChange={(e) => {
+                        const v = Math.max(1, Math.min(120, parseInt(e.target.value || '10', 10)));
+                        setState(prev => ({
+                          ...prev,
+                          settings: { ...(prev.settings || {}), autoLockMin: v }
+                        }));
+                      }}
+                    />
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <button className={btnPri} onClick={()=>setLocked(true)}>Log in</button>
+                    <button className={btnDanger} onClick={logout}>Log uit</button>
+                    <button className={btnSec} onClick={lockNow}>Vergrendel nu</button>
+                  </div>
+                  <div className="text-[11px] text-gray-500">
+                    “Log uit” verwijdert alleen je token (opslaan/export/import werken dan niet).
+                    “Vergrendel nu” zet óók de app-lock aan (wachtwoord verplicht).
+                  </div>
+                </div>
+              )}
             </div>
           </div>
-        )}
+        </details>
       </div>
-
-      {/* ACC: Deel links */}
-      <div className="border rounded-xl overflow-hidden">
-        <button
-          className="w-full flex items-center justify-between px-3 py-2 text-left bg-gray-50"
-          onClick={()=> setPanelOpen(p => p==="share" ? null : "share")}
-        >
-          <span className="font-semibold text-sm">Deel links (alleen-lezen)</span>
-          <span className={`transition-transform ${panelOpen==="share" ? "rotate-90" : ""}`}>▸</span>
-        </button>
-        {panelOpen==="share" && (
-          <div className="px-3 pb-3">
-            <div className="flex flex-wrap gap-2">
-              {[
-                { key:"runsheet",     label:"Programma" },
-                { key:"mics",         label:"Microfoons" },
-                { key:"rehearsals",   label:"Agenda" },
-                { key:"rolverdeling", label:"Rolverdeling" },
-                { key:"scripts",      label:"Sketches" },
-                { key:"prkit",        label:"PR-Kit" },
-                { key:"deck",         label:"Draaiboek (alles)" },
-              ].map(({key,label}) => (
-                <button
-                  key={key}
-                  className={btnSec}
-                  onClick={()=>{
-                    const sid = activeShowId ? `&sid=${activeShowId}` : "";
-                    const url = `${location.origin}${location.pathname}#share=${key}${sid}`;
-                    navigator.clipboard?.writeText(url);
-                    alert("Gekopieerd:\n" + url);
-                  }}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* ACC: Beveiliging */}
-      <div className="border rounded-xl overflow-hidden">
-        <button
-          className="w-full flex items-center justify-between px-3 py-2 text-left bg-gray-50"
-          onClick={()=> setPanelOpen(p => p==="sec" ? null : "sec")}
-        >
-          <span className="font-semibold text-sm">Beveiliging</span>
-          <span className={`transition-transform ${panelOpen==="sec" ? "rotate-90" : ""}`}>▸</span>
-        </button>
-        {panelOpen==="sec" && (
-          <div className="px-3 pb-3 space-y-2">
-            <div className="text-xs text-gray-600">
-              Vergrendeling: {state.settings?.requirePassword ? "Aan" : "Uit"} •
-              {" "}Ingelogd: {localStorage.getItem('knor:authToken') ? "Ja" : "Nee"}
-            </div>
-
-            <div className="flex items-center gap-2 text-sm">
-  <label className="text-gray-700">Auto-lock na (min):</label>
-  <input
-    type="number"
-    min="1"
-    max="120"
-    className="w-20 rounded border px-2 py-1"
-    value={state.settings?.autoLockMin ?? 10}
-    onChange={(e) => {
-      const v = Math.max(1, Math.min(120, parseInt(e.target.value || '10', 10)));
-      setState(prev => ({
-        ...prev,
-        settings: { ...(prev.settings || {}), autoLockMin: v }
-      }));
-    }}
-  />
-</div>
-
-            
-            <div className="flex flex-wrap gap-2">
-              <button className={btnPri} onClick={()=>setLocked(true)}>Log in</button>
-              <button className={btnDanger} onClick={logout}>Log uit</button>
-              <button className={btnSec} onClick={lockNow}>Vergrendel nu</button>
-            </div>
-            <div className="text-[11px] text-gray-500">
-              “Log uit” verwijdert alleen je token (opslaan/export/import werken dan niet).
-              “Vergrendel nu” zet óók de app-lock aan (wachtwoord verplicht).
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  </details>
-</div>
-
-
     </div>
   );
 }
