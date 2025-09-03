@@ -256,6 +256,14 @@ const quickLogin = async () => {
   React.useEffect(()=>{ const fromHash = new URLSearchParams((location.hash||'').replace('#','')).get('tab'); if (fromHash) setTab(fromHash); },[]);
   React.useEffect(()=>{ const sp = new URLSearchParams((location.hash||'').replace('#','')); sp.set('tab', tab); history.replaceState(null, '', `#${sp.toString()}`); },[tab]);
 
+// Forceer render bij hash-wijziging (voor #share=…)
+React.useEffect(() => {
+  const onHash = () => setSyncStatus(s => s);
+  window.addEventListener('hashchange', onHash);
+  return () => window.removeEventListener('hashchange', onHash);
+}, []);
+
+  
   const activeShow = React.useMemo(() => {
     const arr = state.shows || [];
     if (!arr.length) return null;
@@ -436,6 +444,119 @@ const quickLogin = async () => {
     }));
   };
 
+// ===== Import / Export =====
+const exportShow = async () => {
+  // Login afdwingen
+  let token = localStorage.getItem('knor:authToken') || '';
+  if (!token) {
+    await quickLogin();
+    token = localStorage.getItem('knor:authToken') || '';
+    if (!token) return alert('Log in vereist.');
+  }
+  if (!activeShow) return alert('Geen actieve show.');
+
+  const payload = {
+    meta: { app: 'KnorPlanner', exportedAt: new Date().toISOString() },
+    show: activeShow,
+    people: showPeople,
+    sketches: showSketches,
+    rehearsals: showRehearsals,
+    prKit: showPRKit,
+    mics: showMics,
+  };
+
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `show-${(activeShow.name || 'export').replace(/[^\w\-]+/g,'_')}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(a.href);
+};
+
+const importShow = async () => {
+  // Login afdwingen
+  let token = localStorage.getItem('knor:authToken') || '';
+  if (!token) {
+    await quickLogin();
+    token = localStorage.getItem('knor:authToken') || '';
+    if (!token) return alert('Log in vereist.');
+  }
+
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json,application/json';
+  input.onchange = async (e) => {
+    try {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const text = await file.text();
+      const data = JSON.parse(text);
+
+      // Ondersteun twee vormen: {show, people, sketches, …} of hele state
+      const src = data?.show ? data : {
+        show: data?.shows?.[0],
+        people: (data?.people || []).filter(p => p.showId === data?.shows?.[0]?.id),
+        sketches: (data?.sketches || []).filter(s => s.showId === data?.shows?.[0]?.id),
+        rehearsals: (data?.rehearsals || []).filter(r => r.showId === data?.shows?.[0]?.id),
+        prKit: (data?.prKit || []).filter(i => i.showId === data?.shows?.[0]?.id),
+        mics: (data?.mics || []).filter(m => m.showId === data?.shows?.[0]?.id),
+      };
+
+      if (!src?.show) return alert('Onbekend importformaat (geen "show" gevonden).');
+
+      const newShowId = uid();
+      const baseName = src.show?.name || 'Geïmporteerd';
+      const newShow = { ...src.show, id: newShowId, name: `${baseName} (import)` };
+
+      // Remap person IDs
+      const idMap = {};
+      const importedPeople = (src.people || []).map(p => {
+        const npid = uid();
+        idMap[p.id] = npid;
+        return { ...p, id: npid, showId: newShowId };
+      });
+
+      // Remap sketches (roles & micAssignments -> nieuwe person IDs)
+      const importedSketches = (src.sketches || []).map(sk => {
+        const roles = (sk.roles || []).map(r => ({
+          ...r,
+          personId: r.personId ? (idMap[r.personId] || "") : "",
+        }));
+        const micAssignments = {};
+        Object.entries(sk.micAssignments || {}).forEach(([ch, pid]) => {
+          micAssignments[ch] = pid ? (idMap[pid] || "") : "";
+        });
+        return { ...sk, id: uid(), showId: newShowId, roles, micAssignments };
+      });
+
+      const importedRehearsals = (src.rehearsals || []).map(r => ({ ...r, id: uid(), showId: newShowId }));
+      const importedPR = (src.prKit || []).map(i => ({ ...i, id: uid(), showId: newShowId }));
+      const importedMics = (src.mics || []).map(m => ({ ...m, id: uid(), showId: newShowId }));
+
+      // Toepassen
+      pushHistory(state);
+      setState(prev => ({
+        ...prev,
+        shows: [...(prev.shows || []), newShow],
+        people: [...(prev.people || []), ...importedPeople],
+        sketches: [...(prev.sketches || []), ...importedSketches],
+        rehearsals: [...(prev.rehearsals || []), ...importedRehearsals],
+        prKit: [...(prev.prKit || []), ...importedPR],
+        mics: [...(prev.mics || []), ...importedMics],
+      }));
+      setActiveShowId(newShowId);
+      alert('Import voltooid. De nieuwe show is actief.');
+    } catch (err) {
+      console.error(err);
+      alert('Import mislukt: ' + (err?.message || err));
+    }
+  };
+  input.click();
+};
+
+  
   // Show
   const updateActiveShow = (patch) => {
     if (!activeShow) return;
@@ -540,17 +661,17 @@ const quickLogin = async () => {
   const sharePRKit    = React.useMemo(() => (!shareShow ? [] : (state.prKit || []).filter(i => i.showId === shareShow.id).sort((a,b)=> String(a.dateStart||"").localeCompare(String(b.dateStart||"")))), [state.prKit, shareShow]);
   const runSheetShare = React.useMemo(() => (shareShow ? buildRunSheet(shareShow, shareSketches) : { items: [], totalMin: 0 }), [shareShow, shareSketches]);
 
-  // PASSWORD LOCK (niet voor share)
-  const [locked, setLocked] = React.useState(false);
-  React.useEffect(() => {
-    if (shareTab) { setLocked(false); return; }
-    const needPw = !!state.settings?.requirePassword;
-    if (!needPw) { setLocked(false); return; }
-    const token = localStorage.getItem('knor:authToken') || '';
-    const exp   = parseInt(localStorage.getItem('knor:authExp') || '0', 10);
-    const valid = token && (!exp || Date.now() < exp);
-    setLocked(!valid);
-  }, [shareTab, state.settings?.requirePassword, state.rev]);
+  // PASSWORD LOCK (login ALTÍJD nodig buiten share)
+const [locked, setLocked] = React.useState(true);
+React.useEffect(() => {
+  // Alleen share-pagina’s zonder login zichtbaar
+  if (shareTab) { setLocked(false); return; }
+  const token = localStorage.getItem('knor:authToken') || '';
+  const exp   = parseInt(localStorage.getItem('knor:authExp') || '0', 10);
+  const valid = token && (!exp || Date.now() < exp);
+  setLocked(!valid);
+}, [shareTab, state.rev]);
+
 
   const handleUnlock = async (plainPw) => {
   try {
@@ -867,6 +988,10 @@ const quickLogin = async () => {
       </header>
 
       <div className="text-xs text-gray-500 mt-1">{syncStatus}</div>
+
+      {/* Login overlay */}
+{!shareTab && locked && <PasswordGate onUnlock={handleUnlock} />}
+
 
       <main className="mt-6">
         {tab === "runsheet" && (
@@ -1299,9 +1424,12 @@ const quickLogin = async () => {
                         className={btnSec}
                         onClick={()=>{
                           const sid = activeShowId ? `&sid=${activeShowId}` : "";
-                          const url = `${location.origin}${location.pathname}#share=${key}${sid}`;
-                          navigator.clipboard?.writeText(url);
-                          alert("Gekopieerd:\n" + url);
+// 'deck' bestond niet als share-view; stuur voor nu naar runsheet
+const shareKey = (key === 'deck') ? 'runsheet' : key;
+const url = `${location.origin}${location.pathname}#share=${shareKey}${sid}`;
+navigator.clipboard?.writeText(url);
+window.open(url, '_blank', 'noopener');
+
                         }}
                       >
                         {label}
