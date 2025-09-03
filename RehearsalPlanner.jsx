@@ -34,6 +34,15 @@
     if (!dateStr) return 0;
     return new Date(`${dateStr}T00:00:00`).getTime();
   };
+
+const timeToMin = (timeStr) => {
+  if (!timeStr) return 24 * 60 + 59; // lege/ongeldige tijden komen achteraan binnen dezelfde dag
+  const [h, m] = String(timeStr).split(":").map((n) => parseInt(n, 10));
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return 24 * 60 + 59;
+  return h * 60 + m;
+};
+
+
   const startOfToday = (() => { const d = new Date(); d.setHours(0,0,0,0); return d.getTime(); })();
   const fullName = (p) => {
     if (!p) return "";
@@ -162,14 +171,17 @@
 
     /* ---------- sortering / splitsing ---------- */
     const sortedAll = useMemo(() => {
-      const arr = [...(rehearsals || [])];
-      arr.sort(
-        (a, b) =>
-          toDayTs(a.date) - toDayTs(b.date) ||
-          String(a.id).localeCompare(String(b.id))
-      );
-      return arr;
-    }, [rehearsals]);
+  const arr = [...(rehearsals || [])];
+  arr.sort((a, b) => {
+    const da = toDayTs(a.date), db = toDayTs(b.date);
+    if (da !== db) return da - db;                 // eerst op dag
+    const ta = timeToMin(a.time), tb = timeToMin(b.time);
+    if (ta !== tb) return ta - tb;                 // dan op tijd
+    return String(a.id).localeCompare(String(b.id)); // stabiele tie-breaker
+  });
+  return arr;
+}, [rehearsals]);
+
     const upcoming = useMemo(() => sortedAll.filter((r) => toDayTs(r.date) >= startOfToday), [sortedAll]);
     const past     = useMemo(() => sortedAll.filter((r) => toDayTs(r.date) <  startOfToday).reverse(), [sortedAll]);
 
