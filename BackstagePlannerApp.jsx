@@ -928,7 +928,7 @@ if (shareTab === "deck") {
 
       {/* Humorblokje */}
       <div className="mb-4 rounded-xl border p-3 bg-pink-50/60 text-pink-900 text-sm">
-        🐷 <b>Backstage-tip:</b> als iets niet werkt, geef de microfoon een <i>knor</i>… grapje — gewoon even verversen of de regie appen. 😉
+        🐷 <b>Backstage-tip:</b> als iets niet werkt, gewoon even Frans appen. 😉
       </div>
 
       {/* Linklijst */}
