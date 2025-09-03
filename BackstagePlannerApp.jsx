@@ -119,7 +119,7 @@ class TabErrorBoundary extends React.Component {
   render(){
     if(this.state.hasError){
       return <div className="rounded-xl border p-3 bg-red-50 text-red-700 text-sm">
-        Deze pagina kon niet laden. Open de console voor details. Probeer te verversen.
+        Deze sectie kon niet laden. Open de console voor details. Probeer te verversen.
       </div>;
     }
     return this.props.children;
@@ -145,7 +145,7 @@ function PasswordGate({ onUnlock }) {
           <img src="https://cdn-icons-png.flaticon.com/512/616/616584.png" alt="" className="w-7 h-7" aria-hidden="true" />
           <h1 className="text-xl font-bold">KnorPlanner</h1>
         </div>
-        <p className="text-sm text-gray-600 mb-4">Voer het wachtwoord in om de planner te openen.</p>
+        <p className="text-sm text-gray-600 mb-4">Voer het wachtwoord in om te synchroniseren.</p>
         <input type="password" className="w-full rounded border px-3 py-2 mb-2"
           placeholder="Wachtwoord" value={pw}
           onChange={(e)=>setPw(e.target.value)} onKeyDown={onKey} />
@@ -188,6 +188,13 @@ function App() {
   const [panelOpen, setPanelOpen] = React.useState("versions");
   const [verPage, setVerPage]     = React.useState(0);
   const applyingRemoteRef = React.useRef(false);
+
+  // --- SHARE MODE FLAG (voor URL-hash) ---
+  const shareTab = React.useMemo(() => {
+    const p = new URLSearchParams((location.hash || "").replace("#",""));
+    return p.get("share") || null;
+  }, [location.hash]);
+  const isShareMode = !!shareTab;
 
   const pageSize = 5;
   const versionsSorted = React.useMemo(
@@ -238,9 +245,18 @@ function App() {
     })();
   }, []);
 
-  // URL-tab in hash
-  React.useEffect(()=>{ const fromHash = new URLSearchParams((location.hash||'').replace('#','')).get('tab'); if (fromHash) setTab(fromHash); },[]);
-  React.useEffect(()=>{ const sp = new URLSearchParams((location.hash||'').replace('#','')); sp.set('tab', tab); history.replaceState(null, '', `#${sp.toString()}`); },[tab]);
+  // URL-tab in hash (GEGARANDEERD UIT IN SHARE-MODUS)
+  React.useEffect(() => {
+    if (isShareMode) return;
+    const fromHash = new URLSearchParams((location.hash||'').replace('#','')).get('tab');
+    if (fromHash) setTab(fromHash);
+  }, [isShareMode]);
+  React.useEffect(() => {
+    if (isShareMode) return;
+    const sp = new URLSearchParams((location.hash||'').replace('#',''));
+    sp.set('tab', tab);
+    history.replaceState(null, '', `#${sp.toString()}`);
+  }, [isShareMode, tab]);
 
   const activeShow = React.useMemo(() => {
     const arr = state.shows || [];
@@ -507,12 +523,7 @@ function App() {
     alert("Show gedupliceerd. Je kijkt nu naar de kopie.");
   };
 
-  // --- Share mode helpers (ongewijzigd) ---
-  const shareTab = React.useMemo(() => {
-    const p = new URLSearchParams((location.hash || "").replace("#",""));
-    return p.get("share") || null;
-  }, [location.hash]);
-
+  // --- Share mode helpers ---
   const _shareParams = React.useMemo(() => new URLSearchParams((location.hash || "").replace("#","")), [location.hash]);
   const _sid         = _shareParams.get("sid");
   const shareShow    = React.useMemo(() => {
@@ -529,14 +540,14 @@ function App() {
   // PASSWORD LOCK (niet voor share)
   const [locked, setLocked] = React.useState(false);
   React.useEffect(() => {
-    if (shareTab) { setLocked(false); return; }
+    if (isShareMode) { setLocked(false); return; }
     const needPw = !!state.settings?.requirePassword;
     if (!needPw) { setLocked(false); return; }
     const token = localStorage.getItem('knor:authToken') || '';
     const exp   = parseInt(localStorage.getItem('knor:authExp') || '0', 10);
     const valid = token && (!exp || Date.now() < exp);
     setLocked(!valid);
-  }, [shareTab, state.settings?.requirePassword, state.rev]);
+  }, [isShareMode, state.settings?.requirePassword, state.rev]);
 
   const handleUnlock = async (plainPw) => {
     try {
@@ -547,6 +558,7 @@ function App() {
       localStorage.setItem('knor:authToken', token);
       if (exp) localStorage.setItem('knor:authExp', String(exp));
       setLocked(false);
+      setSyncStatus("🔓 Ingelogd — synchroniseren ingeschakeld");
       return true;
     } catch { return false; }
   };
@@ -556,14 +568,14 @@ function App() {
     setState(prev => ({ ...prev, settings: { ...(prev.settings||{}), requirePassword: true } }));
     localStorage.removeItem('knor:authToken'); localStorage.removeItem('knor:authExp');
     setLocked(true);
-    alert('Vergrendeld.');
+    setSyncStatus('🔒 Vergrendeld');
   };
   const openLogin = () => setLocked(true);
   const logout    = () => { localStorage.removeItem('knor:authToken'); localStorage.removeItem('knor:authExp'); setLocked(true); setSyncStatus('🔒 Uitgelogd — wijzigingen niet opgeslagen'); };
 
   // Auto-lock
   React.useEffect(() => {
-    if (shareTab) return;
+    if (isShareMode) return;
     const mins = Number(state.settings?.autoLockMin) || 10;
     const RESET_MS = Math.max(1, Math.min(120, mins)) * 60 * 1000;
 
@@ -581,9 +593,9 @@ function App() {
       clearTimeout(timer);
       events.forEach(ev => window.removeEventListener(ev, onEv));
     };
-  }, [shareTab, state.settings?.autoLockMin]);
+  }, [isShareMode, state.settings?.autoLockMin]);
 
-  // Opslaan (debounced) — werkt offline zonder overlay; bij 401 alleen status tonen
+  // Opslaan (debounced) — werkt offline; bij 401 alleen status tonen
   React.useEffect(() => {
     const p = new URLSearchParams((location.hash||"").replace("#",""));
     const shareTabNow = p.get("share");
@@ -594,7 +606,6 @@ function App() {
       try {
         const token = localStorage.getItem('knor:authToken') || '';
         if (!token) {
-          // Geen overlay meer — gewoon lokaal blijven werken
           setSyncStatus('💾 Lokaal — log in om te syncen');
           return;
         }
@@ -604,7 +615,6 @@ function App() {
       } catch (e) {
         if (String(e.message || '').toLowerCase().includes('unauthorized')) {
           setSyncStatus("🔒 Sessie verlopen — log opnieuw in");
-          // géén setLocked(true) hier
         } else {
           console.error('save failed', e);
           setSyncStatus("⚠️ Opslaan mislukt (lokaal bewaard)");
@@ -615,7 +625,10 @@ function App() {
     return () => clearTimeout(t);
   }, [state]);
 
-  /* =================== SHARE PAGES (ongewijzigd) =================== */
+  // Als vergrendeld en niet in share: overlay tonen
+  if (!isShareMode && locked) return <PasswordGate onUnlock={handleUnlock} />;
+
+  /* =================== SHARE PAGES =================== */
   if (shareTab === "rehearsals") {
     return (
       <div className="mx-auto max-w-6xl p-4 share-only">
@@ -737,6 +750,42 @@ function App() {
     );
   }
 
+  /** ---------- Draaiboek (alle share-links) ---------- */
+  if (shareTab === "deck") {
+    const mk = (k) => `${location.origin}${location.pathname}#share=${k}&sid=${shareShow?.id || ""}`;
+    return (
+      <div className="mx-auto max-w-6xl p-4 share-only">
+        <div className="flex items-center gap-2 mb-1">
+          <img src="https://cdn-icons-png.flaticon.com/512/616/616584.png" alt="" className="w-7 h-7" aria-hidden="true" />
+          <h1 className="text-2xl font-bold">Draaiboek: {shareShow?.name || "Show"}</h1>
+        </div>
+        <p className="text-sm text-gray-600 mb-4">
+          Beste artiesten en medewerkers — hieronder vind je alle links die nodig zijn voor deze show.
+        </p>
+        <div className="grid gap-3 md:grid-cols-2">
+          {[
+            { key:"runsheet",     title:"Programma",     desc:"Volgorde en tijden van de avond." },
+            { key:"mics",         title:"Microfoons",    desc:"Wie op welk kanaal (alleen-lezen)." },
+            { key:"rehearsals",   title:"Agenda",        desc:"Repetities, locaties en tijden." },
+            { key:"rolverdeling", title:"Rolverdeling",  desc:"Wie speelt welke rol per sketch." },
+            { key:"scripts",      title:"Sketches",      desc:"Alle sketches met rollen, links en geluiden." },
+            { key:"prkit",        title:"PR-Kit",        desc:"Posters/afbeeldingen, interviews en video’s." },
+          ].map(({key, title, desc}) => (
+            <div key={key} className="rounded-xl border p-4 flex items-start justify-between gap-3">
+              <div>
+                <div className="font-semibold">{title}</div>
+                <div className="text-sm text-gray-600">{desc}</div>
+              </div>
+              <a href={mk(key)} className="shrink-0 rounded-full border px-3 py-1 text-sm hover:bg-gray-50" target="_blank" rel="noopener noreferrer">
+                Open
+              </a>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   // ====== NORMALE APP ======
 
   // PORTAL: mount plek naast "Selecteer sketch" (géén eigen change listener meer!)
@@ -784,6 +833,8 @@ function App() {
     return () => mo.disconnect();
   }, [tab]);
 
+  const hasToken = !!localStorage.getItem('knor:authToken');
+
   return (
     <div className="mx-auto max-w-7xl p-4">
       <header className="sticky top-0 z-40 w-full border-b bg-white/80 backdrop-blur brand-header">
@@ -803,6 +854,15 @@ function App() {
               <span className="rounded-full border px-3 py-1 text-sm bg-gray-50">
                 Show: <b>{activeShow?.name || "—"}</b>
               </span>
+              {!hasToken ? (
+                <button className="rounded-full border px-3 py-1 text-sm" onClick={()=> setLocked(true)}>
+                  Log in
+                </button>
+              ) : (
+                <button className="rounded-full border px-3 py-1 text-sm" onClick={logout}>
+                  Log uit
+                </button>
+              )}
             </div>
           </div>
 
@@ -834,7 +894,12 @@ function App() {
         </div>
       </header>
 
-      <div className="text-xs text-gray-500 mt-1">{syncStatus}</div>
+      <div className="text-xs text-gray-500 mt-1">
+        {syncStatus}
+        {!hasToken && (
+          <button className="ml-2 underline" onClick={()=> setLocked(true)}>Log in</button>
+        )}
+      </div>
 
       <main className="mt-6">
         {tab === "runsheet" && (
@@ -1159,175 +1224,177 @@ function App() {
 
       {/* Floating tools (accordion) */}
       <div className="fixed left-4 bottom-4 z-50 pointer-events-none">
-        <details className="group w-[min(92vw,460px)] pointer-events-auto">
-          <summary className="cursor-pointer inline-flex items-center gap-2 rounded-full bg-black text-white px-4 py-2 shadow-lg select-none">
-            <img src="https://cdn-icons-png.flaticon.com/512/616/616584.png" alt="" className="w-4 h-4" aria-hidden="true" />
-            Hulpmiddelen
-            <span className="text-xs opacity-80">{syncStatus}</span>
-          </summary>
+        <TabErrorBoundary>
+          <details className="group w-[min(92vw,460px)] pointer-events-auto">
+            <summary className="cursor-pointer inline-flex items-center gap-2 rounded-full bg-black text-white px-4 py-2 shadow-lg select-none">
+              <img src="https://cdn-icons-png.flaticon.com/512/616/616584.png" alt="" className="w-4 h-4" aria-hidden="true" />
+              Hulpmiddelen
+              <span className="text-xs opacity-80">{syncStatus}</span>
+            </summary>
 
-          <div className="mt-2 rounded-2xl border bg-white/95 backdrop-blur p-3 shadow-xl max-h-[70vh] overflow-auto space-y-3">
-            {/* Quick actions */}
-            <div className="flex flex-wrap gap-2">
-              <button className={btnPri} onClick={undo}>↶ Undo</button>
-              <button className={btnPri} onClick={redo}>↷ Redo</button>
-            </div>
+            <div className="mt-2 rounded-2xl border bg-white/95 backdrop-blur p-3 shadow-xl max-h-[70vh] overflow-auto space-y-3">
+              {/* Quick actions */}
+              <div className="flex flex-wrap gap-2">
+                <button className={btnPri} onClick={undo}>↶ Undo</button>
+                <button className={btnPri} onClick={redo}>↷ Redo</button>
+              </div>
 
-            {/* ACC: Versies */}
-            <div className="border rounded-xl overflow-hidden">
-              <button
-                className="w-full flex items-center justify-between px-3 py-2 text-left bg-gray-50"
-                onClick={()=> setPanelOpen(p => p==="versions" ? null : "versions")}
-              >
-                <span className="font-semibold text-sm">Versies</span>
-                <span className={`transition-transform ${panelOpen==="versions" ? "rotate-90" : ""}`}>▸</span>
-              </button>
-              {panelOpen==="versions" && (
-                <div className="px-3 pb-3 space-y-2">
-                  <div className="text-xs text-gray-600">
-                    Toon {visibleVersions.length ? `${pageStart+1}–${pageStart+visibleVersions.length}` : "0"} van {versionsSorted.length}
-                  </div>
-                  <ul className="space-y-1 text-sm max-h-48 overflow-auto pr-1">
-                    {visibleVersions.map(v=>(
-                      <li key={v.id} className="flex items-center justify-between gap-2">
-                        <span className="truncate">
-                          {v.name} <span className="text-gray-500">({new Date(v.ts).toLocaleString()})</span>
-                        </span>
-                        <span className="flex gap-2 shrink-0">
-                          <button className={btnSec} onClick={()=>restoreVersion(v.id)}>Herstel</button>
-                          <button className={btnDanger} onClick={()=>deleteVersion(v.id)}>Del</button>
-                        </span>
-                      </li>
-                    ))}
-                    {versionsSorted.length===0 && <li className="text-gray-500">Nog geen versies.</li>}
-                  </ul>
-                  <div className="flex items-center justify-between pt-1">
-                    <button className={btnSec} disabled={curPage===0} onClick={()=> setVerPage(p => Math.max(0, p-1))}>
-                      ← Vorige
-                    </button>
-                    <div className="text-xs text-gray-600">Pagina {curPage+1} / {totalPages}</div>
-                    <button className={btnSec} disabled={curPage >= totalPages-1} onClick={()=> setVerPage(p => Math.min(totalPages-1, p+1))}>
-                      Volgende →
-                    </button>
-                  </div>
-                  <div className="flex gap-2 flex-wrap">
-                    <button className={btnPri} onClick={()=>{ const n = prompt('Naam voor versie:','Snapshot'); if(n!==null) saveVersion(n); }}>
-                      Save version (gedeeld)
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* ACC: Import/Export */}
-            <div className="border rounded-xl overflow-hidden">
-              <button
-                className="w-full flex items-center justify-between px-3 py-2 text-left bg-gray-50"
-                onClick={()=> setPanelOpen(p => p==="impex" ? null : "impex")}
-              >
-                <span className="font-semibold text-sm">Import / Export</span>
-                <span className={`transition-transform ${panelOpen==="impex" ? "rotate-90" : ""}`}>▸</span>
-              </button>
-              {panelOpen==="impex" && (
-                <div className="px-3 pb-3 space-y-2">
-                  <div className="flex flex-wrap gap-2">
-                    <button className={btnPri} onClick={exportShow}>Exporteer huidige voorstelling</button>
-                    <button className={btnSec} onClick={importShow}>Importeer voorstelling (.json)</button>
-                  </div>
-                  <div className="text-[11px] text-gray-500">
-                    Export is leesbare JSON met data van de gekozen show (spelers, sketches, repetities, mics, PR-kit).
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* ACC: Deel links */}
-            <div className="border rounded-xl overflow-hidden">
-              <button
-                className="w-full flex items-center justify-between px-3 py-2 text-left bg-gray-50"
-                onClick={()=> setPanelOpen(p => p==="share" ? null : "share")}
-              >
-                <span className="font-semibold text-sm">Deel links (alleen-lezen)</span>
-                <span className={`transition-transform ${panelOpen==="share" ? "rotate-90" : ""}`}>▸</span>
-              </button>
-              {panelOpen==="share" && (
-                <div className="px-3 pb-3">
-                  <div className="flex flex-wrap gap-2">
-                    {[
-                      { key:"runsheet",     label:"Programma" },
-                      { key:"mics",         label:"Microfoons" },
-                      { key:"rehearsals",   label:"Agenda" },
-                      { key:"rolverdeling", label:"Rolverdeling" },
-                      { key:"scripts",      label:"Sketches" },
-                      { key:"prkit",        label:"PR-Kit" },
-                      { key:"deck",         label:"Draaiboek (alles)" },
-                    ].map(({key,label}) => (
-                      <button
-                        key={key}
-                        className={btnSec}
-                        onClick={()=>{
-                          const sid = activeShowId ? `&sid=${activeShowId}` : "";
-                          const url = `${location.origin}${location.pathname}#share=${key}${sid}`;
-                          navigator.clipboard?.writeText(url);
-                          alert("Gekopieerd:\n" + url);
-                        }}
-                      >
-                        {label}
+              {/* ACC: Versies */}
+              <div className="border rounded-xl overflow-hidden">
+                <button
+                  className="w-full flex items-center justify-between px-3 py-2 text-left bg-gray-50"
+                  onClick={()=> setPanelOpen(p => p==="versions" ? null : "versions")}
+                >
+                  <span className="font-semibold text-sm">Versies</span>
+                  <span className={`transition-transform ${panelOpen==="versions" ? "rotate-90" : ""}`}>▸</span>
+                </button>
+                {panelOpen==="versions" && (
+                  <div className="px-3 pb-3 space-y-2">
+                    <div className="text-xs text-gray-600">
+                      Toon {visibleVersions.length ? `${pageStart+1}–${pageStart+visibleVersions.length}` : "0"} van {versionsSorted.length}
+                    </div>
+                    <ul className="space-y-1 text-sm max-h-48 overflow-auto pr-1">
+                      {visibleVersions.map(v=>(
+                        <li key={v.id} className="flex items-center justify-between gap-2">
+                          <span className="truncate">
+                            {v.name} <span className="text-gray-500">({new Date(v.ts).toLocaleString()})</span>
+                          </span>
+                          <span className="flex gap-2 shrink-0">
+                            <button className={btnSec} onClick={()=>restoreVersion(v.id)}>Herstel</button>
+                            <button className={btnDanger} onClick={()=>deleteVersion(v.id)}>Del</button>
+                          </span>
+                        </li>
+                      ))}
+                      {versionsSorted.length===0 && <li className="text-gray-500">Nog geen versies.</li>}
+                    </ul>
+                    <div className="flex items-center justify-between pt-1">
+                      <button className={btnSec} disabled={curPage===0} onClick={()=> setVerPage(p => Math.max(0, p-1))}>
+                        ← Vorige
                       </button>
-                    ))}
+                      <div className="text-xs text-gray-600">Pagina {curPage+1} / {totalPages}</div>
+                      <button className={btnSec} disabled={curPage >= totalPages-1} onClick={()=> setVerPage(p => Math.min(totalPages-1, p+1))}>
+                        Volgende →
+                      </button>
+                    </div>
+                    <div className="flex gap-2 flex-wrap">
+                      <button className={btnPri} onClick={()=>{ const n = prompt('Naam voor versie:','Snapshot'); if(n!==null) saveVersion(n); }}>
+                        Save version (gedeeld)
+                      </button>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
+
+              {/* ACC: Import/Export */}
+              <div className="border rounded-xl overflow-hidden">
+                <button
+                  className="w-full flex items-center justify-between px-3 py-2 text-left bg-gray-50"
+                  onClick={()=> setPanelOpen(p => p==="impex" ? null : "impex")}
+                >
+                  <span className="font-semibold text-sm">Import / Export</span>
+                  <span className={`transition-transform ${panelOpen==="impex" ? "rotate-90" : ""}`}>▸</span>
+                </button>
+                {panelOpen==="impex" && (
+                  <div className="px-3 pb-3 space-y-2">
+                    <div className="flex flex-wrap gap-2">
+                      <button className={btnPri} onClick={exportShow}>Exporteer huidige voorstelling</button>
+                      <button className={btnSec} onClick={importShow}>Importeer voorstelling (.json)</button>
+                    </div>
+                    <div className="text-[11px] text-gray-500">
+                      Export is leesbare JSON met data van de gekozen show (spelers, sketches, repetities, mics, PR-kit).
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* ACC: Deel links */}
+              <div className="border rounded-xl overflow-hidden">
+                <button
+                  className="w-full flex items-center justify-between px-3 py-2 text-left bg-gray-50"
+                  onClick={()=> setPanelOpen(p => p==="share" ? null : "share")}
+                >
+                  <span className="font-semibold text-sm">Deel links (alleen-lezen)</span>
+                  <span className={`transition-transform ${panelOpen==="share" ? "rotate-90" : ""}`}>▸</span>
+                </button>
+                {panelOpen==="share" && (
+                  <div className="px-3 pb-3">
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { key:"runsheet",     label:"Programma" },
+                        { key:"mics",         label:"Microfoons" },
+                        { key:"rehearsals",   label:"Agenda" },
+                        { key:"rolverdeling", label:"Rolverdeling" },
+                        { key:"scripts",      label:"Sketches" },
+                        { key:"prkit",        label:"PR-Kit" },
+                        { key:"deck",         label:"Draaiboek (alles)" },
+                      ].map(({key,label}) => (
+                        <button
+                          key={key}
+                          className={btnSec}
+                          onClick={()=>{
+                            const sid = activeShowId ? `&sid=${activeShowId}` : "";
+                            const url = `${location.origin}${location.pathname}#share=${key}${sid}`;
+                            // Open i.p.v. alleen kopiëren
+                            window.open(url, "_blank", "noopener,noreferrer");
+                          }}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* ACC: Beveiliging */}
+              <div className="border rounded-xl overflow-hidden">
+                <button
+                  className="w-full flex items-center justify-between px-3 py-2 text-left bg-gray-50"
+                  onClick={()=> setPanelOpen(p => p==="sec" ? null : "sec")}
+                >
+                  <span className="font-semibold text-sm">Beveiliging</span>
+                  <span className={`transition-transform ${panelOpen==="sec" ? "rotate-90" : ""}`}>▸</span>
+                </button>
+                {panelOpen==="sec" && (
+                  <div className="px-3 pb-3 space-y-2">
+                    <div className="text-xs text-gray-600">
+                      Vergrendeling: {state.settings?.requirePassword ? "Aan" : "Uit"} •
+                      {" "}Ingelogd: {localStorage.getItem('knor:authToken') ? "Ja" : "Nee"}
+                    </div>
+
+                    <div className="flex items-center gap-2 text-sm">
+                      <label className="text-gray-700">Auto-lock na (min):</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="120"
+                        className="w-20 rounded border px-2 py-1"
+                        value={state.settings?.autoLockMin ?? 10}
+                        onChange={(e) => {
+                          const v = Math.max(1, Math.min(120, parseInt(e.target.value || '10', 10)));
+                          setState(prev => ({
+                            ...prev,
+                            settings: { ...(prev.settings || {}), autoLockMin: v }
+                          }));
+                        }}
+                      />
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      <button className={btnPri} onClick={()=>setLocked(true)}>Log in</button>
+                      <button className={btnDanger} onClick={logout}>Log uit</button>
+                      <button className={btnSec} onClick={lockNow}>Vergrendel nu</button>
+                    </div>
+                    <div className="text-[11px] text-gray-500">
+                      “Log uit” verwijdert alleen je token (opslaan/export/import werken dan niet).
+                      “Vergrendel nu” zet óók de app-lock aan (wachtwoord verplicht).
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
-
-            {/* ACC: Beveiliging */}
-            <div className="border rounded-xl overflow-hidden">
-              <button
-                className="w-full flex items-center justify-between px-3 py-2 text-left bg-gray-50"
-                onClick={()=> setPanelOpen(p => p==="sec" ? null : "sec")}
-              >
-                <span className="font-semibold text-sm">Beveiliging</span>
-                <span className={`transition-transform ${panelOpen==="sec" ? "rotate-90" : ""}`}>▸</span>
-              </button>
-              {panelOpen==="sec" && (
-                <div className="px-3 pb-3 space-y-2">
-                  <div className="text-xs text-gray-600">
-                    Vergrendeling: {state.settings?.requirePassword ? "Aan" : "Uit"} •
-                    {" "}Ingelogd: {localStorage.getItem('knor:authToken') ? "Ja" : "Nee"}
-                  </div>
-
-                  <div className="flex items-center gap-2 text-sm">
-                    <label className="text-gray-700">Auto-lock na (min):</label>
-                    <input
-                      type="number"
-                      min="1"
-                      max="120"
-                      className="w-20 rounded border px-2 py-1"
-                      value={state.settings?.autoLockMin ?? 10}
-                      onChange={(e) => {
-                        const v = Math.max(1, Math.min(120, parseInt(e.target.value || '10', 10)));
-                        setState(prev => ({
-                          ...prev,
-                          settings: { ...(prev.settings || {}), autoLockMin: v }
-                        }));
-                      }}
-                    />
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    <button className={btnPri} onClick={()=>setLocked(true)}>Log in</button>
-                    <button className={btnDanger} onClick={logout}>Log uit</button>
-                    <button className={btnSec} onClick={lockNow}>Vergrendel nu</button>
-                  </div>
-                  <div className="text-[11px] text-gray-500">
-                    “Log uit” verwijdert alleen je token (opslaan/export/import werken dan niet).
-                    “Vergrendel nu” zet óók de app-lock aan (wachtwoord verplicht).
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </details>
+          </details>
+        </TabErrorBoundary>
       </div>
     </div>
   );
