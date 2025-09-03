@@ -583,34 +583,38 @@ function App() {
     };
   }, [shareTab, state.settings?.autoLockMin]);
 
-  // Opslaan (debounced)
-  React.useEffect(() => {
-    const p = new URLSearchParams((location.hash||"").replace("#",""));
-    const shareTabNow = p.get("share");
-    if (shareTabNow) return;
-    if (applyingRemoteRef.current) return;
+  // Opslaan (debounced) — werkt offline zonder overlay; bij 401 alleen status tonen
+React.useEffect(() => {
+  const p = new URLSearchParams((location.hash||"").replace("#",""));
+  const shareTabNow = p.get("share");
+  if (shareTabNow) return;
+  if (applyingRemoteRef.current) return;
 
-    const t = setTimeout(async () => {
-      try {
-        const token = localStorage.getItem('knor:authToken') || '';
-        if (!token) {
-          setSyncStatus('🔒 Niet ingelogd — wijzigingen niet opgeslagen');
-          setLocked(true);
-          return;
-        }
-        const next = { ...state, rev: Date.now() };
-        await saveStateRemote(next);
-        setSyncStatus("✅ Gesynced om " + new Date().toLocaleTimeString());
-      } catch (e) {
-        if (String(e.message || '').toLowerCase().includes('unauthorized')) {
-          setSyncStatus("🔒 Sessie verlopen — log opnieuw in");
-          setLocked(true);
-        } else {
-          console.error('save failed', e);
-          setSyncStatus("⚠️ Opslaan mislukt");
-        }
+  const t = setTimeout(async () => {
+    try {
+      const token = localStorage.getItem('knor:authToken') || '';
+      if (!token) {
+        // Geen overlay meer — gewoon lokaal blijven werken
+        setSyncStatus('💾 Lokaal — log in om te syncen');
+        return;
       }
-    }, 500);
+      const next = { ...state, rev: Date.now() };
+      await saveStateRemote(next);
+      setSyncStatus("✅ Gesynced om " + new Date().toLocaleTimeString());
+    } catch (e) {
+      if (String(e.message || '').toLowerCase().includes('unauthorized')) {
+        setSyncStatus("🔒 Sessie verlopen — log opnieuw in");
+        // géén setLocked(true) hier
+      } else {
+        console.error('save failed', e);
+        setSyncStatus("⚠️ Opslaan mislukt (lokaal bewaard)");
+      }
+    }
+  }, 500);
+
+  return () => clearTimeout(t);
+}, [state]);
+
 
     return () => clearTimeout(t);
   }, [state, setLocked]);
@@ -1229,15 +1233,19 @@ function App() {
               </span>
             </div>
 
-            {/* Belangrijk: wrapper zodat we de ‘Dupliceer show’-knop van PlannerMinimal kunnen verbergen */}
-            <div ref={plannerRef}>
-              <C_PlannerMinimal
-                state={state}
-                setState={(fn)=>{ pushHistory(state); setState(fn(state)); }}
-                activeShowId={activeShowId}
-                setActiveShowId={setActiveShowId}
-              />
-            </div>
+            {/* Planner zonder de (interne) Dupliceer-knop */}
+<div className="knor-planner" ref={plannerRef}>
+  <style>{`
+    /* verberg het element direct NA de show-select (dat is die knop) */
+    .knor-planner select + * { display:none !important; }
+  `}</style>
+  <C_PlannerMinimal
+    state={state}
+    setState={(fn)=>{ pushHistory(state); setState(fn(state)); }}
+    activeShowId={activeShowId}
+    setActiveShowId={setActiveShowId}
+  />
+</div>
           </div>
         )}
 
