@@ -266,7 +266,7 @@
             {!readOnly && (
               <div className="rp-actions" style={{justifySelf:'end'}}>
                 <button className="btn-del" onClick={() => onRemove && onRemove(r.id)}>
-                  Verwijder
+                  X
                 </button>
               </div>
             )}
