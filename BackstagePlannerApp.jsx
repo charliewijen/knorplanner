@@ -16,7 +16,6 @@ const {
   ScriptsView,
   PRKitView,
   PlannerMinimal,
-  ReactDOM, // gebruik global ReactDOM voor portals
 } = window;
 
 /* ---------- VEILIGE WRAPPERS: crash voorkomen als component ontbreekt ---------- */
@@ -29,13 +28,13 @@ const Missing = (name) => (props) => (
 const Use = (Comp, name) => (Comp ? Comp : Missing(name));
 
 // Gebruik overal de “veilige” varianten
-const C_PlannerMinimal       = Use(PlannerMinimal,       "PlannerMinimal");
-const C_CastMatrixView       = Use(CastMatrixView,       "CastMatrixView");
-const C_MicMatrixView        = Use(MicMatrixView,        "MicMatrixView");
-const C_RoleDistributionView = Use(RoleDistributionView, "RoleDistributionView");
-const C_RehearsalPlanner     = Use(RehearsalPlanner,     "RehearsalPlanner");
-const C_ScriptsView          = Use(ScriptsView,          "ScriptsView");
-const C_PRKitView            = Use(PRKitView,            "PRKitView");
+const C_PlannerMinimal      = Use(PlannerMinimal,      "PlannerMinimal");
+const C_CastMatrixView      = Use(CastMatrixView,      "CastMatrixView");
+const C_MicMatrixView       = Use(MicMatrixView,       "MicMatrixView");
+const C_RoleDistributionView= Use(RoleDistributionView,"RoleDistributionView");
+const C_RehearsalPlanner    = Use(RehearsalPlanner,    "RehearsalPlanner");
+const C_ScriptsView         = Use(ScriptsView,         "ScriptsView");
+const C_PRKitView           = Use(PRKitView,           "PRKitView");
 
 /* =========================================================================================
    PERSISTENT STORAGE via Netlify Functions
@@ -166,32 +165,30 @@ function App() {
   const [tab, setTab] = React.useState("planner");
   const [syncStatus, setSyncStatus] = React.useState("Nog niet gesynced");
 
-  // Button style helpers
-  const btn       = "rounded-full px-3 py-1 text-sm border";
-  const btnPri    = "rounded-full px-3 py-1 text-sm border border-black bg-black text-white hover:opacity-90";
-  const btnSec    = "rounded-full px-3 py-1 text-sm border border-gray-300 bg-gray-100 hover:bg-gray-200";
-  const btnGhost  = "rounded-full px-3 py-1 text-sm border border-transparent hover:bg-gray-100";
-  const btnDanger = "rounded-full px-3 py-1 text-sm border border-red-600 bg-red-600 text-white hover:bg-red-700";
-
-  // Sketch Library UI state
+  // Buttons/Library UI
   const [libraryOpen, setLibraryOpen]       = React.useState(false);
   const [replaceTargetId, setReplaceTarget] = React.useState(null);
   const [libraryQuery, setLibraryQuery]     = React.useState("");
   const [libEditId, setLibEditId]           = React.useState(null);
 
-  const applyingRemoteRef = React.useRef(false);
+  // host voor DOM-portal waar de knoppen naast de dropdown komen
+  const scriptsHostRef = React.useRef(null);
+  const [scriptsPortalEl, setScriptsPortalEl] = React.useState(null);
 
-  // History
-  const [past, setPast] = React.useState([]);
-  const [future, setFuture] = React.useState([]);
-  const pushHistory = (prev) => setPast((p) => [...p.slice(-49), prev]);
-  const applyState = (next) => { setState(next); setFuture([]); };
-  const undo = () => { if (!past.length) return; const prev = past[past.length-1]; setPast(past.slice(0,-1)); setFuture((f)=>[state, ...f]); setState(prev); };
-  const redo = () => { if (!future.length) return; const nxt = future[0]; setFuture(future.slice(1)); setPast((p)=>[...p, state]); setState(nxt); };
+  // host om de “Dupliceer show”-knop van PlannerMinimal te verbergen
+  const plannerRef = React.useRef(null);
 
-  // Versies
+  // Buttons styling helpers
+  const btn       = "rounded-full px-3 py-1 text-sm border";
+  const btnPri    = "rounded-full px-3 py-1 text-sm border border-black bg-black text-white hover:opacity-90";
+  const btnSec    = "rounded-full px-3 py-1 text-sm border border-gray-300 bg-gray-100 hover:bg-gray-200";
+  const btnDanger = "rounded-full px-3 py-1 text-sm border border-red-600 bg-red-600 text-white hover:bg-red-700";
+
+  // Versies / history
   const [panelOpen, setPanelOpen] = React.useState("versions");
   const [verPage, setVerPage]     = React.useState(0);
+  const applyingRemoteRef = React.useRef(false);
+
   const pageSize = 5;
   const versionsSorted = React.useMemo(
     () => [...(state.versions || [])].sort((a,b)=> b.ts - a.ts),
@@ -202,6 +199,28 @@ function App() {
   const pageStart  = curPage*pageSize;
   const visibleVersions = versionsSorted.slice(pageStart, pageStart + pageSize);
   React.useEffect(() => { setVerPage(0); }, [ (state.versions || []).length ]);
+
+  // History
+  const [past, setPast] = React.useState([]);
+  const [future, setFuture] = React.useState([]);
+  const pushHistory = (prev) => setPast((p) => [...p.slice(-49), prev]);
+  const applyState = (next) => { setState(next); setFuture([]); };
+  const undo = () => { if (!past.length) return; const prev = past[past.length-1]; setPast(past.slice(0,-1)); setFuture((f)=>[state, ...f]); setState(prev); };
+  const redo = () => { if (!future.length) return; const nxt = future[0]; setFuture(future.slice(1)); setPast((p)=>[...p, state]); setState(nxt); };
+
+  // Versies helpers
+  const saveVersion = (name) => {
+    const v = { id: uid(), name: name || `Versie ${new Date().toLocaleString()}`, ts: Date.now(), data: JSON.parse(JSON.stringify({ ...state, versions: [] })) };
+    pushHistory(state);
+    setState(prev => ({ ...prev, versions: [...(prev.versions || []), v] }));
+  };
+  const restoreVersion = (id) => {
+    const v = (state.versions || []).find((x)=>x.id===id); if (!v) return;
+    pushHistory(state);
+    const restored = withDefaults({ ...v.data, versions: state.versions || [] });
+    setState(restored);
+  };
+  const deleteVersion = (id) => { pushHistory(state); setState(prev => ({ ...prev, versions: (prev.versions || []).filter(v=>v.id!==id) })); };
 
   // Eerste load
   React.useEffect(() => {
@@ -310,7 +329,7 @@ function App() {
   // Sketch van huidige show -> Library
   const addSketchToLibrary = (sketchId) => {
     const src = (state.sketches || []).find(s => s.id === sketchId);
-    if (!src) return;
+    if (!src) return alert("Geen sketch geselecteerd.");
     const libItem = deepClone(src);
     libItem.libId = uid(); // eigen id in library
     pushHistory(state);
@@ -373,7 +392,7 @@ function App() {
     alert("Sketch vervangen vanuit de library.");
   };
 
-  // Filter + inline edit helper
+  // Library filter + inline edit
   const filteredLibrary = React.useMemo(() => {
     const q = (libraryQuery || "").toLowerCase();
     const arr = state.librarySketches || [];
@@ -402,47 +421,6 @@ function App() {
       librarySketches: (prev.librarySketches || []).filter(s => (s.libId || s.id) !== id)
     }));
   };
-
-  // ======= PORTAL/SELECT HOOKS — MOETTEN NA showSketches STAAN =======
-  const [selectedSketchId, setSelectedSketchId] = React.useState(null);
-  const [replaceLibChoice, setReplaceLibChoice] = React.useState("");
-
-  const scriptsHostRef = React.useRef(null);
-  const [scriptsPortalEl, setScriptsPortalEl] = React.useState(null);
-
-  React.useEffect(() => {
-    if (tab !== "scripts") return;
-    const host = scriptsHostRef.current;
-    if (!host) return;
-
-    // zoek de eerste select in ScriptsView (de "Selecteer sketch")
-    const select = host.querySelector("select");
-    if (!select) return;
-
-    // mountplek direct NA de select
-    let mount = host.querySelector("#knor-lib-ctrls");
-    if (!mount) {
-      mount = document.createElement("span");
-      mount.id = "knor-lib-ctrls";
-      mount.style.marginLeft = "8px";
-      select.insertAdjacentElement("afterend", mount);
-    }
-    setScriptsPortalEl(mount);
-
-    // sync geselecteerde id
-    const onChange = () => setSelectedSketchId(select.value || null);
-    onChange(); // init
-    select.addEventListener("change", onChange);
-    return () => select.removeEventListener("change", onChange);
-  }, [tab, showSketches]);
-
-  // fallback selectie
-  React.useEffect(() => {
-    if (selectedSketchId) return;
-    const ids = (showSketches || []).map(s => s.id);
-    setSelectedSketchId(ids[0] || null);
-  }, [showSketches, selectedSketchId]);
-  // ================================================================
 
   // Show
   const updateActiveShow = (patch) => {
@@ -490,7 +468,7 @@ function App() {
     alert("Show verwijderd.");
   };
 
-  // Dupliceren
+  // Dupliceren (bewuste, werkende knop in onze eigen toolbar)
   const duplicateCurrentShow = () => {
     if (!activeShow) { alert("Geen actieve show om te dupliceren."); return; }
     if (!confirm(`Wil je “${activeShow.name}” dupliceren?\nAlles (spelers, sketches, repetities) wordt gekopieerd naar een nieuwe show.`)) return;
@@ -529,13 +507,12 @@ function App() {
     alert("Show gedupliceerd. Je kijkt nu naar de kopie.");
   };
 
-  // SHARE-MODE
+  // --- Share mode helpers (ongewijzigd) ---
   const shareTab = React.useMemo(() => {
     const p = new URLSearchParams((location.hash || "").replace("#",""));
     return p.get("share") || null;
   }, [location.hash]);
 
-  // SHARE context helpers
   const _shareParams = React.useMemo(() => new URLSearchParams((location.hash || "").replace("#","")), [location.hash]);
   const _sid         = _shareParams.get("sid");
   const shareShow    = React.useMemo(() => {
@@ -641,7 +618,7 @@ function App() {
   // Als vergrendeld en niet in share: overlay tonen
   if (!shareTab && locked) return <PasswordGate onUnlock={handleUnlock} />;
 
-  // Export / Import
+  // Export / Import (ongewijzigd)
   const exportShow = async () => {
     if (!activeShow) return;
     const token = localStorage.getItem('knor:authToken') || '';
@@ -709,7 +686,7 @@ function App() {
     pick.click();
   };
 
-  // --- Share pages ---
+  /* =================== SHARE PAGES (ongewijzigd) =================== */
   if (shareTab === "rehearsals") {
     return (
       <div className="mx-auto max-w-6xl p-4 share-only">
@@ -868,11 +845,57 @@ function App() {
   }
 
   // ====== NORMALE APP ======
+
+  // PORTAL: mount plek naast "Selecteer sketch" (géén eigen change listener meer!)
+  React.useEffect(() => {
+    if (tab !== "scripts") return;
+    const host = scriptsHostRef.current;
+    if (!host) return;
+    const select = host.querySelector("select");
+    if (!select) return;
+
+    let mount = host.querySelector("#knor-lib-ctrls");
+    if (!mount) {
+      mount = document.createElement("span");
+      mount.id = "knor-lib-ctrls";
+      mount.style.marginLeft = "8px";
+      select.insertAdjacentElement("afterend", mount);
+    }
+    setScriptsPortalEl(mount);
+  }, [tab, showSketches]);
+
+  // Helper om de huidige sketch-id pas te lezen wanneer je een knop klikt
+  const getCurrentSketchId = () => {
+    const host = scriptsHostRef.current;
+    const select = host?.querySelector("select");
+    return select?.value || null;
+  };
+
+  // Verberg “Dupliceer show” uit PlannerMinimal
+  React.useEffect(() => {
+    const host = plannerRef.current;
+    if (!host) return;
+    const kill = () => {
+      const els = Array.from(host.querySelectorAll('button, a'));
+      els.forEach(el => {
+        const t = (el.textContent || "").toLowerCase().replace(/\s+/g,' ').trim();
+        if (t.includes("dupliceer") && t.includes("show")) {
+          // eerst verbergen, dan uit DOM halen
+          el.style.display = "none";
+          try { el.remove(); } catch {}
+        }
+      });
+    };
+    const mo = new MutationObserver(kill);
+    mo.observe(host, { childList: true, subtree: true });
+    kill();
+    return () => mo.disconnect();
+  }, [tab]);
+
   return (
     <div className="mx-auto max-w-7xl p-4">
       <header className="sticky top-0 z-40 w-full border-b bg-white/80 backdrop-blur brand-header">
         <div className="mx-auto max-w-7xl px-4">
-
           {/* Rij 1: logo + actieve show */}
           <div className="h-12 flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -994,21 +1017,21 @@ function App() {
 
         {tab === "scripts" && (
           <div className="space-y-3">
-
-            {/* Editor met portal-target om knoppen naast de select te plaatsen */}
+            {/* Editor + portal-target */}
             <div ref={scriptsHostRef}>
               <TabErrorBoundary>
                 <C_ScriptsView sketches={showSketches} people={showPeople} onUpdate={updateSketch} />
               </TabErrorBoundary>
 
               {/* PORTAL: knoppen direct naast "Selecteer sketch" dropdown */}
-              {scriptsPortalEl && ReactDOM && ReactDOM.createPortal(
+              {scriptsPortalEl && ReactDOM.createPortal(
                 <span className="inline-flex items-center gap-2 ml-2">
                   <button
                     className={btnSec}
                     onClick={() => {
-                      if (!selectedSketchId) return alert("Kies eerst een sketch.");
-                      setReplaceTarget(selectedSketchId);
+                      const id = getCurrentSketchId();
+                      if (!id) return alert("Kies eerst een sketch.");
+                      setReplaceTarget(id);
                     }}
                     title="Vervang huidige selectie door item uit library"
                   >
@@ -1017,8 +1040,9 @@ function App() {
                   <button
                     className={btnSec}
                     onClick={() => {
-                      if (!selectedSketchId) return alert("Kies eerst een sketch.");
-                      addSketchToLibrary(selectedSketchId);
+                      const id = getCurrentSketchId();
+                      if (!id) return alert("Kies eerst een sketch.");
+                      addSketchToLibrary(id);
                     }}
                     title="Sla huidige selectie op in de library"
                   >
@@ -1036,7 +1060,7 @@ function App() {
               )}
             </div>
 
-            {/* POP-UP: Sketch Library (globaal, bewerkbaar) */}
+            {/* POP-UP: Sketch Library */}
             {libraryOpen && (
               <div className="fixed inset-0 z-[10000] bg-black/30 backdrop-blur-sm flex items-center justify-center p-4">
                 <div className="w-[min(96vw,1000px)] max-h-[85vh] overflow-hidden rounded-2xl bg-white border shadow-xl flex flex-col">
@@ -1158,14 +1182,18 @@ function App() {
                 <div className="w-[min(92vw,520px)] rounded-2xl bg-white border shadow-xl p-4">
                   <div className="flex items-center justify-between mb-3">
                     <div className="font-semibold">Vervang sketch vanuit library</div>
-                    <button className={btnSec} onClick={()=> { setReplaceTarget(null); setReplaceLibChoice(""); }}>Sluiten</button>
+                    <button className={btnSec} onClick={()=> { setReplaceTarget(null); }}>Sluiten</button>
                   </div>
 
                   <label className="text-sm text-gray-700 block mb-1">Kies library-item</label>
                   <select
                     className="w-full rounded border px-3 py-2 text-sm"
-                    value={replaceLibChoice}
-                    onChange={(e)=> setReplaceLibChoice(e.target.value)}
+                    defaultValue=""
+                    onChange={(e)=>{
+                      const libId = e.target.value;
+                      if (!libId) return;
+                      replaceSketchWithLibrary(replaceTargetId, libId);
+                    }}
                   >
                     <option value="">— Kies —</option>
                     {(state.librarySketches || []).map(item => (
@@ -1174,17 +1202,6 @@ function App() {
                       </option>
                     ))}
                   </select>
-
-                  <div className="mt-3 flex items-center justify-end gap-2">
-                    <button className={btnSec} onClick={()=> { setReplaceTarget(null); setReplaceLibChoice(""); }}>Annuleer</button>
-                    <button
-                      className={btnPri}
-                      disabled={!replaceLibChoice}
-                      onClick={()=> replaceSketchWithLibrary(replaceTargetId, replaceLibChoice)}
-                    >
-                      Vervang
-                    </button>
-                  </div>
 
                   <div className="text-[11px] text-gray-500 mt-2">
                     NB: Spelers die niet bestaan in deze show worden teruggezet naar “Kies speler/danser”.
@@ -1212,12 +1229,15 @@ function App() {
               </span>
             </div>
 
-            <C_PlannerMinimal
-              state={state}
-              setState={(fn)=>{ pushHistory(state); setState(fn(state)); }}
-              activeShowId={activeShowId}
-              setActiveShowId={setActiveShowId}
-            />
+            {/* Belangrijk: wrapper zodat we de ‘Dupliceer show’-knop van PlannerMinimal kunnen verbergen */}
+            <div ref={plannerRef}>
+              <C_PlannerMinimal
+                state={state}
+                setState={(fn)=>{ pushHistory(state); setState(fn(state)); }}
+                activeShowId={activeShowId}
+                setActiveShowId={setActiveShowId}
+              />
+            </div>
           </div>
         )}
 
