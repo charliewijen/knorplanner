@@ -1,5 +1,6 @@
 // RehearsalPlanner.jsx — compact, NL-weekdag zonder verspringen,
-// live updates die NIET terugstuiteren, “Vandaag” telt als komend.
+// stabiele sortering (dag→tijd), vrije-tekst-locatie blijft staan,
+// “Vandaag” telt als komend, en nieuw-item-pop-up.
 (function () {
   const { useEffect, useMemo, useRef, useState } = React;
 
@@ -23,34 +24,69 @@
   ];
 
   /* -------------------- helpers -------------------- */
+  // Normaliseer ook data die per ongeluk als DD-MM-YYYY zijn opgeslagen
+  const toISO = (dateStr) => {
+    const s = String(dateStr || "").trim();
+    if (!s) return "";
+    // YYYY-MM-DD
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    // DD-MM-YYYY
+    const m = s.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+    if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+    // YYYY/MM/DD -> YYYY-MM-DD
+    const m2 = s.match(/^(\d{4})\/(\d{2})\/(\d{2})$/);
+    if (m2) return `${m2[1]}-${m2[2]}-${m2[3]}`;
+    // Laatste redmiddel: Date parse
+    try {
+      const d = new Date(s);
+      if (!isNaN(d)) {
+        const mm = String(d.getMonth() + 1).padStart(2, "0");
+        const dd = String(d.getDate()).padStart(2, "0");
+        return `${d.getFullYear()}-${mm}-${dd}`;
+      }
+    } catch {}
+    return s; // als niets pakte, laat zoals is
+  };
+
   const fmtWeekdayNL = (dateStr) => {
     try {
-      if (!dateStr) return "—";
-      const d = new Date(`${dateStr}T12:00:00`);
+      const iso = toISO(dateStr);
+      if (!iso) return "—";
+      const d = new Date(`${iso}T12:00:00`);
       return new Intl.DateTimeFormat("nl-NL", { weekday: "long" }).format(d);
-    } catch { return "—"; }
+    } catch {
+      return "—";
+    }
   };
+
   const toDayTs = (dateStr) => {
-    if (!dateStr) return 0;
-    return new Date(`${dateStr}T00:00:00`).getTime();
+    const iso = toISO(dateStr);
+    if (!iso) return 0;
+    return new Date(`${iso}T00:00:00`).getTime();
   };
 
-const timeToMin = (timeStr) => {
-  if (!timeStr) return 24 * 60 + 59; // lege/ongeldige tijden komen achteraan binnen dezelfde dag
-  const [h, m] = String(timeStr).split(":").map((n) => parseInt(n, 10));
-  if (!Number.isFinite(h) || !Number.isFinite(m)) return 24 * 60 + 59;
-  return h * 60 + m;
-};
+  const timeToMin = (timeStr) => {
+    if (!timeStr) return 24 * 60 + 59; // leeg -> aan eind van de dag
+    const [h, m] = String(timeStr).split(":").map((n) => parseInt(n, 10));
+    if (!Number.isFinite(h) || !Number.isFinite(m)) return 24 * 60 + 59;
+    return h * 60 + m;
+  };
 
+  const startOfToday = (() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d.getTime();
+  })();
 
-  const startOfToday = (() => { const d = new Date(); d.setHours(0,0,0,0); return d.getTime(); })();
   const fullName = (p) => {
     if (!p) return "";
     const fn = (p.firstName || "").trim();
     const ln = (p.lastName || p.name || "").trim();
     return [fn, ln].filter(Boolean).join(" ") || (p.name || "");
   };
-  const isOneOf = (val, arr) => arr.some(o => String(o).toLowerCase() === String(val||"").toLowerCase());
+
+  const isOneOf = (val, arr) =>
+    arr.some((o) => String(o).toLowerCase() === String(val || "").toLowerCase());
 
   /* -------------------- component -------------------- */
   function RehearsalPlanner({
@@ -63,7 +99,8 @@ const timeToMin = (timeStr) => {
   }) {
     const readOnly =
       roProp ??
-      (typeof location !== "undefined" && (location.hash || "").includes("share="));
+      (typeof location !== "undefined" &&
+        (location.hash || "").includes("share="));
 
     /* ---------- styling ---------- */
     const css = `
@@ -81,12 +118,12 @@ const timeToMin = (timeStr) => {
       .rp-actions .btn{border:1px solid #d1d5db;background:#f3f4f6;border-radius:9999px;padding:6px 12px;font-size:12px}
       .rp-badge-req{font-size:11px;font-weight:800;color:#7c2d12;background:#ffedd5;border:1px solid #fdba74;border-radius:9999px;padding:3px 8px;white-space:nowrap}
 
-      /* R1: grid met 2 rijen -> weekdag in rij 2; overal een pad zodat niks 'zakt' */
+      /* R1: grid met 2 rijen -> weekdag in rij 2; pads voorkomen verspringen */
       .rp-top{display:grid;gap:8px;align-items:end;
         grid-template-columns:160px 110px 1fr 220px 220px auto;
         grid-auto-rows:auto}
       .rp-week{grid-column:1/2;align-self:start;margin-top:-2px}
-      .rp-pad{height:18px} /* zelfde hoogte als weekregel */
+      .rp-pad{height:18px}
       @media(min-width:768px) and (max-width:1200px){
         .rp-top{grid-template-columns:150px 110px 1fr 200px 200px auto}
       }
@@ -109,6 +146,15 @@ const timeToMin = (timeStr) => {
       input[type="date"].rp-ctrl, input[type="time"].rp-ctrl{appearance:none;-webkit-appearance:none;height:36px}
       input[type="date"]::-webkit-datetime-edit,
       input[type="time"]::-webkit-datetime-edit{padding:0}
+
+      /* Modal */
+      .rp-modal-back{position:fixed;inset:0;background:rgba(0,0,0,.35);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;z-index:10000}
+      .rp-modal{width:min(92vw,720px);background:#fff;border:1px solid #e5e7eb;border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.15)}
+      .rp-modal-h{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #eee}
+      .rp-modal-b{padding:12px 14px}
+      .rp-modal-f{display:flex;gap:8px;justify-content:flex-end;padding:12px 14px;border-top:1px solid #eee}
+      .btn{border:1px solid #d1d5db;background:#f3f4f6;border-radius:9999px;padding:6px 12px;font-size:14px}
+      .btn-primary{background:#111827;color:#fff;border-color:#111827}
     `;
 
     /* ---------- lokale drafts (overschrijven NIET elke render) ---------- */
@@ -122,13 +168,15 @@ const timeToMin = (timeStr) => {
     useEffect(() => {
       setDrafts((prev) => {
         const next = { ...prev };
-        const ids = new Set(rehearsals.map(r => r.id));
+        const ids = new Set(rehearsals.map((r) => r.id));
         // add missing
-        rehearsals.forEach(r => {
+        rehearsals.forEach((r) => {
           if (!next[r.id]) next[r.id] = { ...r };
         });
         // remove deleted
-        Object.keys(next).forEach(id => { if (!ids.has(id)) delete next[id]; });
+        Object.keys(next).forEach((id) => {
+          if (!ids.has(id)) delete next[id];
+        });
         return next;
       });
     }, [rehearsals]);
@@ -140,7 +188,7 @@ const timeToMin = (timeStr) => {
       const d = drafts[id];
       if (!d) return;
       onUpdate(id, {
-        date: d.date || "",
+        date: toISO(d.date) || "",
         time: d.time || "",
         location: d.location || "",
         comments: d.comments || "",
@@ -155,8 +203,11 @@ const timeToMin = (timeStr) => {
     };
 
     const setField = (id, field, value, immediate = false) => {
-      setDrafts((prev) => ({ ...prev, [id]: { ...(prev[id] || {}), [field]: value } }));
-      if (!readOnly) immediate ? commitNow(id) : commitDebounced(id);
+      setDrafts((prev) => ({
+        ...prev,
+        [id]: { ...(prev[id] || {}), [field]: value },
+      }));
+      if (!readOnly) (immediate ? commitNow : commitDebounced)(id);
     };
 
     /* ---------- afwezig ---------- */
@@ -171,27 +222,109 @@ const timeToMin = (timeStr) => {
 
     /* ---------- sortering / splitsing ---------- */
     const sortedAll = useMemo(() => {
-  const arr = [...(rehearsals || [])];
-  arr.sort((a, b) => {
-    const da = toDayTs(a.date), db = toDayTs(b.date);
-    if (da !== db) return da - db;                 // eerst op dag
-    const ta = timeToMin(a.time), tb = timeToMin(b.time);
-    if (ta !== tb) return ta - tb;                 // dan op tijd
-    return String(a.id).localeCompare(String(b.id)); // stabiele tie-breaker
-  });
-  return arr;
-}, [rehearsals]);
+      const arr = [...(rehearsals || [])];
+      arr.sort((a, b) => {
+        const da = toDayTs(a.date),
+          db = toDayTs(b.date);
+        if (da !== db) return da - db; // eerst dag
+        const ta = timeToMin(a.time),
+          tb = timeToMin(b.time);
+        if (ta !== tb) return ta - tb; // dan tijd
+        return String(a.id).localeCompare(String(b.id)); // stabiel
+      });
+      return arr;
+    }, [rehearsals]);
 
-    const upcoming = useMemo(() => sortedAll.filter((r) => toDayTs(r.date) >= startOfToday), [sortedAll]);
-    const past     = useMemo(() => sortedAll.filter((r) => toDayTs(r.date) <  startOfToday).reverse(), [sortedAll]);
+    const upcoming = useMemo(
+      () => sortedAll.filter((r) => toDayTs(r.date) >= startOfToday),
+      [sortedAll]
+    );
+    const past = useMemo(
+      () => sortedAll.filter((r) => toDayTs(r.date) < startOfToday).reverse(),
+      [sortedAll]
+    );
+
+    /* ---------- Nieuw item pop-up ---------- */
+    const [addOpen, setAddOpen] = useState(false);
+    const [newDraft, setNewDraft] = useState(() => {
+      const todayISO = toISO(
+        new Date().toISOString().slice(0, 10) // YYYY-MM-DD
+      );
+      return {
+        date: todayISO,
+        time: "19:00",
+        location: LOCATION_OPTIONS[0],
+        type: "Reguliere Repetitie",
+        comments: "",
+        requiredPresent: false,
+      };
+    });
+
+    // Detecteer nieuw item (als onAdd geen ID teruggeeft)
+    const pendingCreateRef = useRef(null);
+    useEffect(() => {
+      const p = pendingCreateRef.current;
+      if (!p) return;
+      // zoek item dat nog niet bestond
+      const nowIds = new Set(rehearsals.map((r) => r.id));
+      const newId = [...nowIds].find((id) => !p.prevIds.has(id));
+      if (newId && onUpdate) {
+        onUpdate(newId, {
+          date: toISO(p.payload.date),
+          time: p.payload.time,
+          location: p.payload.location,
+          comments: p.payload.comments,
+          absentees: [],
+          type: p.payload.type,
+          requiredPresent: !!p.payload.requiredPresent,
+        });
+        pendingCreateRef.current = null;
+      }
+    }, [rehearsals, onUpdate]);
+
+    const openAdd = () => {
+      setNewDraft((d) => ({ ...d, date: toISO(new Date().toISOString().slice(0, 10)) }));
+      setAddOpen(true);
+    };
+
+    const createFromModal = () => {
+      const payload = {
+        date: toISO(newDraft.date),
+        time: newDraft.time,
+        location: newDraft.location,
+        comments: newDraft.comments,
+        type: newDraft.type,
+        requiredPresent: !!newDraft.requiredPresent,
+      };
+      if (!onAdd) return setAddOpen(false);
+
+      // Bewaar huidige IDs om nieuw item te herkennen
+      const prevIds = new Set(rehearsals.map((r) => r.id));
+      let returnedId = null;
+      try {
+        returnedId = onAdd(payload); // mag (optioneel) een ID teruggeven
+      } catch {}
+
+      if (typeof returnedId === "string" && returnedId && onUpdate) {
+        // Parent gaf een ID — direct vullen
+        onUpdate(returnedId, {
+          ...payload,
+          absentees: [],
+        });
+      } else {
+        // Geen ID? Dan na eerstvolgende props-update detecteren en dan vullen
+        pendingCreateRef.current = { prevIds, payload };
+      }
+      setAddOpen(false);
+    };
 
     /* ---------- kaart ---------- */
     const Card = (r) => {
       const d = drafts[r.id] || r;
       const weekday = fmtWeekdayNL(d.date);
 
-      const locValue  = isOneOf(d.location, LOCATION_OPTIONS) ? d.location : "__other__";
-      const typeValue = isOneOf(d.type, TYPE_OPTIONS)         ? d.type     : "__otherType__";
+      const locationInList = isOneOf(d.location, LOCATION_OPTIONS);
+      const typeInList = isOneOf(d.type, TYPE_OPTIONS);
 
       return (
         <div key={r.id} className={`rp-card ${d.requiredPresent ? "required" : ""}`}>
@@ -202,8 +335,8 @@ const timeToMin = (timeStr) => {
               <input
                 type="date"
                 className="w-full rounded border rp-ctrl"
-                value={d.date || ""}
-                onChange={(e) => setField(r.id, "date", e.target.value, true)}
+                value={toISO(d.date) || ""}
+                onChange={(e) => setField(r.id, "date", toISO(e.target.value), true)}
                 disabled={readOnly}
               />
             </div>
@@ -221,64 +354,85 @@ const timeToMin = (timeStr) => {
 
             <div className="rp-location">
               <div className="rp-label">Locatie</div>
-              <select
-                className="w-full rounded border rp-ctrl"
-                value={locValue}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  if (v === "__other__") {
-                    if (isOneOf(d.location, LOCATION_OPTIONS))
-                      setField(r.id, "location", "Anders: Zie comments", true);
-                  } else {
-                    setField(r.id, "location", v, true);
-                  }
-                }}
-                disabled={readOnly}
-              >
-                {LOCATION_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                <option value="__other__">Anders (vrije tekst)</option>
-              </select>
+              {locationInList ? (
+                <select
+                  className="w-full rounded border rp-ctrl"
+                  value={d.location || LOCATION_OPTIONS[0]}
+                  onChange={(e) => setField(r.id, "location", e.target.value, true)}
+                  disabled={readOnly}
+                >
+                  {LOCATION_OPTIONS.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  className="w-full rounded border rp-ctrl"
+                  placeholder="Locatie (vrije tekst)…"
+                  value={d.location || ""}
+                  onChange={(e) => setField(r.id, "location", e.target.value, false)}
+                  onBlur={() => commitNow(r.id)}
+                  disabled={readOnly}
+                />
+              )}
             </div>
 
             <div className="rp-type">
               <div className="rp-label">Type</div>
-              <select
-                className="w-full rounded border rp-ctrl"
-                value={typeValue}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  if (v === "__otherType__") {
-                    if (isOneOf(d.type, TYPE_OPTIONS))
-                      setField(r.id, "type", "Anders: zie comments", true);
-                  } else {
-                    setField(r.id, "type", v, true);
-                  }
-                }}
-                disabled={readOnly}
-              >
-                {TYPE_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                <option value="__otherType__">Anders (vrije tekst)</option>
-              </select>
+              {typeInList ? (
+                <select
+                  className="w-full rounded border rp-ctrl"
+                  value={d.type || TYPE_OPTIONS[1]}
+                  onChange={(e) => setField(r.id, "type", e.target.value, true)}
+                  disabled={readOnly}
+                >
+                  {TYPE_OPTIONS.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  className="w-full rounded border rp-ctrl"
+                  placeholder="Type (vrije tekst)…"
+                  value={d.type || ""}
+                  onChange={(e) => setField(r.id, "type", e.target.value, false)}
+                  onBlur={() => commitNow(r.id)}
+                  disabled={readOnly}
+                />
+              )}
             </div>
 
-            <div className="rp-req" style={{display:'flex',gap:8,alignItems:'center',justifySelf:'start'}}>
+            <div
+              className="rp-req"
+              style={{ display: "flex", gap: 8, alignItems: "center", justifySelf: "start" }}
+            >
               <label className="inline-flex items-center gap-2">
                 <input
                   type="checkbox"
                   className="rounded border"
                   checked={!!d.requiredPresent}
-                  onChange={(e)=> setField(r.id, "requiredPresent", !!e.target.checked, true)}
+                  onChange={(e) => setField(r.id, "requiredPresent", !!e.target.checked, true)}
                   disabled={readOnly}
                 />
-                <span style={{fontSize:12,fontWeight:700}}>VERPLICHT AANWEZIG</span>
+                <span style={{ fontSize: 12, fontWeight: 700 }}>VERPLICHT AANWEZIG</span>
               </label>
-              {d.requiredPresent && <span className="rp-badge-req">Aanwezigheid<br></br>vereist!</span>}
+              {d.requiredPresent && (
+                <span className="rp-badge-req">
+                  Aanwezigheid<br />vereist!
+                </span>
+              )}
             </div>
 
             {!readOnly && (
-              <div className="rp-actions" style={{justifySelf:'end'}}>
+              <div className="rp-actions" style={{ justifySelf: "end" }}>
                 <button className="btn-del" onClick={() => onRemove && onRemove(r.id)}>
-                  X
+                  Verwijder
                 </button>
               </div>
             )}
@@ -310,21 +464,27 @@ const timeToMin = (timeStr) => {
             <div>
               <div className="rp-label">Afwezig</div>
               <div className="truncate">
-                {!(d.absentees||[]).length ? <span className="rp-chip">—</span> :
-                  (d.absentees||[]).map(pid => {
-                    const p = people.find(x => x.id === pid);
+                {!(d.absentees || []).length ? (
+                  <span className="rp-chip">—</span>
+                ) : (
+                  (d.absentees || []).map((pid) => {
+                    const p = people.find((x) => x.id === pid);
                     if (!p) return null;
-                    return <span key={pid} className="rp-chip rp-chip-abs">{fullName(p)}</span>;
+                    return (
+                      <span key={pid} className="rp-chip rp-chip-abs">
+                        {fullName(p)}
+                      </span>
+                    );
                   })
-                }
+                )}
               </div>
             </div>
 
             {!readOnly && (
-              <div className="rp-edit" style={{justifySelf:'end', alignSelf:'end'}}>
+              <div className="rp-edit" style={{ justifySelf: "end", alignSelf: "end" }}>
                 <button
                   className="btn"
-                  onClick={() => setOpenAbsId(cur => cur === r.id ? null : r.id)}
+                  onClick={() => setOpenAbsId((cur) => (cur === r.id ? null : r.id))}
                 >
                   {openAbsId === r.id ? "Sluiten" : "Bewerk afwezig"}
                 </button>
@@ -334,7 +494,7 @@ const timeToMin = (timeStr) => {
 
           {/* Afwezig-panel */}
           {!readOnly && openAbsId === r.id && (
-            <div style={{marginTop:8}}>
+            <div style={{ marginTop: 8 }}>
               <div className="flex items-center justify-between mb-1">
                 <div className="text-sm font-medium">Selecteer afwezigen</div>
                 <button className="rp-muted underline" onClick={() => clearAbsentees(r.id)}>
@@ -343,13 +503,15 @@ const timeToMin = (timeStr) => {
               </div>
               <div
                 style={{
-                  display:'grid',
-                  gap:'6px',
-                  gridTemplateColumns:'repeat(auto-fill,minmax(180px,1fr))'
+                  display: "grid",
+                  gap: "6px",
+                  gridTemplateColumns: "repeat(auto-fill,minmax(180px,1fr))",
                 }}
               >
-                {people.length === 0 && <div className="rp-muted">Geen spelers voor deze show.</div>}
-                {people.map(p => {
+                {people.length === 0 && (
+                  <div className="rp-muted">Geen spelers voor deze show.</div>
+                )}
+                {people.map((p) => {
                   const checked = (drafts[r.id]?.absentees || []).includes(p.id);
                   return (
                     <label key={p.id} className="inline-flex items-center gap-2 text-sm">
@@ -376,13 +538,95 @@ const timeToMin = (timeStr) => {
 
         {!readOnly && (
           <div className="flex flex-wrap items-center gap-2 mb-2">
-            <button
-              className="rounded-full border px-3 py-1 text-sm bg-black text-white"
-              onClick={() => onAdd && onAdd()}
-            >
+            <button className="rounded-full border px-3 py-1 text-sm bg-black text-white" onClick={openAdd}>
               + Repetitie toevoegen
             </button>
             <span className="rp-muted">Compact • automatische opslag • NL-weekdag</span>
+          </div>
+        )}
+
+        {/* Nieuw item modal */}
+        {addOpen && !readOnly && (
+          <div className="rp-modal-back" onClick={(e)=>{ if(e.target===e.currentTarget) setAddOpen(false); }}>
+            <div className="rp-modal" role="dialog" aria-modal="true">
+              <div className="rp-modal-h">
+                <div className="font-semibold">Nieuwe repetitie</div>
+                <button className="btn" onClick={()=>setAddOpen(false)}>Sluiten</button>
+              </div>
+              <div className="rp-modal-b">
+                <div className="rp-top" style={{gridTemplateColumns:"160px 110px 1fr 220px auto"}}>
+                  <div>
+                    <div className="rp-label">Datum</div>
+                    <input
+                      type="date"
+                      className="w-full rounded border rp-ctrl"
+                      value={toISO(newDraft.date)}
+                      onChange={(e)=> setNewDraft(d=>({...d, date: toISO(e.target.value)}))}
+                    />
+                  </div>
+                  <div>
+                    <div className="rp-label">Tijd</div>
+                    <input
+                      type="time"
+                      className="w-full rounded border rp-ctrl"
+                      value={newDraft.time}
+                      onChange={(e)=> setNewDraft(d=>({...d, time: e.target.value}))}
+                    />
+                  </div>
+                  <div className="rp-location">
+                    <div className="rp-label">Locatie</div>
+                    <select
+                      className="w-full rounded border rp-ctrl"
+                      value={isOneOf(newDraft.location, LOCATION_OPTIONS) ? newDraft.location : LOCATION_OPTIONS[0]}
+                      onChange={(e)=> setNewDraft(d=>({...d, location: e.target.value}))}
+                    >
+                      {LOCATION_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                    </select>
+                  </div>
+                  <div className="rp-type">
+                    <div className="rp-label">Type</div>
+                    <select
+                      className="w-full rounded border rp-ctrl"
+                      value={isOneOf(newDraft.type, TYPE_OPTIONS) ? newDraft.type : "Reguliere Repetitie"}
+                      onChange={(e)=> setNewDraft(d=>({...d, type: e.target.value}))}
+                    >
+                      {TYPE_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                    </select>
+                  </div>
+                  <div className="rp-req" style={{display:'flex',alignItems:'center',gap:8}}>
+                    <label className="inline-flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        className="rounded border"
+                        checked={!!newDraft.requiredPresent}
+                        onChange={(e)=> setNewDraft(d=>({...d, requiredPresent: !!e.target.checked}))}
+                      />
+                      <span style={{fontSize:12,fontWeight:700}}>VERPLICHT AANWEZIG</span>
+                    </label>
+                  </div>
+
+                  <div className="rp-week rp-sub">{fmtWeekdayNL(newDraft.date)}</div>
+                  <div className="rp-pad"></div><div className="rp-pad"></div><div className="rp-pad"></div><div className="rp-pad"></div>
+                </div>
+
+                <div className="rp-row" style={{gridTemplateColumns:"1fr"}}>
+                  <div>
+                    <div className="rp-label">Notities</div>
+                    <textarea
+                      rows={2}
+                      className="w-full rounded border rp-note"
+                      placeholder="Korte notitie…"
+                      value={newDraft.comments}
+                      onChange={(e)=> setNewDraft(d=>({...d, comments: e.target.value}))}
+                    />
+                  </div>
+                </div>
+              </div>
+              <div className="rp-modal-f">
+                <button className="btn" onClick={()=>setAddOpen(false)}>Annuleren</button>
+                <button className="btn btn-primary" onClick={createFromModal}>Klaar</button>
+              </div>
+            </div>
           </div>
         )}
 
@@ -398,7 +642,11 @@ const timeToMin = (timeStr) => {
             Vorige repetities <span className="rp-muted">({past.length})</span>
           </summary>
           <div className="grid gap-2 mt-2">
-            {past.length ? past.map(Card) : <div className="rounded-xl border p-3 rp-muted">Geen vorige items.</div>}
+            {past.length ? (
+              past.map(Card)
+            ) : (
+              <div className="rounded-xl border p-3 rp-muted">Geen vorige items.</div>
+            )}
           </div>
         </details>
       </div>
