@@ -157,6 +157,11 @@ function PasswordGate({ onUnlock }) {
   );
 }
 
+// --- TEMP: vang alles af om de boosdoener te zien ---
+window.addEventListener('error',  e => { console.error('GlobalError', e.error||e.message, e); alert('Fout: '+(e.error?.message||e.message)); });
+window.addEventListener('unhandledrejection', e => { console.error('Unhandled', e.reason, e); alert('Unhandled: '+(e.reason?.message||e.reason)); });
+
+
 // ---------- Root Component ----------
 function App() {
   const boot = React.useMemo(() => withDefaults(), []);
@@ -171,6 +176,15 @@ function App() {
   const [libraryQuery, setLibraryQuery]     = React.useState("");
   const [libEditId, setLibEditId]           = React.useState(null);
 
+  // --- bypass overlay ---
+const quickLogin = async () => {
+  const pw = prompt('Wachtwoord?');
+  if (!pw) return;
+  const ok = await handleUnlock(pw);
+  alert(ok ? 'Ingelogd' : 'Onjuist wachtwoord');
+};
+
+  
   // host voor DOM-portal waar de knoppen naast de dropdown komen
   const scriptsHostRef = React.useRef(null);
   const [scriptsPortalEl, setScriptsPortalEl] = React.useState(null);
@@ -539,17 +553,35 @@ function App() {
   }, [shareTab, state.settings?.requirePassword, state.rev]);
 
   const handleUnlock = async (plainPw) => {
+  try {
+    const res = await fetch('/.netlify/functions/pw', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({ password: plainPw })
+    });
+    if (!res.ok) return false;
+    const { token, exp } = await res.json();
+    if (!token) return false;
+
+    localStorage.setItem('knor:authToken', token);
+    if (exp) localStorage.setItem('knor:authExp', String(exp));
+    setLocked(false);
+
+    // ▼ Forceer meteen een sync zodat de banner omschakelt
+    setSyncStatus('🔑 Ingelogd — synchroniseren…');
     try {
-      const res = await fetch('/.netlify/functions/pw', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ password: plainPw }) });
-      if (!res.ok) return false;
-      const { token, exp } = await res.json();
-      if (!token) return false;
-      localStorage.setItem('knor:authToken', token);
-      if (exp) localStorage.setItem('knor:authExp', String(exp));
-      setLocked(false);
-      return true;
-    } catch { return false; }
-  };
+      await saveStateRemote({ ...state, rev: Date.now() });
+      setSyncStatus("✅ Gesynced om " + new Date().toLocaleTimeString());
+    } catch {
+      setSyncStatus("⚠️ Opslaan mislukt (lokaal bewaard)");
+    }
+
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 
   const lockNow = async () => {
     try { await saveStateRemote({ ...state, rev: Date.now() }); } catch {}
@@ -1315,7 +1347,7 @@ function App() {
                   </div>
 
                   <div className="flex flex-wrap gap-2">
-                    <button className={btnPri} onClick={()=>setLocked(true)}>Log in</button>
+<button className={btnPri} onClick={quickLogin}>Log in</button>
                     <button className={btnDanger} onClick={logout}>Log uit</button>
                     <button className={btnSec} onClick={lockNow}>Vergrendel nu</button>
                   </div>
