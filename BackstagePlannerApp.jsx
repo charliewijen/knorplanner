@@ -890,7 +890,7 @@ React.useEffect(() => {
     );
   }
 
-// ---------- SHARE: DRAAIBOEK (korte hub met links) ----------
+// ---------- SHARE: DRAAIBOEK (korte hub met links + logo + tekst) ----------
 if (shareTab === "deck") {
   const sid = _sid || shareShow?.id;
   const base = `${location.origin}${location.pathname}`;
@@ -907,14 +907,31 @@ if (shareTab === "deck") {
 
   return (
     <div className="mx-auto max-w-3xl p-4">
-      <h1 className="text-2xl font-bold mb-2">
-        Draaiboek — links{" "}
-        <span className="text-base font-normal text-gray-500">— {shareShow?.name}</span>
-      </h1>
-      <p className="text-sm text-gray-600 mb-4">
-        Dit is een compacte pagina met alleen links naar de aparte deelbare pagina’s (alleen-lezen).
+      {/* Logo + titel */}
+      <div className="flex items-center gap-3 mb-3">
+        <img
+          src="https://cdn-icons-png.flaticon.com/512/616/616584.png"
+          alt="KnorPlanner"
+          className="w-8 h-8"
+        />
+        <h1 className="text-2xl font-bold">
+          Draaiboek — links{" "}
+          <span className="text-base font-normal text-gray-500">— {shareShow?.name}</span>
+        </h1>
+      </div>
+
+      {/* Welkomsttekst */}
+      <p className="text-sm text-gray-700 mb-2">
+        Leuk dat je mee doet aan <b>{shareShow?.name || "de show"}</b>.
+        Hieronder vind je alle links die je nodig hebt!
       </p>
 
+      {/* Humorblokje */}
+      <div className="mb-4 rounded-xl border p-3 bg-pink-50/60 text-pink-900 text-sm">
+        🐷 <b>Backstage-tip:</b> als iets niet werkt, geef de microfoon een <i>knor</i>… grapje — gewoon even verversen of de regie appen. 😉
+      </div>
+
+      {/* Linklijst */}
       <ul className="space-y-2">
         {links.map(({ key, label }) => (
           <li key={key} className="flex items-center justify-between rounded-xl border p-3">
