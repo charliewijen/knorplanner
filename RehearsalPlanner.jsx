@@ -1,9 +1,5 @@
-// RehearsalPlanner.jsx — compact & strak met "vorige" lijst
-// - Multi-select AFWEZIG (checkboxen)
-// - Soepele comments (draft + debounce; geen focusverlies)
-// - Weekdag (nl-NL) onder datum
-// - Vorige repetities automatisch onderaan (inklapbaar)
-// - Houdt rekening met readOnly (share) en bestaande data
+// RehearsalPlanner.jsx — compact 2-rijen layout met NL-weekdag en multi-afwezig
+// Houdt jouw bestaande data intact en werkt ook in share (readOnly).
 
 (function () {
   const { useEffect, useMemo, useRef, useState } = React;
@@ -14,18 +10,14 @@
       if (!dateStr) return "—";
       const d = new Date(`${dateStr}T12:00:00`);
       return new Intl.DateTimeFormat("nl-NL", { weekday: "long" }).format(d);
-    } catch {
-      return "—";
-    }
+    } catch { return "—"; }
   };
-
   const fullName = (p) => {
     if (!p) return "";
     const fn = (p.firstName || "").trim();
     const ln = (p.lastName || p.name || "").trim();
     return [fn, ln].filter(Boolean).join(" ") || (p.name || "");
   };
-
   const toTs = (dateStr, timeStr) => {
     if (!dateStr) return 0;
     const t = (timeStr && /^\d{2}:\d{2}$/.test(timeStr)) ? timeStr : "23:59";
@@ -40,43 +32,50 @@
     onRemove,
     readOnly: roProp,
   }) {
-    // Share-views zijn readonly
     const readOnly =
       roProp ??
       (typeof location !== "undefined" && (location.hash || "").includes("share="));
 
-    /* ---------- compacte, consistente CSS ---------- */
+    /* ---------- compacte CSS ---------- */
     const css = `
-      .rp-card{padding:12px;border-radius:12px;background:rgba(255,255,255,.82)}
-      .rp-top{display:grid;gap:10px;align-items:end}
-      /* Mobiel: twee kolommen (datum+tijd), rest onder elkaar */
+      .rp-wrap{position:relative;z-index:0}
+      .rp-card{padding:10px;border-radius:12px;background:#fff;border:1px solid #e5e7eb}
+      .rp-label{font-size:11px;color:#6b7280;margin-bottom:2px;line-height:1}
+      .rp-sub{font-size:11px;color:#6b7280;text-transform:capitalize;margin-top:2px;min-height:14px}
+      .rp-ctrl{height:32px;padding:4px 8px;line-height:1.15;font-size:14px}
+      .rp-note{min-height:32px;padding:6px 8px;font-size:14px;line-height:1.2}
+      .rp-chip{display:inline-flex;align-items:center;font-size:12px;border:1px solid #e5e7eb;border-radius:9999px;padding:2px 8px;margin:2px;background:#f9fafb;white-space:nowrap}
+      .rp-muted{font-size:12px;color:#6b7280}
+      .rp-actions .btn-del{border:1px solid #dc2626;background:#dc2626;color:#fff;border-radius:9999px;padding:4px 10px;font-size:12px}
+      .rp-actions .btn{border:1px solid #d1d5db;background:#f3f4f6;border-radius:9999px;padding:4px 10px;font-size:12px}
+      /* Grid: rij 1 is alle kernvelden op 1 regel. rij 2 is notities + afwezig + knop */
+      .rp-top{display:grid;gap:8px;align-items:center}
+      @media(min-width:768px){
+        .rp-top{grid-template-columns:140px 90px 1fr 160px auto}
+      }
       @media(max-width:767px){
         .rp-top{grid-template-columns:1fr 1fr}
         .rp-location{grid-column:1 / -1}
         .rp-type{grid-column:1 / 2}
         .rp-actions{grid-column:2 / 3;justify-self:end}
       }
-      /* Desktop: vaste kolommen die niet verspringen */
+      .rp-row{display:grid;gap:8px;align-items:end;margin-top:8px}
       @media(min-width:768px){
-        .rp-top{grid-template-columns:140px 110px 1fr 160px auto}
-        .rp-actions{justify-self:end}
+        .rp-row{grid-template-columns:1fr 1fr auto}
       }
-      .rp-label{font-size:11px;color:#6b7280;margin-bottom:2px;line-height:1}
-      .rp-ctrl{padding:.40rem .55rem;line-height:1.25}
-      .rp-week{font-size:11px;color:#6b7280;text-transform:capitalize;min-height:14px;margin-top:4px}
-      .rp-row{margin-top:8px}
-      .rp-chip{display:inline-flex;align-items:center;font-size:12px;border:1px solid #e5e7eb;border-radius:9999px;padding:2px 8px;margin:2px;background:#f9fafb}
-      .rp-note{min-height:2.25rem}
-      .rp-abs-grid{display:grid;gap:6px}
-      @media(min-width:768px){.rp-abs-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
-      @media(max-width:767px){.rp-abs-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-      .rp-section-title{font-weight:600;margin:6px 0}
-      .rp-muted{font-size:12px;color:#6b7280}
-      /* Zorg dat niets "onder" het sticky top-menu kruipt */
-      .rp-wrap{position:relative;z-index:0}
+      @media(max-width:767px){
+        .rp-row{grid-template-columns:1fr 1fr}
+        .rp-row .rp-edit{grid-column:1 / -1;justify-self:end}
+      }
+      /* verklein iOS date/time velden */
+      input[type="date"].rp-ctrl,
+      input[type="time"].rp-ctrl{appearance:none;-webkit-appearance:none;height:32px}
+      input[type="date"]::-webkit-date-and-time-value{min-height:1em}
+      input[type="date"]::-webkit-datetime-edit,
+      input[type="time"]::-webkit-datetime-edit{padding:0}
     `;
 
-    /* ---------- drafts (geen focusverlies) ---------- */
+    /* ---------- drafts + debounce (geen focusverlies) ---------- */
     const [drafts, setDrafts] = useState(() => {
       const o = {};
       (rehearsals || []).forEach((r) => (o[r.id] = { ...r }));
@@ -86,12 +85,8 @@
       setDrafts((prev) => {
         const next = { ...prev };
         const ids = new Set(rehearsals.map((r) => r.id));
-        rehearsals.forEach((r) => {
-          if (!next[r.id]) next[r.id] = { ...r };
-        });
-        Object.keys(next).forEach((id) => {
-          if (!ids.has(id)) delete next[id];
-        });
+        rehearsals.forEach((r) => { if (!next[r.id]) next[r.id] = { ...r }; });
+        Object.keys(next).forEach((id) => { if (!ids.has(id)) delete next[id]; });
         return next;
       });
     }, [rehearsals]);
@@ -110,7 +105,7 @@
         type: d.type || "",
       });
     };
-    const scheduleCommit = (id, ms = 350) => {
+    const scheduleCommit = (id, ms = 300) => {
       clearTimeout(timersRef.current[id]);
       timersRef.current[id] = setTimeout(() => commit(id), ms);
     };
@@ -122,7 +117,7 @@
       if (!readOnly) instant ? commit(id) : scheduleCommit(id);
     };
 
-    /* ---------- afwezig bewerken ---------- */
+    /* ---------- afwezig ---------- */
     const [openAbsId, setOpenAbsId] = useState(null);
     const toggleAbsentee = (id, personId) => {
       const cur = drafts[id]?.absentees || [];
@@ -132,7 +127,7 @@
     };
     const clearAbsentees = (id) => setField(id, "absentees", [], true);
 
-    /* ---------- sorteren + splitsen (komend vs. vorige) ---------- */
+    /* ---------- sortering & splitsing ---------- */
     const now = Date.now();
     const sortedAll = useMemo(() => {
       const arr = [...(rehearsals || [])];
@@ -143,17 +138,10 @@
       );
       return arr;
     }, [rehearsals]);
+    const upcoming = useMemo(() => sortedAll.filter((r) => toTs(r.date, r.time) >= now), [sortedAll, now]);
+    const past = useMemo(() => sortedAll.filter((r) => toTs(r.date, r.time) < now).reverse(), [sortedAll, now]);
 
-    const upcoming = useMemo(
-      () => sortedAll.filter((r) => toTs(r.date, r.time) >= now),
-      [sortedAll, now]
-    );
-    const past = useMemo(
-      () => sortedAll.filter((r) => toTs(r.date, r.time) < now).reverse(),
-      [sortedAll, now]
-    );
-
-    /* ---------- renderer voor één kaart ---------- */
+    /* ---------- kaart ---------- */
     const Card = (r) => {
       const d = drafts[r.id] || r;
       const weekday = fmtWeekdayNL(d.date);
@@ -164,29 +152,27 @@
       const hasAbs = absNames.length > 0;
 
       return (
-        <div key={r.id} className="rp-card border">
-          {/* Rij 1: vaste, strakke grid */}
+        <div key={r.id} className="rp-card">
+          {/* R1: datum, tijd, locatie, type, acties → allemaal één regel */}
           <div className="rp-top">
-            {/* Datum */}
             <div>
               <div className="rp-label">Datum</div>
               <input
                 type="date"
-                className="w-full rounded border rp-ctrl box-border"
+                className="w-full rounded border rp-ctrl"
                 value={d.date || ""}
                 onChange={(e) => setField(r.id, "date", e.target.value)}
                 onBlur={() => commit(r.id)}
                 disabled={readOnly}
               />
-              <div className="rp-week">{weekday}</div>
+              <div className="rp-sub">{weekday}</div>
             </div>
 
-            {/* Tijd */}
             <div>
               <div className="rp-label">Tijd</div>
               <input
                 type="time"
-                className="w-full rounded border rp-ctrl box-border"
+                className="w-full rounded border rp-ctrl"
                 value={d.time || ""}
                 onChange={(e) => setField(r.id, "time", e.target.value)}
                 onBlur={() => commit(r.id)}
@@ -194,13 +180,12 @@
               />
             </div>
 
-            {/* Locatie */}
             <div className="rp-location">
               <div className="rp-label">Locatie</div>
               <input
                 type="text"
-                className="w-full rounded border rp-ctrl box-border"
-                placeholder="Bijv. Grote zaal – Buurthuis"
+                className="w-full rounded border rp-ctrl"
+                placeholder="Grote zaal – Buurthuis"
                 value={d.location || ""}
                 onChange={(e) => setField(r.id, "location", e.target.value)}
                 onBlur={() => commit(r.id)}
@@ -208,11 +193,10 @@
               />
             </div>
 
-            {/* Type */}
             <div className="rp-type">
               <div className="rp-label">Type</div>
               <select
-                className="w-full rounded border rp-ctrl box-border"
+                className="w-full rounded border rp-ctrl"
                 value={d.type || "Reguliere Repetitie"}
                 onChange={(e) => setField(r.id, "type", e.target.value)}
                 onBlur={() => commit(r.id)}
@@ -226,35 +210,22 @@
               </select>
             </div>
 
-            {/* Acties */}
             {!readOnly && (
               <div className="rp-actions">
-                <button
-                  className="rounded-full px-3 py-1 text-sm border border-red-600 bg-red-600 text-white hover:bg-red-700"
-                  onClick={() => onRemove && onRemove(r.id)}
-                >
+                <button className="btn-del" onClick={() => onRemove && onRemove(r.id)}>
                   Verwijder
                 </button>
               </div>
             )}
           </div>
 
-          {/* Rij 2: notities + afwezig samenvatting + knop */}
-          <div
-            className="rp-row"
-            style={{
-              display: "grid",
-              gap: "10px",
-              gridTemplateColumns: readOnly ? "1fr 1fr" : "1fr 1fr auto",
-              alignItems: "end",
-            }}
-          >
-            {/* Notities */}
+          {/* R2: notities (links), afwezig chips (midden), knop bewerken (rechts) */}
+          <div className="rp-row">
             <div>
               <div className="rp-label">Notities</div>
               <textarea
-                rows={2}
-                className="w-full rounded border px-2 py-1 rp-note box-border"
+                rows={1}
+                className="w-full rounded border rp-note"
                 placeholder="Korte notitie…"
                 value={d.comments || ""}
                 onChange={(e) => setField(r.id, "comments", e.target.value)}
@@ -263,29 +234,20 @@
               />
             </div>
 
-            {/* Afwezig (chips) */}
             <div>
               <div className="rp-label">Afwezig</div>
               <div className="truncate">
-                {!hasAbs ? (
-                  <span className="rp-chip">—</span>
-                ) : (
-                  absNames.map((n, i) => (
-                    <span key={i} className="rp-chip">
-                      {n}
-                    </span>
-                  ))
-                )}
+                {!hasAbs ? <span className="rp-chip">—</span> : absNames.map((n, i) => (
+                  <span key={i} className="rp-chip">{n}</span>
+                ))}
               </div>
             </div>
 
-            {/* Toggle panel */}
             {!readOnly && (
-              <div className="justify-self-end">
+              <div className="rp-edit" style={{justifySelf:'end', alignSelf:'end'}}>
                 <button
-                  className="rounded-full border px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200"
-                  onClick={() => setOpenAbsId((cur) => (cur === r.id ? null : r.id))}
-                  title="Afwezig bewerken"
+                  className="btn"
+                  onClick={() => setOpenAbsId(cur => cur === r.id ? null : r.id)}
                 >
                   {openAbsId === r.id ? "Sluiten" : "Bewerk afwezig"}
                 </button>
@@ -293,23 +255,24 @@
             )}
           </div>
 
-          {/* Paneel met checkboxen (enkel wanneer geopend) */}
+          {/* Afwezig-panel (checkboxen) */}
           {!readOnly && openAbsId === r.id && (
-            <div className="rp-row">
+            <div style={{marginTop:8}}>
               <div className="flex items-center justify-between mb-1">
                 <div className="text-sm font-medium">Selecteer afwezigen</div>
-                <button
-                  className="text-xs underline text-gray-600"
-                  onClick={() => clearAbsentees(r.id)}
-                >
+                <button className="rp-muted underline" onClick={() => clearAbsentees(r.id)}>
                   alles leegmaken
                 </button>
               </div>
-              <div className="rp-abs-grid">
-                {people.length === 0 && (
-                  <div className="rp-muted">Nog geen spelers voor deze show.</div>
-                )}
-                {people.map((p) => {
+              <div
+                style={{
+                  display:'grid',
+                  gap:'6px',
+                  gridTemplateColumns:'repeat(auto-fill,minmax(180px,1fr))'
+                }}
+              >
+                {people.length === 0 && <div className="rp-muted">Geen spelers voor deze show.</div>}
+                {people.map(p => {
                   const checked = (d.absentees || []).includes(p.id);
                   return (
                     <label key={p.id} className="inline-flex items-center gap-2 text-sm">
@@ -342,32 +305,24 @@
             >
               + Repetitie toevoegen
             </button>
-            <span className="rp-muted">
-              Compacte weergave • opslaan gebeurt automatisch
-            </span>
+            <span className="rp-muted">Compacte weergave • automatisch opslaan</span>
           </div>
         )}
 
-        {/* KOMENDE */}
-        <div className="rp-section-title">Komende repetities</div>
+        <div className="text-base font-semibold mb-1">Komende repetities</div>
         {upcoming.length === 0 ? (
           <div className="rounded-xl border p-3 rp-muted">Geen komende repetities.</div>
         ) : (
           <div className="grid gap-2">{upcoming.map(Card)}</div>
         )}
 
-        {/* VORIGE (onderaan, inklapbaar) */}
-        <details className="mt-4">
+        <details className="mt-3">
           <summary className="cursor-pointer rounded-xl border px-3 py-2 bg-gray-50">
             Vorige repetities <span className="rp-muted">({past.length})</span>
           </summary>
-          <div className="grid gap-2 mt-2">
-            {past.length === 0 ? (
-              <div className="rounded-xl border p-3 rp-muted">Geen vorige items.</div>
-            ) : (
-              past.map(Card)
-            )}
-          </div>
+          <div className="grid gap-2 mt-2">{past.length ? past.map(Card) : (
+            <div className="rounded-xl border p-3 rp-muted">Geen vorige items.</div>
+          )}</div>
         </details>
       </div>
     );
