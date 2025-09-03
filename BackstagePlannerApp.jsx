@@ -963,6 +963,76 @@ if (shareTab === "deck") {
   );
 }
 
+// ---------- SHARE: DRAAIBOEK (hub met links + logo + tekst) ----------
+if (shareTab === "deck") {
+  const sid = _sid || shareShow?.id;
+  const base = `${location.origin}${location.pathname}`;
+  const links = [
+    { key: "runsheet",     label: "Programma" },
+    { key: "mics",         label: "Microfoons" },
+    { key: "rehearsals",   label: "Agenda" },
+    { key: "rolverdeling", label: "Rolverdeling" },
+    { key: "scripts",      label: "Sketches" },
+    { key: "prkit",        label: "PR-Kit" },
+  ];
+  const makeUrl = (k) => `${base}#share=${k}${sid ? `&sid=${sid}` : ""}`;
+
+  return (
+    <div className="mx-auto max-w-3xl p-4 share-only">
+      {/* Logo + titel */}
+      <div className="flex items-center gap-3 mb-3">
+        <img
+          src="https://cdn-icons-png.flaticon.com/512/616/616584.png"
+          alt="KnorPlanner"
+          className="w-8 h-8"
+        />
+        <h1 className="text-2xl font-bold">
+          Draaiboek — links{" "}
+          <span className="text-base font-normal text-gray-500">— {shareShow?.name}</span>
+        </h1>
+      </div>
+
+      {/* Welkomsttekst */}
+      <p className="text-sm text-gray-700 mb-3">
+        Leuk dat je mee doet aan <b>{shareShow?.name || "de show"}</b>. Hieronder vind je alle links die je nodig hebt!
+      </p>
+
+      {/* Humorblokje */}
+      <div className="mb-4 rounded-xl border p-3 bg-pink-50/60 text-pink-900 text-sm">
+        🐷 <b>Backstage-tip:</b> werkt er iets niet? Geef de microfoon een vriendelijk <i>knor</i>… of ververs de pagina. Werkt soms verbazingwekkend goed. 😉
+      </div>
+
+      {/* Linklijst */}
+      <ul className="space-y-2">
+        {links.map(({ key, label }) => (
+          <li key={key} className="flex items-center justify-between rounded-xl border p-3">
+            <div className="font-medium">{label}</div>
+            <div className="flex items-center gap-2">
+              <a
+                className="rounded-full border px-3 py-1 text-sm bg-gray-100 hover:bg-gray-200"
+                href={makeUrl(key)}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Open
+              </a>
+              <button
+                className="rounded-full border px-3 py-1 text-sm"
+                onClick={() => {
+                  const url = makeUrl(key);
+                  navigator.clipboard?.writeText(url);
+                  alert("Gekopieerd:\n" + url);
+                }}
+              >
+                Kopieer link
+              </button>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
   
 
@@ -1475,45 +1545,44 @@ if (shareTab === "deck") {
             </div>
 
             {/* ACC: Deel links */}
-            <div className="border rounded-xl overflow-hidden">
-              <button
-                className="w-full flex items-center justify-between px-3 py-2 text-left bg-gray-50"
-                onClick={()=> setPanelOpen(p => p==="share" ? null : "share")}
-              >
-                <span className="font-semibold text-sm">Deel links (alleen-lezen)</span>
-                <span className={`transition-transform ${panelOpen==="share" ? "rotate-90" : ""}`}>▸</span>
-              </button>
-              {panelOpen==="share" && (
-                <div className="px-3 pb-3">
-                  <div className="flex flex-wrap gap-2">
-                    {[
-                      { key:"runsheet",     label:"Programma" },
-                      { key:"mics",         label:"Microfoons" },
-                      { key:"rehearsals",   label:"Agenda" },
-                      { key:"rolverdeling", label:"Rolverdeling" },
-                      { key:"scripts",      label:"Sketches" },
-                      { key:"prkit",        label:"PR-Kit" },
-                      { key:"deck",         label:"Draaiboek (alles)" },
-                    ].map(({key,label}) => (
-                      <button
-                        key={key}
-                        className={btnSec}
-                        onClick={()=>{
-                          const sid = activeShowId ? `&sid=${activeShowId}` : "";
-const url = `${location.origin}${location.pathname}#share=${key}${sid}`;
-navigator.clipboard?.writeText(url);
-window.open(url, '_blank', 'noopener');
+<div className="border rounded-xl overflow-hidden">
+  <button
+    className="w-full flex items-center justify-between px-3 py-2 text-left bg-gray-50"
+    onClick={()=> setPanelOpen(p => p==="share" ? null : "share")}
+  >
+    <span className="font-semibold text-sm">Deel links (alleen-lezen)</span>
+    <span className={`transition-transform ${panelOpen==="share" ? "rotate-90" : ""}`}>▸</span>
+  </button>
+  {panelOpen==="share" && (
+    <div className="px-3 pb-3">
+      <div className="flex flex-wrap gap-2">
+        {[
+          { key:"runsheet",     label:"Programma" },
+          { key:"mics",         label:"Microfoons" },
+          { key:"rehearsals",   label:"Agenda" },
+          { key:"rolverdeling", label:"Rolverdeling" },
+          { key:"scripts",      label:"Sketches" },
+          { key:"prkit",        label:"PR-Kit" },
+          { key:"deck",         label:"Draaiboek (alles)" },
+        ].map(({key,label}) => (
+          <button
+            key={key}
+            className={btnSec}
+            onClick={()=>{
+              const sid = activeShowId ? `&sid=${activeShowId}` : "";
+              const url = `${location.origin}${location.pathname}#share=${key}${sid}`;
+              navigator.clipboard?.writeText(url);
+              window.open(url, '_blank', 'noopener');
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </div>
+  )}
+</div>
 
-
-                        }}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
 
             {/* ACC: Beveiliging */}
             <div className="border rounded-xl overflow-hidden">
