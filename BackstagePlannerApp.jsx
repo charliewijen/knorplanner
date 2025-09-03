@@ -890,6 +890,208 @@ React.useEffect(() => {
     );
   }
 
+// ---------- SHARE: DRAAIBOEK (alles, read-only) ----------
+if (shareTab === "deck") {
+  // helpers voor de read-only “Sketches” sectie
+  const personIndex = Object.fromEntries((sharePeople || []).map(p => [p.id, p]));
+  const fullNameRO = (pidOrObj) => {
+    const p = typeof pidOrObj === "string" ? personIndex[pidOrObj] : pidOrObj;
+    if (!p) return "";
+    const fn = (p.firstName || "").trim();
+    const ln = (p.lastName || p.name || "").trim();
+    return [fn, ln].filter(Boolean).join(" ");
+  };
+  const ensureDefaultsLocal = (sk) => {
+    const links = sk?.links && typeof sk.links === "object" ? sk.links : { text: "", tech: "" };
+    return {
+      ...sk,
+      stagePlace: sk?.stagePlace || "podium",
+      durationMin: Number.isFinite(sk?.durationMin) ? sk.durationMin : 0,
+      roles: Array.isArray(sk?.roles) ? sk.roles : [],
+      links,
+      sounds: Array.isArray(sk?.sounds) ? sk.sounds : [],
+      decor: sk?.decor || ""
+    };
+  };
+  const onlySketches = (shareSketches || []).filter(s => (s?.kind || "sketch") === "sketch");
+
+  return (
+    <div className="mx-auto max-w-7xl p-4 share-only">
+      <style>{`
+        /* maak interactieve elementen inert in de deck-weergave */
+        .share-only select, .share-only input, .share-only button { pointer-events: none !important; }
+        .section { margin-top: 1.5rem; }
+        .section h2 { font-weight: 700; font-size: 1.125rem; margin-bottom: .5rem; }
+      `}</style>
+
+      <h1 className="text-2xl font-bold mb-2">
+        Draaiboek (live) <span className="text-base font-normal text-gray-500">— {shareShow?.name}</span>
+      </h1>
+      <div className="text-sm text-gray-500 mb-4">Dit is een gedeelde link, alleen-lezen.</div>
+
+      {/* Programma */}
+      <section className="section">
+        <h2>Programma</h2>
+        <RunSheetView runSheet={runSheetShare} show={shareShow} />
+      </section>
+
+      {/* Rolverdeling */}
+      <section className="section">
+        <h2>Rolverdeling</h2>
+        <C_RoleDistributionView
+          currentShowId={shareShow?.id}
+          sketches={shareSketches}
+          people={sharePeople}
+          setState={() => {}}
+        />
+      </section>
+
+      {/* Microfoons */}
+      <section className="section">
+        <h2>Microfoons</h2>
+        <C_MicMatrixView
+          currentShowId={shareShow?.id}
+          sketches={shareSketches}
+          people={sharePeople}
+          shows={state.shows}
+          setState={() => {}}
+        />
+      </section>
+
+      {/* Repetities */}
+      <section className="section">
+        <h2>Repetities</h2>
+        <C_RehearsalPlanner
+          rehearsals={shareRehearsals}
+          people={sharePeople}
+          onAdd={() => {}}
+          onUpdate={() => {}}
+          onRemove={() => {}}
+        />
+      </section>
+
+      {/* Sketches */}
+      <section className="section">
+        <h2>Sketches</h2>
+        <div className="space-y-6">
+          {onlySketches.map((sk, i) => {
+            const s = ensureDefaultsLocal(sk);
+            return (
+              <div key={s.id || i} className="rounded-xl border p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                  <div className="font-semibold">{`#${s.order || "?"} ${s.title || "(zonder titel)"}`}</div>
+                  <div className="text-sm text-gray-600">
+                    {(s.durationMin || 0)} min · {s.stagePlace === "voor" ? "Voor de gordijn" : "Podium"}
+                  </div>
+                </div>
+
+                <div className="mb-3">
+                  <div className="font-medium">Rollen</div>
+                  {(s.roles || []).length ? (
+                    <table className="w-full border-collapse text-sm mt-1">
+                      <thead>
+                        <tr className="bg-gray-50">
+                          <th className="border px-2 py-1 text-left">Rol</th>
+                          <th className="border px-2 py-1 text-left">Cast</th>
+                          <th className="border px-2 py-1 text-left">Mic</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {s.roles.map((r, idx) => (
+                          <tr key={idx} className="odd:bg-gray-50">
+                            <td className="border px-2 py-1">{r?.name || ""}</td>
+                            <td className="border px-2 py-1">{fullNameRO(r?.personId) || ""}</td>
+                            <td className="border px-2 py-1">{r?.needsMic ? "Ja" : "Nee"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <div className="text-sm text-gray-500">Geen rollen.</div>
+                  )}
+                </div>
+
+                <div className="grid md:grid-cols-2 gap-3">
+                  <div>
+                    <div className="font-medium">Links</div>
+                    <div className="text-sm text-gray-700 mt-1 space-y-1">
+                      <div>
+                        Tekst:{" "}
+                        {s.links?.text ? (
+                          <a href={s.links.text} target="_blank" rel="noopener noreferrer" className="underline break-all">
+                            {s.links.text}
+                          </a>
+                        ) : (
+                          <span className="text-gray-400">—</span>
+                        )}
+                      </div>
+                      <div>
+                        Licht/geluid:{" "}
+                        {s.links?.tech ? (
+                          <a href={s.links.tech} target="_blank" rel="noopener noreferrer" className="underline break-all">
+                            {s.links.tech}
+                          </a>
+                        ) : (
+                          <span className="text-gray-400">—</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="font-medium">Decor</div>
+                    <div className="text-sm mt-1">{s.decor ? s.decor : <span className="text-gray-400">—</span>}</div>
+                  </div>
+                </div>
+
+                <div className="mt-3">
+                  <div className="font-medium">Geluiden & muziek</div>
+                  {(s.sounds || []).length ? (
+                    <table className="w-full border-collapse text-sm mt-1">
+                      <thead>
+                        <tr className="bg-gray-50">
+                          <th className="border px-2 py-1 text-left">Omschrijving</th>
+                          <th className="border px-2 py-1 text-left">Link</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {s.sounds.map((x, j) => (
+                          <tr key={x.id || j} className="odd:bg-gray-50">
+                            <td className="border px-2 py-1">{x.label || ""}</td>
+                            <td className="border px-2 py-1 break-all">
+                              {x.url ? (
+                                <a href={x.url} target="_blank" rel="noopener noreferrer" className="underline">
+                                  {x.url}
+                                </a>
+                              ) : (
+                                <span className="text-gray-400">—</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <div className="text-sm text-gray-500">—</div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+          {onlySketches.length === 0 && <div className="text-sm text-gray-500">Geen sketches.</div>}
+        </div>
+      </section>
+
+      {/* PR-Kit */}
+      <section className="section">
+        <h2>PR-Kit</h2>
+        <C_PRKitView items={sharePRKit} showId={shareShow?.id} readOnly={true} onChange={() => {}} />
+      </section>
+    </div>
+  );
+}
+
+  
+
   // ====== NORMALE APP ======
 
   // PORTAL: mount plek naast "Selecteer sketch" (géén eigen change listener meer!)
@@ -1424,11 +1626,10 @@ React.useEffect(() => {
                         className={btnSec}
                         onClick={()=>{
                           const sid = activeShowId ? `&sid=${activeShowId}` : "";
-// 'deck' bestond niet als share-view; stuur voor nu naar runsheet
-const shareKey = (key === 'deck') ? 'runsheet' : key;
-const url = `${location.origin}${location.pathname}#share=${shareKey}${sid}`;
+const url = `${location.origin}${location.pathname}#share=${key}${sid}`;
 navigator.clipboard?.writeText(url);
 window.open(url, '_blank', 'noopener');
+
 
                         }}
                       >
