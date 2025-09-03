@@ -260,7 +260,7 @@
                 />
                 <span style={{fontSize:12,fontWeight:700}}>VERPLICHT AANWEZIG</span>
               </label>
-              {d.requiredPresent && <span className="rp-badge-req">Aanwezigheid vereist!</span>}
+              {d.requiredPresent && <span className="rp-badge-req">Aanwezigheid<br></br>vereist!</span>}
             </div>
 
             {!readOnly && (
