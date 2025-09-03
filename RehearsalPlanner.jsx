@@ -1,6 +1,6 @@
 // RehearsalPlanner.jsx — compact, NL-weekdag zonder verspringen,
 // stabiele sortering (dag→tijd), vrije-tekst-locatie blijft staan,
-// “Vandaag” telt als komend, en nieuw-item-pop-up.
+// “Vandaag” telt als komend, en nieuw-item-pop-up met correcte prefill.
 (function () {
   const { useEffect, useMemo, useRef, useState } = React;
 
@@ -24,19 +24,14 @@
   ];
 
   /* -------------------- helpers -------------------- */
-  // Normaliseer ook data die per ongeluk als DD-MM-YYYY zijn opgeslagen
   const toISO = (dateStr) => {
     const s = String(dateStr || "").trim();
     if (!s) return "";
-    // YYYY-MM-DD
-    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-    // DD-MM-YYYY
-    const m = s.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;               // YYYY-MM-DD
+    const m = s.match(/^(\d{2})-(\d{2})-(\d{4})$/);             // DD-MM-YYYY
     if (m) return `${m[3]}-${m[2]}-${m[1]}`;
-    // YYYY/MM/DD -> YYYY-MM-DD
-    const m2 = s.match(/^(\d{4})\/(\d{2})\/(\d{2})$/);
+    const m2 = s.match(/^(\d{4})\/(\d{2})\/(\d{2})$/);          // YYYY/MM/DD
     if (m2) return `${m2[1]}-${m2[2]}-${m2[3]}`;
-    // Laatste redmiddel: Date parse
     try {
       const d = new Date(s);
       if (!isNaN(d)) {
@@ -45,7 +40,7 @@
         return `${d.getFullYear()}-${mm}-${dd}`;
       }
     } catch {}
-    return s; // als niets pakte, laat zoals is
+    return s;
   };
 
   const fmtWeekdayNL = (dateStr) => {
@@ -54,9 +49,7 @@
       if (!iso) return "—";
       const d = new Date(`${iso}T12:00:00`);
       return new Intl.DateTimeFormat("nl-NL", { weekday: "long" }).format(d);
-    } catch {
-      return "—";
-    }
+    } catch { return "—"; }
   };
 
   const toDayTs = (dateStr) => {
@@ -66,17 +59,13 @@
   };
 
   const timeToMin = (timeStr) => {
-    if (!timeStr) return 24 * 60 + 59; // leeg -> aan eind van de dag
+    if (!timeStr) return 24 * 60 + 59;
     const [h, m] = String(timeStr).split(":").map((n) => parseInt(n, 10));
     if (!Number.isFinite(h) || !Number.isFinite(m)) return 24 * 60 + 59;
     return h * 60 + m;
   };
 
-  const startOfToday = (() => {
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    return d.getTime();
-  })();
+  const startOfToday = (() => { const d = new Date(); d.setHours(0,0,0,0); return d.getTime(); })();
 
   const fullName = (p) => {
     if (!p) return "";
@@ -85,8 +74,7 @@
     return [fn, ln].filter(Boolean).join(" ") || (p.name || "");
   };
 
-  const isOneOf = (val, arr) =>
-    arr.some((o) => String(o).toLowerCase() === String(val || "").toLowerCase());
+  const isOneOf = (val, arr) => arr.some(o => String(o).toLowerCase() === String(val||"").toLowerCase());
 
   /* -------------------- component -------------------- */
   function RehearsalPlanner({
@@ -98,9 +86,7 @@
     readOnly: roProp,
   }) {
     const readOnly =
-      roProp ??
-      (typeof location !== "undefined" &&
-        (location.hash || "").includes("share="));
+      roProp ?? (typeof location !== "undefined" && (location.hash || "").includes("share="));
 
     /* ---------- styling ---------- */
     const css = `
@@ -157,7 +143,7 @@
       .btn-primary{background:#111827;color:#fff;border-color:#111827}
     `;
 
-    /* ---------- lokale drafts (overschrijven NIET elke render) ---------- */
+    /* ---------- lokale drafts ---------- */
     const [drafts, setDrafts] = useState(() => {
       const o = {};
       (rehearsals || []).forEach((r) => (o[r.id] = { ...r }));
@@ -168,15 +154,9 @@
     useEffect(() => {
       setDrafts((prev) => {
         const next = { ...prev };
-        const ids = new Set(rehearsals.map((r) => r.id));
-        // add missing
-        rehearsals.forEach((r) => {
-          if (!next[r.id]) next[r.id] = { ...r };
-        });
-        // remove deleted
-        Object.keys(next).forEach((id) => {
-          if (!ids.has(id)) delete next[id];
-        });
+        const ids = new Set(rehearsals.map(r => r.id));
+        rehearsals.forEach(r => { if (!next[r.id]) next[r.id] = { ...r }; });
+        Object.keys(next).forEach(id => { if (!ids.has(id)) delete next[id]; });
         return next;
       });
     }, [rehearsals]);
@@ -203,10 +183,7 @@
     };
 
     const setField = (id, field, value, immediate = false) => {
-      setDrafts((prev) => ({
-        ...prev,
-        [id]: { ...(prev[id] || {}), [field]: value },
-      }));
+      setDrafts((prev) => ({ ...prev, [id]: { ...(prev[id] || {}), [field]: value } }));
       if (!readOnly) (immediate ? commitNow : commitDebounced)(id);
     };
 
@@ -214,8 +191,7 @@
     const [openAbsId, setOpenAbsId] = useState(null);
     const toggleAbsentee = (id, personId) => {
       const cur = drafts[id]?.absentees || [];
-      const has = cur.includes(personId);
-      const next = has ? cur.filter((x) => x !== personId) : [...cur, personId];
+      const next = cur.includes(personId) ? cur.filter(x => x !== personId) : [...cur, personId];
       setField(id, "absentees", next, true);
     };
     const clearAbsentees = (id) => setField(id, "absentees", [], true);
@@ -224,32 +200,22 @@
     const sortedAll = useMemo(() => {
       const arr = [...(rehearsals || [])];
       arr.sort((a, b) => {
-        const da = toDayTs(a.date),
-          db = toDayTs(b.date);
-        if (da !== db) return da - db; // eerst dag
-        const ta = timeToMin(a.time),
-          tb = timeToMin(b.time);
-        if (ta !== tb) return ta - tb; // dan tijd
-        return String(a.id).localeCompare(String(b.id)); // stabiel
+        const da = toDayTs(a.date), db = toDayTs(b.date);
+        if (da !== db) return da - db;             // eerst dag
+        const ta = timeToMin(a.time), tb = timeToMin(b.time);
+        if (ta !== tb) return ta - tb;             // dan tijd
+        return String(a.id).localeCompare(String(b.id));
       });
       return arr;
     }, [rehearsals]);
 
-    const upcoming = useMemo(
-      () => sortedAll.filter((r) => toDayTs(r.date) >= startOfToday),
-      [sortedAll]
-    );
-    const past = useMemo(
-      () => sortedAll.filter((r) => toDayTs(r.date) < startOfToday).reverse(),
-      [sortedAll]
-    );
+    const upcoming = useMemo(() => sortedAll.filter(r => toDayTs(r.date) >= startOfToday), [sortedAll]);
+    const past     = useMemo(() => sortedAll.filter(r => toDayTs(r.date) <  startOfToday).reverse(), [sortedAll]);
 
     /* ---------- Nieuw item pop-up ---------- */
     const [addOpen, setAddOpen] = useState(false);
     const [newDraft, setNewDraft] = useState(() => {
-      const todayISO = toISO(
-        new Date().toISOString().slice(0, 10) // YYYY-MM-DD
-      );
+      const todayISO = new Date().toISOString().slice(0, 10);
       return {
         date: todayISO,
         time: "19:00",
@@ -260,30 +226,28 @@
       };
     });
 
-    // Detecteer nieuw item (als onAdd geen ID teruggeeft)
     const pendingCreateRef = useRef(null);
+
+    // Als onAdd géén ID teruggeeft: detecteer het nieuw aangemaakte item
     useEffect(() => {
-      const p = pendingCreateRef.current;
-      if (!p) return;
-      // zoek item dat nog niet bestond
-      const nowIds = new Set(rehearsals.map((r) => r.id));
-      const newId = [...nowIds].find((id) => !p.prevIds.has(id));
-      if (newId && onUpdate) {
-        onUpdate(newId, {
-          date: toISO(p.payload.date),
-          time: p.payload.time,
-          location: p.payload.location,
-          comments: p.payload.comments,
+      const pending = pendingCreateRef.current;
+      if (!pending) return;
+      const nowIds = new Set(rehearsals.map(r => r.id));
+      const newId = [...nowIds].find(id => !pending.prevIds.has(id));
+      if (newId) {
+        // 1) direct parent bijwerken
+        onUpdate && onUpdate(newId, {
+          ...pending.payload,
           absentees: [],
-          type: p.payload.type,
-          requiredPresent: !!p.payload.requiredPresent,
         });
+        // 2) én eigen draft meteen naar payload zetten -> UI toont direct juiste waarden
+        setDrafts(prev => ({ ...prev, [newId]: { ...(prev[newId] || {}), ...pending.payload, absentees: [] } }));
         pendingCreateRef.current = null;
       }
     }, [rehearsals, onUpdate]);
 
     const openAdd = () => {
-      setNewDraft((d) => ({ ...d, date: toISO(new Date().toISOString().slice(0, 10)) }));
+      setNewDraft(d => ({ ...d, date: new Date().toISOString().slice(0,10) }));
       setAddOpen(true);
     };
 
@@ -296,23 +260,18 @@
         type: newDraft.type,
         requiredPresent: !!newDraft.requiredPresent,
       };
-      if (!onAdd) return setAddOpen(false);
+      if (!onAdd) { setAddOpen(false); return; }
 
-      // Bewaar huidige IDs om nieuw item te herkennen
-      const prevIds = new Set(rehearsals.map((r) => r.id));
+      const prevIds = new Set(rehearsals.map(r => r.id));
       let returnedId = null;
-      try {
-        returnedId = onAdd(payload); // mag (optioneel) een ID teruggeven
-      } catch {}
+      try { returnedId = onAdd(payload); } catch {}
 
-      if (typeof returnedId === "string" && returnedId && onUpdate) {
-        // Parent gaf een ID — direct vullen
-        onUpdate(returnedId, {
-          ...payload,
-          absentees: [],
-        });
+      if (typeof returnedId === "string" && returnedId) {
+        // App gaf ID terug -> direct vullen + draft meteen goed zetten
+        onUpdate && onUpdate(returnedId, { ...payload, absentees: [] });
+        setDrafts(prev => ({ ...prev, [returnedId]: { ...(prev[returnedId] || {}), ...payload, absentees: [] } }));
       } else {
-        // Geen ID? Dan na eerstvolgende props-update detecteren en dan vullen
+        // Geen ID -> na props-update detecteren
         pendingCreateRef.current = { prevIds, payload };
       }
       setAddOpen(false);
@@ -324,7 +283,7 @@
       const weekday = fmtWeekdayNL(d.date);
 
       const locationInList = isOneOf(d.location, LOCATION_OPTIONS);
-      const typeInList = isOneOf(d.type, TYPE_OPTIONS);
+      const typeInList     = isOneOf(d.type, TYPE_OPTIONS);
 
       return (
         <div key={r.id} className={`rp-card ${d.requiredPresent ? "required" : ""}`}>
@@ -361,11 +320,7 @@
                   onChange={(e) => setField(r.id, "location", e.target.value, true)}
                   disabled={readOnly}
                 >
-                  {LOCATION_OPTIONS.map((opt) => (
-                    <option key={opt} value={opt}>
-                      {opt}
-                    </option>
-                  ))}
+                  {LOCATION_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                 </select>
               ) : (
                 <input
@@ -389,11 +344,7 @@
                   onChange={(e) => setField(r.id, "type", e.target.value, true)}
                   disabled={readOnly}
                 >
-                  {TYPE_OPTIONS.map((opt) => (
-                    <option key={opt} value={opt}>
-                      {opt}
-                    </option>
-                  ))}
+                  {TYPE_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                 </select>
               ) : (
                 <input
@@ -408,42 +359,29 @@
               )}
             </div>
 
-            <div
-              className="rp-req"
-              style={{ display: "flex", gap: 8, alignItems: "center", justifySelf: "start" }}
-            >
+            <div className="rp-req" style={{display:'flex',gap:8,alignItems:'center',justifySelf:'start'}}>
               <label className="inline-flex items-center gap-2">
                 <input
                   type="checkbox"
                   className="rounded border"
                   checked={!!d.requiredPresent}
-                  onChange={(e) => setField(r.id, "requiredPresent", !!e.target.checked, true)}
+                  onChange={(e)=> setField(r.id, "requiredPresent", !!e.target.checked, true)}
                   disabled={readOnly}
                 />
-                <span style={{ fontSize: 12, fontWeight: 700 }}>VERPLICHT AANWEZIG</span>
+                <span style={{fontSize:12,fontWeight:700}}>VERPLICHT AANWEZIG</span>
               </label>
-              {d.requiredPresent && (
-                <span className="rp-badge-req">
-                  Aanwezigheid<br />vereist!
-                </span>
-              )}
+              {d.requiredPresent && <span className="rp-badge-req">Aanwezigheid<br/>vereist!</span>}
             </div>
 
             {!readOnly && (
-              <div className="rp-actions" style={{ justifySelf: "end" }}>
-                <button className="btn-del" onClick={() => onRemove && onRemove(r.id)}>
-                  Verwijder
-                </button>
+              <div className="rp-actions" style={{justifySelf:'end'}}>
+                <button className="btn-del" onClick={() => onRemove && onRemove(r.id)}>Verwijder</button>
               </div>
             )}
 
             {/* Rij 2: weekdag + pads zodat niets verspringt */}
             <div className="rp-week rp-sub">{weekday}</div>
-            <div className="rp-pad"></div>
-            <div className="rp-pad"></div>
-            <div className="rp-pad"></div>
-            <div className="rp-pad"></div>
-            <div className="rp-pad"></div>
+            <div className="rp-pad"></div><div className="rp-pad"></div><div className="rp-pad"></div><div className="rp-pad"></div><div className="rp-pad"></div>
           </div>
 
           {/* R3: notities + afwezig */}
@@ -464,28 +402,19 @@
             <div>
               <div className="rp-label">Afwezig</div>
               <div className="truncate">
-                {!(d.absentees || []).length ? (
-                  <span className="rp-chip">—</span>
-                ) : (
-                  (d.absentees || []).map((pid) => {
-                    const p = people.find((x) => x.id === pid);
+                {!(d.absentees||[]).length ? <span className="rp-chip">—</span> :
+                  (d.absentees||[]).map(pid => {
+                    const p = people.find(x => x.id === pid);
                     if (!p) return null;
-                    return (
-                      <span key={pid} className="rp-chip rp-chip-abs">
-                        {fullName(p)}
-                      </span>
-                    );
+                    return <span key={pid} className="rp-chip rp-chip-abs">{fullName(p)}</span>;
                   })
-                )}
+                }
               </div>
             </div>
 
             {!readOnly && (
-              <div className="rp-edit" style={{ justifySelf: "end", alignSelf: "end" }}>
-                <button
-                  className="btn"
-                  onClick={() => setOpenAbsId((cur) => (cur === r.id ? null : r.id))}
-                >
+              <div className="rp-edit" style={{justifySelf:'end', alignSelf:'end'}}>
+                <button className="btn" onClick={() => setOpenAbsId(cur => cur === r.id ? null : r.id)}>
                   {openAbsId === r.id ? "Sluiten" : "Bewerk afwezig"}
                 </button>
               </div>
@@ -494,33 +423,18 @@
 
           {/* Afwezig-panel */}
           {!readOnly && openAbsId === r.id && (
-            <div style={{ marginTop: 8 }}>
+            <div style={{marginTop:8}}>
               <div className="flex items-center justify-between mb-1">
                 <div className="text-sm font-medium">Selecteer afwezigen</div>
-                <button className="rp-muted underline" onClick={() => clearAbsentees(r.id)}>
-                  alles leegmaken
-                </button>
+                <button className="rp-muted underline" onClick={() => clearAbsentees(r.id)}>alles leegmaken</button>
               </div>
-              <div
-                style={{
-                  display: "grid",
-                  gap: "6px",
-                  gridTemplateColumns: "repeat(auto-fill,minmax(180px,1fr))",
-                }}
-              >
-                {people.length === 0 && (
-                  <div className="rp-muted">Geen spelers voor deze show.</div>
-                )}
-                {people.map((p) => {
+              <div style={{display:'grid',gap:'6px',gridTemplateColumns:'repeat(auto-fill,minmax(180px,1fr))'}}>
+                {people.length === 0 && <div className="rp-muted">Geen spelers voor deze show.</div>}
+                {people.map(p => {
                   const checked = (drafts[r.id]?.absentees || []).includes(p.id);
                   return (
                     <label key={p.id} className="inline-flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        className="rounded border"
-                        checked={checked}
-                        onChange={() => toggleAbsentee(r.id, p.id)}
-                      />
+                      <input type="checkbox" className="rounded border" checked={checked} onChange={() => toggleAbsentee(r.id, p.id)} />
                       <span>{fullName(p)}</span>
                     </label>
                   );
@@ -557,50 +471,37 @@
                 <div className="rp-top" style={{gridTemplateColumns:"160px 110px 1fr 220px auto"}}>
                   <div>
                     <div className="rp-label">Datum</div>
-                    <input
-                      type="date"
-                      className="w-full rounded border rp-ctrl"
+                    <input type="date" className="w-full rounded border rp-ctrl"
                       value={toISO(newDraft.date)}
-                      onChange={(e)=> setNewDraft(d=>({...d, date: toISO(e.target.value)}))}
-                    />
+                      onChange={(e)=> setNewDraft(d=>({...d, date: toISO(e.target.value)}))} />
                   </div>
                   <div>
                     <div className="rp-label">Tijd</div>
-                    <input
-                      type="time"
-                      className="w-full rounded border rp-ctrl"
+                    <input type="time" className="w-full rounded border rp-ctrl"
                       value={newDraft.time}
-                      onChange={(e)=> setNewDraft(d=>({...d, time: e.target.value}))}
-                    />
+                      onChange={(e)=> setNewDraft(d=>({...d, time: e.target.value}))} />
                   </div>
                   <div className="rp-location">
                     <div className="rp-label">Locatie</div>
-                    <select
-                      className="w-full rounded border rp-ctrl"
+                    <select className="w-full rounded border rp-ctrl"
                       value={isOneOf(newDraft.location, LOCATION_OPTIONS) ? newDraft.location : LOCATION_OPTIONS[0]}
-                      onChange={(e)=> setNewDraft(d=>({...d, location: e.target.value}))}
-                    >
+                      onChange={(e)=> setNewDraft(d=>({...d, location: e.target.value}))}>
                       {LOCATION_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                     </select>
                   </div>
                   <div className="rp-type">
                     <div className="rp-label">Type</div>
-                    <select
-                      className="w-full rounded border rp-ctrl"
+                    <select className="w-full rounded border rp-ctrl"
                       value={isOneOf(newDraft.type, TYPE_OPTIONS) ? newDraft.type : "Reguliere Repetitie"}
-                      onChange={(e)=> setNewDraft(d=>({...d, type: e.target.value}))}
-                    >
+                      onChange={(e)=> setNewDraft(d=>({...d, type: e.target.value}))}>
                       {TYPE_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                     </select>
                   </div>
                   <div className="rp-req" style={{display:'flex',alignItems:'center',gap:8}}>
                     <label className="inline-flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        className="rounded border"
+                      <input type="checkbox" className="rounded border"
                         checked={!!newDraft.requiredPresent}
-                        onChange={(e)=> setNewDraft(d=>({...d, requiredPresent: !!e.target.checked}))}
-                      />
+                        onChange={(e)=> setNewDraft(d=>({...d, requiredPresent: !!e.target.checked}))} />
                       <span style={{fontSize:12,fontWeight:700}}>VERPLICHT AANWEZIG</span>
                     </label>
                   </div>
@@ -612,13 +513,9 @@
                 <div className="rp-row" style={{gridTemplateColumns:"1fr"}}>
                   <div>
                     <div className="rp-label">Notities</div>
-                    <textarea
-                      rows={2}
-                      className="w-full rounded border rp-note"
-                      placeholder="Korte notitie…"
+                    <textarea rows={2} className="w-full rounded border rp-note" placeholder="Korte notitie…"
                       value={newDraft.comments}
-                      onChange={(e)=> setNewDraft(d=>({...d, comments: e.target.value}))}
-                    />
+                      onChange={(e)=> setNewDraft(d=>({...d, comments: e.target.value}))} />
                   </div>
                 </div>
               </div>
@@ -642,11 +539,7 @@
             Vorige repetities <span className="rp-muted">({past.length})</span>
           </summary>
           <div className="grid gap-2 mt-2">
-            {past.length ? (
-              past.map(Card)
-            ) : (
-              <div className="rounded-xl border p-3 rp-muted">Geen vorige items.</div>
-            )}
+            {past.length ? past.map(Card) : <div className="rounded-xl border p-3 rp-muted">Geen vorige items.</div>}
           </div>
         </details>
       </div>
