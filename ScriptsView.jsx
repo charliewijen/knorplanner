@@ -1,3 +1,12 @@
+// --- helpers voor sorteren & naam
+const lastNameOf = (p) => (p?.lastName?.trim()) || ((p?.name||"").trim().split(" ").slice(-1)[0] || "");
+const fullName = (p) => {
+  const fn = (p?.firstName || "").trim();
+  const ln = (p?.lastName || p?.name || "").trim();
+  return [fn, ln].filter(Boolean).join(" ");
+};
+
+
 function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
   const uid = window.uid;
 
@@ -243,18 +252,46 @@ function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
                       />
                     </td>
                     <td className="border px-2 py-1">
-                      <select
-                        className="w-full rounded border px-2 py-1"
-                        value={r.personId || ""}
-                        onChange={(e)=>updateRole(idx, { personId: e.target.value })}
-                      >
-                        <option value="">— kies speler/danser —</option>
-                        {(people || []).map(p => (
-                          <option key={p.id} value={p.id}>
-                            {fullName(p)}
-                          </option>
-                        ))}
-                      </select>
+                      {(() => {
+  const assigned = new Set((sk.roles || [])
+    .map(rr => rr?.personId)
+    .filter(Boolean)
+    .filter(pid => pid !== (sk.roles?.[roleIndex]?.personId || "")) // eigen keuze blijft zichtbaar
+  );
+  const sortedPeople = [...people].sort((a,b) => lastNameOf(a).localeCompare(lastNameOf(b)));
+
+  return (
+    <select
+      value={sk.roles?.[roleIndex]?.personId || ""}
+      onChange={(e) => {
+        const pid = e.target.value;
+        // Uniek afdwingen: haal deze persoon uit alle andere rollen in deze sketch
+        setState(prev => {
+          const sketches = [...(prev.sketches || [])];
+          const si = sketches.findIndex(s => s.id === sk.id);
+          if (si < 0) return prev;
+          const s = { ...sketches[si], roles: (sketches[si].roles || []).map(x => ({...x})) };
+
+          s.roles = s.roles.map((rr, idx) => {
+            if (idx === roleIndex) return { ...rr, personId: pid };       // zet hier de nieuwe persoon
+            return rr.personId === pid ? { ...rr, personId: "" } : rr;    // haal ‘m weg bij andere rol
+          });
+
+          sketches[si] = s;
+          return { ...prev, sketches };
+        });
+      }}
+    >
+      <option value="">Kies speler/danser</option>
+      {sortedPeople.map(p => (
+        <option key={p.id} value={p.id} disabled={assigned.has(p.id)}>
+          {fullName(p)}
+        </option>
+      ))}
+    </select>
+  );
+})()}
+
                     </td>
                     <td className="border px-2 py-1">
                       <label className="inline-flex items-center gap-2">
