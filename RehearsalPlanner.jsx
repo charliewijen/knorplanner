@@ -500,7 +500,7 @@
     };
 
     return (
-      <div className="rp-wrap">
+<div id="print-rehearsals" className="rp-wrap">
         <style>{css}</style>
 
         {!readOnly && (
@@ -508,6 +508,7 @@
             <button className="rounded-full border px-3 py-1 text-sm bg-black text-white" onClick={openAdd}>
               + Repetitie toevoegen
             </button>
+<PrintButton targetId="print-rehearsals" label="Print repetities" />
             <span className="rp-muted">Compact • automatische opslag • NL-weekdag</span>
           </div>
         )}
