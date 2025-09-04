@@ -9,8 +9,7 @@ function RoleDistributionView({ currentShowId, sketches = [], people = [], setSt
     .sort((a,b) => (a.order||0) - (b.order||0));
 
   // helper: naamvelden & type bepalen
-  const lastNameOf = (p) => (p.lastName?.trim()) ||
-    ((p.name||"").trim().split(" ").slice(-1)[0] || "");
+  const lastNameOf = (p) => (p.lastName?.trim()) || ((p.name||"").trim().split(" ").slice(-1)[0] || "");
   const kindOf = (p) => {
     const k = (p.role || p.type || p.kind || "").toLowerCase();
     if (k.includes("dans")) return "danser";
@@ -25,7 +24,7 @@ function RoleDistributionView({ currentShowId, sketches = [], people = [], setSt
   // map voor snelle lookup
   const personById = Object.fromEntries(cols.map(p => [p.id, p]));
 
-  // role voor person in sketch -> geeft object {key,label,idx} of null
+  // huidige rol van person in sketch -> {key,label,idx} of null
   const currentRoleKeyFor = (sk, personId) => {
     const roles = Array.isArray(sk.roles) ? sk.roles : [];
     const i = roles.findIndex(r => r && r.personId === personId);
@@ -34,7 +33,7 @@ function RoleDistributionView({ currentShowId, sketches = [], people = [], setSt
     return { key: (r.id ?? `idx-${i}`), label: (r.name || ""), idx: i };
   };
 
-  // alle rol-opties in deze sketch (statisch per sketch-rij)
+  // rolopties voor een sketch
   const roleOptionsFor = (sk) => {
     const roles = Array.isArray(sk.roles) ? sk.roles : [];
     return roles.map((r, i) => ({
@@ -44,14 +43,18 @@ function RoleDistributionView({ currentShowId, sketches = [], people = [], setSt
     }));
   };
 
+  // alle rollen in sketch toegekend?
+  const rolesFull = (sk) => {
+    const roles = Array.isArray(sk.roles) ? sk.roles : [];
+    return roles.length > 0 && roles.every(r => (r?.personId || "") !== "");
+  };
+  const personHasRole = (sk, personId) => (Array.isArray(sk.roles) ? sk.roles : []).some(r => r?.personId === personId);
+
   // ========== Drag & Drop voor volgorde ==========
   const [dragId, setDragId] = React.useState(null);
   const renumber = (arr) => arr.map((it, idx) => ({ ...it, order: idx + 1 }));
 
-  const onDragStart = (e, id) => {
-    setDragId(id);
-    e.dataTransfer.effectAllowed = "move";
-  };
+  const onDragStart = (e, id) => { setDragId(id); e.dataTransfer.effectAllowed = "move"; };
   const onDragOver = (e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; };
   const onDrop = (e, overId) => {
     e.preventDefault();
@@ -101,7 +104,6 @@ function RoleDistributionView({ currentShowId, sketches = [], people = [], setSt
         const findTargetIdx = () => {
           const byId = roles.findIndex(r => (r?.id ?? null) === targetKey);
           if (byId >= 0) return byId;
-          // fallback op idx-keys
           const m = String(targetKey).match(/^idx-(\d+)$/);
           if (m) {
             const i = parseInt(m[1], 10);
@@ -111,20 +113,13 @@ function RoleDistributionView({ currentShowId, sketches = [], people = [], setSt
         };
         const tIdx = findTargetIdx();
         if (tIdx >= 0) {
-          const prevHolder = roles[tIdx].personId;
-          roles[tIdx].personId = personId;        // rol -> huidige persoon
-
-          // als iemand anders die rol had, die persoon loskoppelen
-          if (prevHolder && prevHolder !== personId) {
-            // niets extra nodig; die andere persoon heeft nu geen rol meer.
-          }
-          // als deze persoon al een andere rol had, die leeg maken
-          if (curIdx >= 0 && curIdx !== tIdx) roles[curIdx].personId = "";
+          // unieke rol per persoon: verwijder deze persoon uit eventuele andere rollen
+          roles.forEach((r, i) => { if (i !== tIdx && r.personId === personId) r.personId = ""; });
+          roles[tIdx].personId = personId;
         }
       }
 
-      const newSketch = { ...s, roles };
-      sketches[si] = newSketch;
+      sketches[si] = { ...s, roles };
       return { ...prev, sketches };
     });
   };
@@ -134,9 +129,7 @@ function RoleDistributionView({ currentShowId, sketches = [], people = [], setSt
   for (let i=0; i<items.length-1; i++){
     const a = items[i];
     const b = items[i+1];
-    if ((a.kind === "break" || a.kind === "waerse") || (b.kind === "break" || b.kind === "waerse")) {
-      continue;
-    }
+    if ((a.kind === "break" || a.kind === "waerse") || (b.kind === "break" || b.kind === "waerse")) continue;
     const aIds = new Set((a.roles||[]).map(r => r?.personId).filter(Boolean));
     const bIds = new Set((b.roles||[]).map(r => r?.personId).filter(Boolean));
     const overlap = [...aIds].filter(id => bIds.has(id));
@@ -163,8 +156,7 @@ function RoleDistributionView({ currentShowId, sketches = [], people = [], setSt
               <th className="border px-2 py-1 text-left">Item</th>
               {cols.map(p => (
                 <th key={p.id} className="border px-2 py-1 text-left whitespace-nowrap">
-                  {(p.lastName || p.name || "").toUpperCase()}, {p.firstName || ""}
-                  {kindOf(p) === "danser" ? " (D)" : ""}
+                  {(p.lastName || p.name || "").toUpperCase()}, {p.firstName || ""}{kindOf(p) === "danser" ? " (D)" : ""}
                 </th>
               ))}
             </tr>
@@ -174,8 +166,8 @@ function RoleDistributionView({ currentShowId, sketches = [], people = [], setSt
               const isBreak = sk.kind === "break";
               const isWaerse = sk.kind === "waerse";
               const rowClass = isBreak ? "bg-yellow-50" : (isWaerse ? "bg-pink-50" : (idx%2 ? "bg-white" : "bg-gray-50"));
-
-              const roleOpts = roleOptionsFor(sk); // per sketch
+              const roleOpts = roleOptionsFor(sk);
+              const full = rolesFull(sk);
 
               return (
                 <React.Fragment key={sk.id}>
@@ -193,17 +185,22 @@ function RoleDistributionView({ currentShowId, sketches = [], people = [], setSt
                     </td>
 
                     {cols.map(p => {
-                      const cur = currentRoleKeyFor(sk, p.id); // {key,label}
-                      const value = cur?.key || "";            // "" = geen
+                      const cur = currentRoleKeyFor(sk, p.id);
+                      const value = cur?.key || "";
+                      const hasThisPersonRole = !!cur;
+                      const disabled = (!isBreak && !isWaerse)
+                        ? (full && !hasThisPersonRole) // alle rollen vergeven -> niet-rolhouders grijs/uit
+                        : true;
 
                       return (
-                        <td key={p.id} className="border px-2 py-1 align-top">
+                        <td key={p.id} className={`border px-2 py-1 align-top ${disabled ? "opacity-50" : ""}`}>
                           {(!isBreak && !isWaerse) ? (
                             roleOpts.length ? (
                               <select
-                                className="w-full rounded border px-2 py-1 text-sm"
+                                className={`w-full rounded border px-2 py-1 text-sm ${disabled ? "bg-gray-50 text-gray-500 pointer-events-none" : ""}`}
                                 value={value}
                                 onChange={(e)=> assignRole(sk.id, p.id, e.target.value)}
+                                disabled={disabled}
                               >
                                 <option value="">—</option>
                                 {roleOpts.map(opt => (
@@ -211,17 +208,16 @@ function RoleDistributionView({ currentShowId, sketches = [], people = [], setSt
                                 ))}
                               </select>
                             ) : (
-                              <span className="text-gray-400">—</span> // geen rollen gedefinieerd in deze sketch
+                              <span className="text-gray-400">—</span>
                             )
                           ) : (
-                            "" // pauze/waerse: leeg
+                            ""
                           )}
                         </td>
                       );
                     })}
                   </tr>
 
-                  {/* waarschuwing NA deze rij als nodig */}
                   {warnAfterSet.has(sk.id) && (
                     <tr>
                       <td className="border px-2 py-1 bg-amber-100 text-amber-900" colSpan={2 + cols.length}>
@@ -250,9 +246,9 @@ function RoleDistributionView({ currentShowId, sketches = [], people = [], setSt
       </div>
 
       <div className="mt-3 text-xs text-gray-600">
-        • Kies per cel een rol (— = geen). Wijzigingen slaan direct op in de sketch-data en zijn zichtbaar bij Scripts/Runsheet.<br/>
-        • Sleep rijen om de volgorde te wijzigen (dit werkt overal door: planner, runsheet, mics).<br/>
-        • Pauze en “De Waerse Ku-j” hebben een afwijkende kleur.
+        • Cellen worden grijs als alle rollen in die rij al zijn vergeven (je kunt wel de huidige rol-houders blijven wijzigen).<br/>
+        • Sleep rijen om de volgorde te wijzigen (werkt overal door).<br/>
+        • Unieke rol per persoon wordt afgedwongen in dezelfde sketch.
       </div>
     </div>
   );
