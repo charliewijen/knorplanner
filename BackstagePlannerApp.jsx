@@ -668,11 +668,19 @@ const [locked, setLocked] = React.useState(true);
 React.useEffect(() => {
   // Alleen share-pagina’s zonder login zichtbaar
   if (shareTab) { setLocked(false); return; }
-  const token = localStorage.getItem('knor:authToken') || '';
-  const exp   = parseInt(localStorage.getItem('knor:authExp') || '0', 10);
-  const valid = token && (!exp || Date.now() < exp);
+  const token  = localStorage.getItem('knor:authToken') || '';
+  const expRaw = parseInt(localStorage.getItem('knor:authExp') || '0', 10);
+  const expMs  = toMs(expRaw);
+  const valid  = token && (!expMs || Date.now() < expMs);
   setLocked(!valid);
 }, [shareTab, state.rev]);
+
+
+  // Helper: seconds -> ms (laat ms ongemoeid)
+const toMs = (exp) => {
+  const n = Number(exp) || 0;
+  return n > 0 && n < 1e12 ? n * 1000 : n;
+};
 
 
   const handleUnlock = async (plainPw) => {
@@ -684,11 +692,13 @@ React.useEffect(() => {
     });
     if (!res.ok) return false;
     const { token, exp } = await res.json();
-    if (!token) return false;
+if (!token) return false;
 
-    localStorage.setItem('knor:authToken', token);
-    if (exp) localStorage.setItem('knor:authExp', String(exp));
-    setLocked(false);
+localStorage.setItem('knor:authToken', token);
+const expMs = toMs(exp);
+if (expMs) localStorage.setItem('knor:authExp', String(expMs));
+setLocked(false);
+
 
     // ▼ Forceer meteen een sync zodat de banner omschakelt
     setSyncStatus('🔑 Ingelogd — synchroniseren…');
@@ -757,9 +767,11 @@ React.useEffect(() => {
         await saveStateRemote(next);
         setSyncStatus("✅ Gesynced om " + new Date().toLocaleTimeString());
       } catch (e) {
-        if (String(e.message || '').toLowerCase().includes('unauthorized')) {
-          setSyncStatus("🔒 Sessie verlopen — log opnieuw in");
-          // géén setLocked(true) hier
+       if (String(e.message || '').toLowerCase().includes('unauthorized')) {
+  setSyncStatus("🔒 Sessie verlopen — log opnieuw in");
+  localStorage.removeItem('knor:authToken');
+  localStorage.removeItem('knor:authExp');
+  setLocked(true);
         } else {
           console.error('save failed', e);
           setSyncStatus("⚠️ Opslaan mislukt (lokaal bewaard)");
