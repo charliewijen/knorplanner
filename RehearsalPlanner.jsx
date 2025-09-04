@@ -45,6 +45,42 @@
     return s;
   };
 
+// Converteer allerlei invoer naar "HH:MM" (24h). Laat lege waarden leeg.
+const normTime = (str) => {
+  let s = (str ?? "").toString().trim();
+  if (!s) return "";
+  s = s.replace(/[.,;]/g, ":");           // 20.30 → 20:30, 20;30 → 20:30
+
+  if (s.includes(":")) {
+    const [hRaw, mRaw = "0"] = s.split(":");
+    let h = parseInt(hRaw, 10);
+    let m = parseInt(mRaw, 10);
+    if (!Number.isFinite(h)) h = 0;
+    if (!Number.isFinite(m)) m = 0;
+    h = Math.min(23, Math.max(0, h));
+    m = Math.min(59, Math.max(0, m));
+    return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
+  }
+
+  // Alleen cijfers? Neem laatste 2 als minuten (2035 → 20:35, 8 → 08:00)
+  const digits = s.replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.length <= 2) {
+    let h = parseInt(digits, 10);
+    if (!Number.isFinite(h)) h = 0;
+    h = Math.min(23, Math.max(0, h));
+    return `${String(h).padStart(2,"0")}:00`;
+  }
+  let h = parseInt(digits.slice(0, -2), 10);
+  let m = parseInt(digits.slice(-2), 10);
+  if (!Number.isFinite(h)) h = 0;
+  if (!Number.isFinite(m)) m = 0;
+  h = Math.min(23, Math.max(0, h));
+  m = Math.min(59, Math.max(0, m));
+  return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
+};
+
+  
   const fmtWeekdayNL = (dateStr) => {
     try {
       const iso = toISO(dateStr);
@@ -61,11 +97,12 @@
   };
 
   const timeToMin = (timeStr) => {
-    if (!timeStr) return 24 * 60 + 59;
-    const [h, m] = String(timeStr).split(":").map((n) => parseInt(n, 10));
-    if (!Number.isFinite(h) || !Number.isFinite(m)) return 24 * 60 + 59;
-    return h * 60 + m;
-  };
+  const s = normTime(timeStr);
+  if (!s) return 24 * 60 + 59;
+  const [h, m] = s.split(":").map((n) => parseInt(n, 10));
+  return h * 60 + m;
+};
+
 
   const startOfToday = (() => { const d = new Date(); d.setHours(0,0,0,0); return d.getTime(); })();
 
@@ -171,7 +208,7 @@
       if (!d) return;
       onUpdate(id, {
         date: toISO(d.date) || "",
-        time: d.time || "",
+        time: normTime(d.time) || "",
         location: d.location || "",
         comments: d.comments || "",
         absentees: Array.isArray(d.absentees) ? d.absentees : [],
@@ -256,7 +293,7 @@
     const createFromModal = () => {
       const payload = {
         date: toISO(newDraft.date),
-        time: newDraft.time,
+        time: normTime(newDraft.time),
         location: newDraft.location,
         comments: newDraft.comments,
         type: newDraft.type,
@@ -305,12 +342,14 @@
             <div>
               <div className="rp-label">Tijd</div>
               <input
-                type="time"
-                className="w-full rounded border rp-ctrl"
-                value={d.time || ""}
-                onChange={(e) => setField(r.id, "time", e.target.value, true)}
-                disabled={readOnly}
-              />
+  type="time"
+  className="w-full rounded border rp-ctrl"
+  value={d.time || ""}
+  onChange={(e) => setField(r.id, "time", e.target.value, false)}          // lokaal bufferen
+  onBlur={(e) => setField(r.id, "time", normTime(e.target.value), true)}   // normaliseren + committen
+  disabled={readOnly}
+/>
+
             </div>
 
             <div className="rp-location">
@@ -480,8 +519,10 @@
                   <div>
                     <div className="rp-label">Tijd</div>
                     <input type="time" className="w-full rounded border rp-ctrl"
-                      value={newDraft.time}
-                      onChange={(e)=> setNewDraft(d=>({...d, time: e.target.value}))} />
+  value={newDraft.time}
+  onChange={(e)=> setNewDraft(d=>({...d, time: e.target.value}))}
+  onBlur={(e)=> setNewDraft(d=>({...d, time: normTime(e.target.value)}))} />
+
                   </div>
                   <div className="rp-location">
                     <div className="rp-label">Locatie</div>
