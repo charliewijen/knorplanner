@@ -1,4 +1,4 @@
-// RehearsalPlanner.jsx — compact, NL-weekdag, stabiele sortering,
+// RehearsalPlanner.jsx — compact, NL-weekdag, stabiele sortering, 
 // correcte opslag (geen “laatste wijziging mist”), en modaal voor nieuw item.
 (function () {
   const { useEffect, useMemo, useRef, useState } = React;
