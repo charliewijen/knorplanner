@@ -118,9 +118,10 @@ function MicMatrixView({ currentShowId, sketches = [], people = [], shows = [], 
 
   return (
     <section className="rounded-2xl border p-4">
-      <div className="mb-3 flex items-center justify-between gap-2">
+      <div id="print-mics" className="mb-3 flex items-center justify-between gap-2">
         <h2 className="text-lg font-semibold">Microfoonschema</h2>
-        {/* geen print-knop meer */}
+        <PrintButton targetId="print-mics" label="Print microfoonschema" />
+
       </div>
 
       {/* tellers */}
