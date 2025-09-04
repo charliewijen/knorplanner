@@ -1,37 +1,32 @@
 // --- helpers voor sorteren & naam
-const lastNameOf = (p) => (p?.lastName?.trim()) || ((p?.name||"").trim().split(" ").slice(-1)[0] || "");
+const lastNameOf = (p) =>
+  (p?.lastName?.trim()) || ((p?.name || "").trim().split(" ").slice(-1)[0] || "");
 const fullName = (p) => {
+  if (!p) return "";
   const fn = (p?.firstName || "").trim();
   const ln = (p?.lastName || p?.name || "").trim();
   return [fn, ln].filter(Boolean).join(" ");
 };
-
 
 function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
   const uid = window.uid;
 
   // ====== Helpers ======
   const onlySketches = (Array.isArray(sketches) ? sketches : [])
-    .filter(s => (s?.kind || "sketch") === "sketch")
-    .sort((a,b) => (a.order||0) - (b.order||0));
+    .filter((s) => (s?.kind || "sketch") === "sketch")
+    .sort((a, b) => (a.order || 0) - (b.order || 0));
 
   const [sel, setSel] = React.useState(onlySketches[0]?.id || "");
   React.useEffect(() => {
     // als selectie niet meer bestaat (b.v. na delete), kies eerste
-    if (sel && !onlySketches.some(s => s.id === sel)) {
+    if (sel && !onlySketches.some((s) => s.id === sel)) {
       setSel(onlySketches[0]?.id || "");
     }
   }, [sel, onlySketches]);
 
-  const active = onlySketches.find(s => s.id === sel);
+  const active = onlySketches.find((s) => s.id === sel);
 
-  const personById = Object.fromEntries((people || []).map(p => [p.id, p]));
-  const fullName = (p) => {
-    if (!p) return "";
-    const fn = (p.firstName || "").trim();
-    const ln = (p.lastName || p.name || "").trim();
-    return [fn, ln].filter(Boolean).join(" ");
-  };
+  const personById = Object.fromEntries((people || []).map((p) => [p.id, p]));
 
   // Eenvoudige URL-check: toon open-knop alleen voor http(s) links
   const hasHttpUrl = (v) => /^https?:\/\//i.test((v || "").trim());
@@ -44,7 +39,8 @@ function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
     clean.stagePlace = clean.stagePlace || "podium"; // podium | voor
     clean.durationMin = Number.isFinite(clean.durationMin) ? clean.durationMin : 0;
     clean.roles = Array.isArray(clean.roles) ? clean.roles : [];
-    clean.links = clean.links && typeof clean.links === "object" ? clean.links : { text: "", tech: "" };
+    clean.links =
+      clean.links && typeof clean.links === "object" ? clean.links : { text: "", tech: "" };
     clean.sounds = Array.isArray(clean.sounds) ? clean.sounds : []; // [{id,label,url}]
     clean.decor = clean.decor || "";
     return clean;
@@ -55,15 +51,20 @@ function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
   const addRole = () => {
     if (!active) return;
     patch(active.id, {
-      roles: [...active.roles, { name: `Rol ${active.roles.length + 1}`, personId: "", needsMic: false }]
+      roles: [
+        ...active.roles,
+        { name: `Rol ${active.roles.length + 1}`, personId: "", needsMic: false },
+      ],
     });
   };
+
   const updateRole = (idx, p) => {
-    const roles = active.roles.map((r,i) => i===idx ? { ...r, ...p } : r);
+    const roles = active.roles.map((r, i) => (i === idx ? { ...r, ...p } : r));
     patch(active.id, { roles });
   };
+
   const removeRole = (idx) => {
-    const roles = active.roles.filter((_,i)=> i!==idx);
+    const roles = active.roles.filter((_, i) => i !== idx);
     patch(active.id, { roles });
   };
 
@@ -71,11 +72,11 @@ function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
     patch(active.id, { sounds: [...active.sounds, { id: uid(), label: "", url: "" }] });
   };
   const updateSound = (idx, p) => {
-    const sounds = active.sounds.map((x,i)=> i===idx ? { ...x, ...p } : x);
+    const sounds = active.sounds.map((x, i) => (i === idx ? { ...x, ...p } : x));
     patch(active.id, { sounds });
   };
   const removeSound = (idx) => {
-    const sounds = active.sounds.filter((_,i)=> i!==idx);
+    const sounds = active.sounds.filter((_, i) => i !== idx);
     patch(active.id, { sounds });
   };
 
@@ -104,7 +105,9 @@ function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
       <div className="mb-3 flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold">Sketches</h2>
-          <div className="text-xs text-gray-600">Beheer per sketch; print toont alle sketches onder elkaar.</div>
+          <div className="text-xs text-gray-600">
+            Beheer per sketch; print toont alle sketches onder elkaar.
+          </div>
         </div>
         <button className="rounded-full border px-3 py-1 text-sm" onClick={printAll}>
           Print alle sketches / PDF
@@ -114,14 +117,10 @@ function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
       {/* Selectie — alleen echte sketches (geen pauzes/waerse) */}
       <div className="mb-4 flex items-center gap-2">
         <label className="text-sm text-gray-700">Selecteer sketch</label>
-        <select
-          className="rounded border px-3 py-2"
-          value={sel}
-          onChange={(e)=>setSel(e.target.value)}
-        >
-          {onlySketches.map(s => (
+        <select className="rounded border px-3 py-2" value={sel} onChange={(e) => setSel(e.target.value)}>
+          {onlySketches.map((s) => (
             <option key={s.id} value={s.id}>
-              {`#${s.order||"?"} ${s.title || "(zonder titel)"}`}
+              {`#${s.order || "?"} ${s.title || "(zonder titel)"}`}
             </option>
           ))}
         </select>
@@ -137,7 +136,7 @@ function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
               <input
                 className="w-full rounded border px-2 py-1"
                 value={active.title || ""}
-                onChange={(e)=>patch(active.id, { title: e.target.value })}
+                onChange={(e) => patch(active.id, { title: e.target.value })}
                 placeholder="Naam van de sketch"
               />
             </div>
@@ -147,7 +146,7 @@ function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
                 type="number"
                 className="w-28 rounded border px-2 py-1"
                 value={active.durationMin || 0}
-                onChange={(e)=>patch(active.id, { durationMin: parseInt(e.target.value||"0",10) })}
+                onChange={(e) => patch(active.id, { durationMin: parseInt(e.target.value || "0", 10) })}
               />
             </div>
             <div>
@@ -155,7 +154,7 @@ function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
               <select
                 className="w-full rounded border px-2 py-1"
                 value={active.stagePlace || "podium"}
-                onChange={(e)=>patch(active.id, { stagePlace: e.target.value })}
+                onChange={(e) => patch(active.id, { stagePlace: e.target.value })}
               >
                 <option value="podium">Podium</option>
                 <option value="voor">Voor de gordijn</option>
@@ -173,7 +172,9 @@ function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
                     className="flex-1 rounded border px-2 py-1"
                     placeholder="https://..."
                     value={active.links?.text || ""}
-                    onChange={(e)=>patch(active.id, { links: { ...(active.links||{}), text: e.target.value } })}
+                    onChange={(e) =>
+                      patch(active.id, { links: { ...(active.links || {}), text: e.target.value } })
+                    }
                   />
                   {hasHttpUrl(active.links?.text) && (
                     <a
@@ -196,7 +197,9 @@ function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
                     className="flex-1 rounded border px-2 py-1"
                     placeholder="https://..."
                     value={active.links?.tech || ""}
-                    onChange={(e)=>patch(active.id, { links: { ...(active.links||{}), tech: e.target.value } })}
+                    onChange={(e) =>
+                      patch(active.id, { links: { ...(active.links || {}), tech: e.target.value } })
+                    }
                   />
                   {hasHttpUrl(active.links?.tech) && (
                     <a
@@ -220,7 +223,7 @@ function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
                 className="w-full h-24 rounded border p-2"
                 placeholder="Korte beschrijving van decor/decorstukken"
                 value={active.decor || ""}
-                onChange={(e)=>patch(active.id, { decor: e.target.value })}
+                onChange={(e) => patch(active.id, { decor: e.target.value })}
               />
             </div>
           </div>
@@ -229,7 +232,9 @@ function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
           <div className="rounded-xl border p-3">
             <div className="mb-2 flex items-center justify-between">
               <h3 className="font-semibold">Rollen</h3>
-              <button className="rounded-xl border px-3 py-2" onClick={addRole}>+ Rol</button>
+              <button className="rounded-xl border px-3 py-2" onClick={addRole}>
+                + Rol
+              </button>
             </div>
             <table className="min-w-full border text-sm">
               <thead>
@@ -241,73 +246,73 @@ function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
                 </tr>
               </thead>
               <tbody>
-                {active.roles.map((r, idx) => (
-                  <tr key={idx} className="odd:bg-gray-50">
-                    <td className="border px-2 py-1">
-                      <input
-                        className="w-full rounded border px-2 py-1"
-                        value={r.name || ""}
-                        onChange={(e)=>updateRole(idx, { name: e.target.value })}
-                        placeholder="Naam van rol"
-                      />
-                    </td>
-                    <td className="border px-2 py-1">
-                      {(() => {
-  const assigned = new Set((sk.roles || [])
-    .map(rr => rr?.personId)
-    .filter(Boolean)
-    .filter(pid => pid !== (sk.roles?.[roleIndex]?.personId || "")) // eigen keuze blijft zichtbaar
-  );
-  const sortedPeople = [...people].sort((a,b) => lastNameOf(a).localeCompare(lastNameOf(b)));
+                {active.roles.map((r, idx) => {
+                  // Personen die al in een andere rol van deze sketch zitten (behalve de huidige selectie)
+                  const assigned = new Set(
+                    (active.roles || [])
+                      .map((rr, i) => (i === idx ? null : rr?.personId))
+                      .filter(Boolean)
+                  );
+                  // Alfabetisch op achternaam
+                  const sortedPeople = [...people].sort((a, b) =>
+                    lastNameOf(a).localeCompare(lastNameOf(b))
+                  );
 
-  return (
-    <select
-      value={sk.roles?.[roleIndex]?.personId || ""}
-      onChange={(e) => {
-        const pid = e.target.value;
-        // Uniek afdwingen: haal deze persoon uit alle andere rollen in deze sketch
-        setState(prev => {
-          const sketches = [...(prev.sketches || [])];
-          const si = sketches.findIndex(s => s.id === sk.id);
-          if (si < 0) return prev;
-          const s = { ...sketches[si], roles: (sketches[si].roles || []).map(x => ({...x})) };
-
-          s.roles = s.roles.map((rr, idx) => {
-            if (idx === roleIndex) return { ...rr, personId: pid };       // zet hier de nieuwe persoon
-            return rr.personId === pid ? { ...rr, personId: "" } : rr;    // haal ‘m weg bij andere rol
-          });
-
-          sketches[si] = s;
-          return { ...prev, sketches };
-        });
-      }}
-    >
-      <option value="">Kies speler/danser</option>
-      {sortedPeople.map(p => (
-        <option key={p.id} value={p.id} disabled={assigned.has(p.id)}>
-          {fullName(p)}
-        </option>
-      ))}
-    </select>
-  );
-})()}
-
-                    </td>
-                    <td className="border px-2 py-1">
-                      <label className="inline-flex items-center gap-2">
+                  return (
+                    <tr key={idx} className="odd:bg-gray-50">
+                      <td className="border px-2 py-1">
                         <input
-                          type="checkbox"
-                          checked={!!r.needsMic}
-                          onChange={(e)=>updateRole(idx, { needsMic: e.target.checked })}
+                          className="w-full rounded border px-2 py-1"
+                          value={r.name || ""}
+                          onChange={(e) => updateRole(idx, { name: e.target.value })}
+                          placeholder="Naam van rol"
                         />
-                        <span className="text-sm">Ja</span>
-                      </label>
-                    </td>
-                    <td className="border px-2 py-1">
-                      <button className="rounded-full border px-2 py-1" onClick={()=>removeRole(idx)}>x</button>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="border px-2 py-1">
+                        <select
+                          value={r.personId || ""}
+                          onChange={(e) => {
+                            const pid = e.target.value;
+                            // Uniek afdwingen: zelf zetten, andere rollen die deze pid hebben leegmaken
+                            const newRoles = (active.roles || []).map((rr, i) => {
+                              if (i === idx) return { ...rr, personId: pid };
+                              return rr.personId === pid ? { ...rr, personId: "" } : rr;
+                            });
+                            patch(active.id, { roles: newRoles });
+                          }}
+                          className="w-full rounded border px-2 py-1"
+                        >
+                          <option value="">Kies speler/danser</option>
+                          {sortedPeople.map((p) => (
+                            <option key={p.id} value={p.id} disabled={assigned.has(p.id)}>
+                              {fullName(p)}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="border px-2 py-1">
+                        <label className="inline-flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={!!r.needsMic}
+                            onChange={(e) => updateRole(idx, { needsMic: e.target.checked })}
+                          />
+                          <span className="text-sm">Ja</span>
+                        </label>
+                      </td>
+                      <td className="border px-2 py-1">
+                        <button
+                          className="rounded-full border px-2 py-1"
+                          onClick={() => removeRole(idx)}
+                          aria-label="Verwijder rol"
+                          title="Verwijder rol"
+                        >
+                          x
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
                 {active.roles.length === 0 && (
                   <tr>
                     <td className="border px-2 py-2 text-gray-500 text-center" colSpan={4}>
@@ -323,58 +328,57 @@ function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
           <div className="rounded-xl border p-3">
             <div className="mb-2 flex items-center justify-between">
               <h3 className="font-semibold">Geluiden & muziek</h3>
-              <button className="rounded-xl border px-3 py-2" onClick={addSound}>+ Item</button>
+              <button className="rounded-xl border px-3 py-2" onClick={addSound}>
+                + Item
+              </button>
             </div>
             {active.sounds.length === 0 && (
               <div className="text-sm text-gray-500">Nog geen items.</div>
             )}
             <div className="space-y-2">
-             
-{active.sounds.map((s, idx) => (
-  <div key={s.id || idx} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center">
-    {/* Omschrijving (5 kol) */}
-    <input
-      className="md:col-span-5 min-w-0 rounded border px-2 py-1"
-      placeholder="Omschrijving (bijv. 'VAR on! fluit')"
-      value={s.label || ""}
-      onChange={(e)=>updateSound(idx, { label: e.target.value })}
-    />
+              {active.sounds.map((s, idx) => (
+                <div key={s.id || idx} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center">
+                  {/* Omschrijving (5 kol) */}
+                  <input
+                    className="md:col-span-5 min-w-0 rounded border px-2 py-1"
+                    placeholder="Omschrijving (bijv. 'VAR on! fluit')"
+                    value={s.label || ""}
+                    onChange={(e) => updateSound(idx, { label: e.target.value })}
+                  />
 
-    {/* URL + Open in dezelfde kolom (6 kol) */}
-    <div className="md:col-span-6 flex items-center gap-2">
-      <input
-        className="flex-1 min-w-0 rounded border px-2 py-1"
-        placeholder="URL of bestandslink"
-        value={s.url || ""}
-        onChange={(e)=>updateSound(idx, { url: e.target.value })}
-      />
-      {hasHttpUrl(s.url) && (
-        <a
-          href={s.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="shrink-0 whitespace-nowrap rounded border px-3 py-1 text-sm hover:bg-gray-50"
-          aria-label={`Open ${s.label || "geluid"} (nieuwe tab)`}
-          title="Open link (nieuwe tab)"
-        >
-          Open
-        </a>
-      )}
-    </div>
+                  {/* URL + Open in dezelfde kolom (6 kol) */}
+                  <div className="md:col-span-6 flex items-center gap-2">
+                    <input
+                      className="flex-1 min-w-0 rounded border px-2 py-1"
+                      placeholder="URL of bestandslink"
+                      value={s.url || ""}
+                      onChange={(e) => updateSound(idx, { url: e.target.value })}
+                    />
+                    {hasHttpUrl(s.url) && (
+                      <a
+                        href={s.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="shrink-0 whitespace-nowrap rounded border px-3 py-1 text-sm hover:bg-gray-50"
+                        aria-label={`Open ${s.label || "geluid"} (nieuwe tab)`}
+                        title="Open link (nieuwe tab)"
+                      >
+                        Open
+                      </a>
+                    )}
+                  </div>
 
-    {/* Verwijderen (1 kol) */}
-    <button
-      className="md:col-span-1 shrink-0 w-9 rounded border px-0 py-1 justify-self-end"
-      onClick={()=>removeSound(idx)}
-      aria-label="Verwijder item"
-      title="Verwijder item"
-    >
-      x
-    </button>
-  </div>
-))}
-
-
+                  {/* Verwijderen (1 kol) */}
+                  <button
+                    className="md:col-span-1 shrink-0 w-9 rounded border px-0 py-1 justify-self-end"
+                    onClick={() => removeSound(idx)}
+                    aria-label="Verwijder item"
+                    title="Verwijder item"
+                  >
+                    x
+                  </button>
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -394,7 +398,9 @@ function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
               <h2 className="text-lg font-semibold">
                 {s.title || "(zonder titel)"} <span className="muted">• {s.durationMin || 0} min</span>
               </h2>
-              <div className="block"><strong>Plek:</strong> {s.stagePlace === "voor" ? "Voor de gordijn" : "Podium"}</div>
+              <div className="block">
+                <strong>Plek:</strong> {s.stagePlace === "voor" ? "Voor de gordijn" : "Podium"}
+              </div>
 
               <div className="block">
                 <strong>Rollen</strong>
@@ -407,15 +413,19 @@ function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {(s.roles || []).map((r, idx) => (
-                      <tr key={idx}>
+                    {(s.roles || []).map((r, idx2) => (
+                      <tr key={idx2}>
                         <td>{r?.name || ""}</td>
                         <td>{fullName(personById[r?.personId]) || ""}</td>
                         <td>{r?.needsMic ? "Ja" : "Nee"}</td>
                       </tr>
                     ))}
                     {(s.roles || []).length === 0 && (
-                      <tr><td colSpan="3" className="muted">Geen rollen.</td></tr>
+                      <tr>
+                        <td colSpan="3" className="muted">
+                          Geen rollen.
+                        </td>
+                      </tr>
                     )}
                   </tbody>
                 </table>
@@ -423,12 +433,8 @@ function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
 
               <div className="block">
                 <strong>Links</strong>
-                <div className="muted">
-                  Tekst: {s.links?.text ? s.links.text : <em>—</em>}
-                </div>
-                <div className="muted">
-                  Licht/geluid: {s.links?.tech ? s.links.tech : <em>—</em>}
-                </div>
+                <div className="muted">Tekst: {s.links?.text ? s.links.text : <em>—</em>}</div>
+                <div className="muted">Licht/geluid: {s.links?.tech ? s.links.tech : <em>—</em>}</div>
               </div>
 
               <div className="block">
@@ -442,8 +448,8 @@ function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {s.sounds.map((x, idx2) => (
-                        <tr key={x.id || idx2}>
+                      {s.sounds.map((x, j) => (
+                        <tr key={x.id || j}>
                           <td>{x.label || ""}</td>
                           <td>{x.url || ""}</td>
                         </tr>
