@@ -54,9 +54,10 @@ function PRKitView({ items = [], onChange = () => {}, showId, readOnly = false }
 
   return (
     <section className="rounded-2xl border p-4 bg-white">
-      <div className="mb-4 flex items-center justify-between">
+      <div id="print-prkit" className="mb-4 flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold">PR-Kit</h2>
+          <PrintButton targetId="print-prkit" label="Print PR-kit" />
           <div className="text-xs text-gray-600">Voeg posters/afbeeldingen, interviews/artikelen of video’s toe voor het PR-team.</div>
         </div>
         {!readOnly && (
