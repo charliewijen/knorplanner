@@ -1,8 +1,7 @@
 // RehearsalPlanner.jsx
-
-// RehearsalPlanner.jsx — compact, NL-weekdag zonder verspringen,
-// stabiele sortering (dag→tijd), vrije-tekst-locatie blijft staan,
-// “Vandaag” telt als komend, en nieuw-item-pop-up met correcte prefill.
+// Compact, NL-weekdag zonder verspringen; stabiele sortering (dag→tijd),
+// vrije-tekst-locatie; “Vandaag” telt als komend; nieuw-item-pop-up met prefill.
+// Belangrijk: commits gebruiken nu een expliciete PATCH → geen stale-state meer.
 (function () {
   const { useEffect, useMemo, useRef, useState } = React;
 
@@ -45,42 +44,41 @@
     return s;
   };
 
-// Converteer allerlei invoer naar "HH:MM" (24h). Laat lege waarden leeg.
-const normTime = (str) => {
-  let s = (str ?? "").toString().trim();
-  if (!s) return "";
-  s = s.replace(/[.,;]/g, ":");           // 20.30 → 20:30, 20;30 → 20:30
+  // Converteer allerlei invoer naar "HH:MM" (24h). Laat lege waarden leeg.
+  const normTime = (str) => {
+    let s = (str ?? "").toString().trim();
+    if (!s) return "";
+    s = s.replace(/[.,;]/g, ":");           // 20.30 → 20:30, 20;30 → 20:30
 
-  if (s.includes(":")) {
-    const [hRaw, mRaw = "0"] = s.split(":");
-    let h = parseInt(hRaw, 10);
-    let m = parseInt(mRaw, 10);
+    if (s.includes(":")) {
+      const [hRaw, mRaw = "0"] = s.split(":");
+      let h = parseInt(hRaw, 10);
+      let m = parseInt(mRaw, 10);
+      if (!Number.isFinite(h)) h = 0;
+      if (!Number.isFinite(m)) m = 0;
+      h = Math.min(23, Math.max(0, h));
+      m = Math.min(59, Math.max(0, m));
+      return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
+    }
+
+    // Alleen cijfers? Neem laatste 2 als minuten (2035 → 20:35, 8 → 08:00)
+    const digits = s.replace(/\D/g, "");
+    if (!digits) return "";
+    if (digits.length <= 2) {
+      let h = parseInt(digits, 10);
+      if (!Number.isFinite(h)) h = 0;
+      h = Math.min(23, Math.max(0, h));
+      return `${String(h).padStart(2,"0")}:00`;
+    }
+    let h = parseInt(digits.slice(0, -2), 10);
+    let m = parseInt(digits.slice(-2), 10);
     if (!Number.isFinite(h)) h = 0;
     if (!Number.isFinite(m)) m = 0;
     h = Math.min(23, Math.max(0, h));
     m = Math.min(59, Math.max(0, m));
     return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
-  }
+  };
 
-  // Alleen cijfers? Neem laatste 2 als minuten (2035 → 20:35, 8 → 08:00)
-  const digits = s.replace(/\D/g, "");
-  if (!digits) return "";
-  if (digits.length <= 2) {
-    let h = parseInt(digits, 10);
-    if (!Number.isFinite(h)) h = 0;
-    h = Math.min(23, Math.max(0, h));
-    return `${String(h).padStart(2,"0")}:00`;
-  }
-  let h = parseInt(digits.slice(0, -2), 10);
-  let m = parseInt(digits.slice(-2), 10);
-  if (!Number.isFinite(h)) h = 0;
-  if (!Number.isFinite(m)) m = 0;
-  h = Math.min(23, Math.max(0, h));
-  m = Math.min(59, Math.max(0, m));
-  return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
-};
-
-  
   const fmtWeekdayNL = (dateStr) => {
     try {
       const iso = toISO(dateStr);
@@ -97,12 +95,11 @@ const normTime = (str) => {
   };
 
   const timeToMin = (timeStr) => {
-  const s = normTime(timeStr);
-  if (!s) return 24 * 60 + 59;
-  const [h, m] = s.split(":").map((n) => parseInt(n, 10));
-  return h * 60 + m;
-};
-
+    const s = normTime(timeStr);
+    if (!s) return 24 * 60 + 59;
+    const [h, m] = s.split(":").map((n) => parseInt(n, 10));
+    return h * 60 + m;
+  };
 
   const startOfToday = (() => { const d = new Date(); d.setHours(0,0,0,0); return d.getTime(); })();
 
@@ -200,44 +197,53 @@ const normTime = (str) => {
       });
     }, [rehearsals]);
 
-    // commit helpers
+    // ---- payload builder (alles, zodat parent compleet record krijgt) ----
+    const buildPayload = (base = {}) => ({
+      date: toISO(base.date) || "",
+      time: normTime(base.time) || "",
+      location: base.location || "",
+      comments: base.comments || "",
+      absentees: Array.isArray(base.absentees) ? base.absentees : [],
+      type: base.type || "",
+      requiredPresent: !!base.requiredPresent,
+    });
+
+    // commit helpers (patch-gedreven → geen stale state)
     const timersRef = useRef({});
-    const commitNow = (id) => {
+    const commitNow = (id, patch = null) => {
       if (readOnly || !onUpdate) return;
-      const d = drafts[id];
-      if (!d) return;
-      onUpdate(id, {
-        date: toISO(d.date) || "",
-        time: normTime(d.time) || "",
-        location: d.location || "",
-        comments: d.comments || "",
-        absentees: Array.isArray(d.absentees) ? d.absentees : [],
-        type: d.type || "",
-        requiredPresent: !!d.requiredPresent,
-      });
+      const merged = { ...(drafts[id] || {}), ...(patch || {}) };
+      onUpdate(id, buildPayload(merged));
     };
-    const commitDebounced = (id, ms = 300) => {
+    const commitDebounced = (id, patch = null, ms = 300) => {
+      if (readOnly || !onUpdate) return;
       clearTimeout(timersRef.current[id]);
-      timersRef.current[id] = setTimeout(() => commitNow(id), ms);
+      // Snap de payload op het moment dat we de debounce instellen,
+      // zodat we exact doorsturen wat de gebruiker net invulde.
+      const merged = { ...(drafts[id] || {}), ...(patch || {}) };
+      const payload = buildPayload(merged);
+      timersRef.current[id] = setTimeout(() => onUpdate(id, payload), ms);
     };
 
     const setField = (id, field, value, immediate = false) => {
-  setDrafts((prev) => ({ ...prev, [id]: { ...(prev[id] || {}), [field]: value } }));
+      // Lokale draft bijwerken
+      setDrafts((prev) => ({ ...prev, [id]: { ...(prev[id] || {}), [field]: value } }));
 
-  if (readOnly) return;
+      if (readOnly) return;
 
-  // Belangrijk: tijd nooit debounced opslaan (anders krijg je "20" of "20:3")
-  if (field === "time" && !immediate) return;
+      // Tijd nooit debounced committen: normaliseren bij onBlur
+      if (field === "time" && !immediate) return;
 
-  (immediate ? commitNow : commitDebounced)(id);
-};
-
+      const patch = { [field]: value };
+      (immediate ? commitNow : commitDebounced)(id, patch);
+    };
 
     /* ---------- afwezig ---------- */
     const [openAbsId, setOpenAbsId] = useState(null);
     const toggleAbsentee = (id, personId) => {
       const cur = drafts[id]?.absentees || [];
       const next = cur.includes(personId) ? cur.filter(x => x !== personId) : [...cur, personId];
+      // direct committen met patch (geen stale)
       setField(id, "absentees", next, true);
     };
     const clearAbsentees = (id) => setField(id, "absentees", [], true);
@@ -282,11 +288,8 @@ const normTime = (str) => {
       const newId = [...nowIds].find(id => !pending.prevIds.has(id));
       if (newId) {
         // 1) direct parent bijwerken
-        onUpdate && onUpdate(newId, {
-          ...pending.payload,
-          absentees: [],
-        });
-        // 2) én eigen draft meteen naar payload zetten -> UI toont direct juiste waarden
+        onUpdate && onUpdate(newId, { ...pending.payload, absentees: [] });
+        // 2) eigen draft meteen naar payload zetten
         setDrafts(prev => ({ ...prev, [newId]: { ...(prev[newId] || {}), ...pending.payload, absentees: [] } }));
         pendingCreateRef.current = null;
       }
@@ -341,7 +344,10 @@ const normTime = (str) => {
                 type="date"
                 className="w-full rounded border rp-ctrl"
                 value={toISO(d.date) || ""}
-                onChange={(e) => setField(r.id, "date", toISO(e.target.value), true)}
+                onChange={(e) => {
+                  const v = toISO(e.target.value);
+                  setField(r.id, "date", v, true);   // direct commit met patch
+                }}
                 disabled={readOnly}
               />
             </div>
@@ -349,14 +355,13 @@ const normTime = (str) => {
             <div>
               <div className="rp-label">Tijd</div>
               <input
-  type="time"
-  className="w-full rounded border rp-ctrl"
-  value={d.time || ""}
-  onChange={(e) => setField(r.id, "time", e.target.value, false)}          // lokaal bufferen
-  onBlur={(e) => setField(r.id, "time", normTime(e.target.value), true)}   // normaliseren + committen
-  disabled={readOnly}
-/>
-
+                type="time"
+                className="w-full rounded border rp-ctrl"
+                value={d.time || ""}
+                onChange={(e) => setField(r.id, "time", e.target.value, false)}          // lokaal bufferen
+                onBlur={(e) => setField(r.id, "time", normTime(e.target.value), true)}   // normaliseren + meteen commit
+                disabled={readOnly}
+              />
             </div>
 
             <div className="rp-location">
@@ -365,7 +370,7 @@ const normTime = (str) => {
                 <select
                   className="w-full rounded border rp-ctrl"
                   value={d.location || LOCATION_OPTIONS[0]}
-                  onChange={(e) => setField(r.id, "location", e.target.value, true)}
+                  onChange={(e) => setField(r.id, "location", e.target.value, true)}     // direct commit
                   disabled={readOnly}
                 >
                   {LOCATION_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
@@ -376,8 +381,8 @@ const normTime = (str) => {
                   className="w-full rounded border rp-ctrl"
                   placeholder="Locatie (vrije tekst)…"
                   value={d.location || ""}
-                  onChange={(e) => setField(r.id, "location", e.target.value, false)}
-                  onBlur={() => commitNow(r.id)}
+                  onChange={(e) => setField(r.id, "location", e.target.value, false)}    // lokaal
+                  onBlur={(e) => commitNow(r.id, { location: e.target.value })}          // commit patch
                   disabled={readOnly}
                 />
               )}
@@ -389,7 +394,7 @@ const normTime = (str) => {
                 <select
                   className="w-full rounded border rp-ctrl"
                   value={d.type || TYPE_OPTIONS[1]}
-                  onChange={(e) => setField(r.id, "type", e.target.value, true)}
+                  onChange={(e) => setField(r.id, "type", e.target.value, true)}         // direct commit
                   disabled={readOnly}
                 >
                   {TYPE_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
@@ -401,19 +406,19 @@ const normTime = (str) => {
                   placeholder="Type (vrije tekst)…"
                   value={d.type || ""}
                   onChange={(e) => setField(r.id, "type", e.target.value, false)}
-                  onBlur={() => commitNow(r.id)}
+                  onBlur={(e) => commitNow(r.id, { type: e.target.value })}              // commit patch
                   disabled={readOnly}
                 />
               )}
             </div>
 
-            <div className="rp-req" style={{display:'flex',gap:8,alignItems:'center',justifySelf:'start'}}>
+            <div className="rp-req" style={{display:'flex',gap:8,alignItems:'center',justifySelf:'start'}>
               <label className="inline-flex items-center gap-2">
                 <input
                   type="checkbox"
                   className="rounded border"
                   checked={!!d.requiredPresent}
-                  onChange={(e)=> setField(r.id, "requiredPresent", !!e.target.checked, true)}
+                  onChange={(e)=> setField(r.id, "requiredPresent", !!e.target.checked, true)} // direct commit
                   disabled={readOnly}
                 />
                 <span style={{fontSize:12,fontWeight:700}}>VERPLICHT AANWEZIG</span>
@@ -442,7 +447,7 @@ const normTime = (str) => {
                 placeholder="Korte notitie…"
                 value={d.comments || ""}
                 onChange={(e) => setField(r.id, "comments", e.target.value, false)}
-                onBlur={() => commitNow(r.id)}
+                onBlur={(e) => commitNow(r.id, { comments: e.target.value })}            // commit patch
                 disabled={readOnly}
               />
             </div>
@@ -519,39 +524,51 @@ const normTime = (str) => {
                 <div className="rp-top" style={{gridTemplateColumns:"160px 110px 1fr 220px auto"}}>
                   <div>
                     <div className="rp-label">Datum</div>
-                    <input type="date" className="w-full rounded border rp-ctrl"
+                    <input
+                      type="date"
+                      className="w-full rounded border rp-ctrl"
                       value={toISO(newDraft.date)}
-                      onChange={(e)=> setNewDraft(d=>({...d, date: toISO(e.target.value)}))} />
+                      onChange={(e)=> setNewDraft(d=>({...d, date: toISO(e.target.value)}))}
+                    />
                   </div>
                   <div>
                     <div className="rp-label">Tijd</div>
-                    <input type="time" className="w-full rounded border rp-ctrl"
-  value={newDraft.time}
-  onChange={(e)=> setNewDraft(d=>({...d, time: e.target.value}))}
-  onBlur={(e)=> setNewDraft(d=>({...d, time: normTime(e.target.value)}))} />
-
+                    <input
+                      type="time"
+                      className="w-full rounded border rp-ctrl"
+                      value={newDraft.time}
+                      onChange={(e)=> setNewDraft(d=>({...d, time: e.target.value}))}
+                      onBlur={(e)=> setNewDraft(d=>({...d, time: normTime(e.target.value)}))}
+                    />
                   </div>
                   <div className="rp-location">
                     <div className="rp-label">Locatie</div>
-                    <select className="w-full rounded border rp-ctrl"
+                    <select
+                      className="w-full rounded border rp-ctrl"
                       value={isOneOf(newDraft.location, LOCATION_OPTIONS) ? newDraft.location : LOCATION_OPTIONS[0]}
-                      onChange={(e)=> setNewDraft(d=>({...d, location: e.target.value}))}>
+                      onChange={(e)=> setNewDraft(d=>({...d, location: e.target.value}))}
+                    >
                       {LOCATION_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                     </select>
                   </div>
                   <div className="rp-type">
                     <div className="rp-label">Type</div>
-                    <select className="w-full rounded border rp-ctrl"
+                    <select
+                      className="w-full rounded border rp-ctrl"
                       value={isOneOf(newDraft.type, TYPE_OPTIONS) ? newDraft.type : "Reguliere Repetitie"}
-                      onChange={(e)=> setNewDraft(d=>({...d, type: e.target.value}))}>
+                      onChange={(e)=> setNewDraft(d=>({...d, type: e.target.value}))}
+                    >
                       {TYPE_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                     </select>
                   </div>
                   <div className="rp-req" style={{display:'flex',alignItems:'center',gap:8}}>
                     <label className="inline-flex items-center gap-2">
-                      <input type="checkbox" className="rounded border"
+                      <input
+                        type="checkbox"
+                        className="rounded border"
                         checked={!!newDraft.requiredPresent}
-                        onChange={(e)=> setNewDraft(d=>({...d, requiredPresent: !!e.target.checked}))} />
+                        onChange={(e)=> setNewDraft(d=>({...d, requiredPresent: !!e.target.checked}))}
+                      />
                       <span style={{fontSize:12,fontWeight:700}}>VERPLICHT AANWEZIG</span>
                     </label>
                   </div>
@@ -563,9 +580,13 @@ const normTime = (str) => {
                 <div className="rp-row" style={{gridTemplateColumns:"1fr"}}>
                   <div>
                     <div className="rp-label">Notities</div>
-                    <textarea rows={2} className="w-full rounded border rp-note" placeholder="Korte notitie…"
+                    <textarea
+                      rows={2}
+                      className="w-full rounded border rp-note"
+                      placeholder="Korte notitie…"
                       value={newDraft.comments}
-                      onChange={(e)=> setNewDraft(d=>({...d, comments: e.target.value}))} />
+                      onChange={(e)=> setNewDraft(d=>({...d, comments: e.target.value}))}
+                    />
                   </div>
                 </div>
               </div>
