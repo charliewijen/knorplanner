@@ -5,75 +5,75 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Knorplanner</title>
   <link rel="icon" href="https://cdn-icons-png.flaticon.com/512/616/616584.png">
-<link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/616/616584.png">
-<meta name="theme-color" content="#ffffff">
+  <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/616/616584.png">
+  <meta name="theme-color" content="#ffffff">
 
   <!-- React + Babel -->
   <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
   <!-- Supabase -->
   <script src="https://unpkg.com/@supabase/supabase-js"></script>
   <script>
     // maak Supabase client globaal beschikbaar
     window.SUPA = supabase.createClient(
-      "https://tsqcqtkporzvdfwzwcjy.supabase.co", // jouw Supabase project URL
+      "https://tsqcqtkporzvdfwzwcjy.supabase.co",
       "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzcWNxdGtwb3J6dmRmd3p3Y2p5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY0NzcwODIsImV4cCI6MjA3MjA1MzA4Mn0.dTAr_B0smr6PE8zQp6ABcmfCO_39d5svi8RlEF-EWxE"
     );
   </script>
+
+  <!-- Tailwind -->
   <script src="https://cdn.tailwindcss.com"></script>
-  
-<style>
-  @media print {
-    /* verberg alles standaard */
-    body * { visibility: hidden !important; }
-    /* toon alleen programma */
-    #print-program, #print-program * { visibility: visible !important; }
-    /* laat het blok netjes bovenaan staan */
-    #print-program { position: absolute; inset: 0 auto auto 0; width: 100%; }
-    /* verberg sticky topbar en floating tools */
-    header, .fixed { display: none !important; }
-    /* verwijder randen/achtergrond voor print */
-    #print-program { box-shadow: none !important; border: none !important; }
-  }
-</style>
 
   <style>
-  /* Helpers algemeen */
-  .print-hide { display: inline; }
-  .print-only { display: none; }
-  .no-truncate { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; }
+    @media print {
+      /* verberg alles standaard */
+      body * { visibility: hidden !important; }
+      /* toon alleen programma */
+      #print-program, #print-program * { visibility: visible !important; }
+      /* laat het blok netjes bovenaan staan */
+      #print-program { position: absolute; inset: 0 auto auto 0; width: 100%; }
+      /* verberg sticky topbar en floating tools */
+      header, .fixed { display: none !important; }
+      /* verwijder randen/achtergrond voor print */
+      #print-program { box-shadow: none !important; border: none !important; }
+    }
+  </style>
 
-  /* Zet standaard landscape + nette marges voor PDF */
-  @page {
-    size: A4 landscape;
-    margin: 12mm;
-  }
+  <style>
+    /* Helpers algemeen */
+    .print-hide { display: inline; }
+    .print-only { display: none; }
+    .no-truncate { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; }
 
-  @media print {
-    /* toon alléén het microfoonblok */
-    body * { visibility: hidden !important; }
-    #print-mics, #print-mics * { visibility: visible !important; }
-    #print-mics { position: absolute; inset: 0 auto auto 0; width: 100%; }
+    /* Zet standaard landscape + nette marges voor PDF */
+    @page {
+      size: A4 landscape;
+      margin: 12mm;
+    }
 
-    /* verberg header/floating tools */
-    header, .fixed { display: none !important; }
+    @media print {
+      /* toon alléén het microfoonblok */
+      body * { visibility: hidden !important; }
+      #print-mics, #print-mics * { visibility: visible !important; }
+      #print-mics { position: absolute; inset: 0 auto auto 0; width: 100%; }
 
-    /* verberg interactieve UI in print */
-    .print-hide { display: none !important; }
-    .print-only { display: inline !important; }
+      /* verberg header/floating tools */
+      header, .fixed { display: none !important; }
 
-    /* compactere tabel voor breedte */
-    #print-mics table { font-size: 11px; border-collapse: collapse; width: 100%; table-layout: fixed; }
-    #print-mics th, #print-mics td { padding: 4px 6px; word-wrap: break-word; }
-    #print-mics th { white-space: nowrap; }
-    /* namen nooit afkappen */
-    #print-mics .no-truncate { white-space: normal !important; }
-  }
-</style>
+      /* verberg interactieve UI in print */
+      .print-hide { display: none !important; }
+      .print-only { display: inline !important; }
 
-
-  
+      /* compactere tabel voor breedte */
+      #print-mics table { font-size: 11px; border-collapse: collapse; width: 100%; table-layout: fixed; }
+      #print-mics th, #print-mics td { padding: 4px 6px; word-wrap: break-word; }
+      #print-mics th { white-space: nowrap; }
+      /* namen nooit afkappen */
+      #print-mics .no-truncate { white-space: normal !important; }
+    }
+  </style>
 </head>
 <body class="bg-white text-gray-900">
   <div id="root"></div>
@@ -81,22 +81,26 @@
   <!-- 📦 Componenten / helpers -->
   <script type="text/babel" src="BackstageComponents.jsx"></script>
 
-  <!-- 📦 Losse pagina’s -->
+  <!-- 📦 Losse pagina’s / views -->
   <script type="text/babel" src="PlannerMinimal.jsx"></script>
+
+  <!-- ⬇⬇⬇  PLAATS DEZE CODE ONDER DEZE REGEL (dependencies en andere views geladen)  ⬇⬇⬇ -->
   <script type="text/babel" src="RehearsalPlanner.jsx"></script>
+  <!-- ⬆⬆⬆  EN BOVEN DEZE REGEL (BackstagePlannerApp.jsx)  ⬆⬆⬆ -->
+
   <script type="text/babel" src="ScriptsView.jsx"></script>
   <script type="text/babel" src="CastMatrixView.jsx"></script>
   <script type="text/babel" src="MicMatrixView.jsx"></script>
   <script type="text/babel" src="RoleDistributionView.jsx"></script>
   <script type="text/babel" src="TechPackViewPage.jsx"></script>
-  
-  <!-- 📦 Hoofd-style sheet -->
-<link rel="stylesheet" href="app-theme.css">
 
-<!-- 📦 PRKit component -->
-<script type="text/babel" src="PRKitView.jsx"></script>
-  
-  <!-- 📦 Hoofd-app -->
+  <!-- 📦 Hoofd-style sheet -->
+  <link rel="stylesheet" href="app-theme.css">
+
+  <!-- 📦 PRKit component -->
+  <script type="text/babel" src="PRKitView.jsx"></script>
+
+  <!-- 📦 Hoofd-app (moet ALTijd als laatste script) -->
   <script type="text/babel" src="BackstagePlannerApp.jsx"></script>
 
   <script type="text/babel">
