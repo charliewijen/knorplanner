@@ -118,113 +118,120 @@ function MicMatrixView({ currentShowId, sketches = [], people = [], shows = [], 
 
   return (
     <section className="rounded-2xl border p-4">
-      <div id="print-mics" className="mb-3 flex items-center justify-between gap-2">
+      {/* Titel + printknop (knop staat BUITEN het printdoel) */}
+      <div className="mb-3 flex items-center justify-between gap-2">
         <h2 className="text-lg font-semibold">Microfoonschema</h2>
-        <PrintButton targetId="print-mics" label="Print microfoonschema" />
-
+        {/* print-hide => knop zelf verdwijnt in print */}
+        <div className="print-hide">
+          <PrintButton targetId="print-mics-area" label="Print microfoonschema" />
+        </div>
       </div>
 
-      {/* tellers */}
-      <div className="mb-3 flex flex-wrap items-center gap-3">
-        <label className="text-sm">Headsets</label>
-        <input
-          type="number"
-          className="w-20 rounded border px-2 py-1"
-          value={headsetCount}
-          onChange={(e)=> setCounts({ headsetCount: Math.max(0, parseInt(e.target.value||"0",10)) })}
-          min={0}
-        />
+      {/* === ALLES wat geprint moet worden zit HIERBINNEN === */}
+      <div id="print-mics-area">
+        {/* tellers */}
+        <div className="mb-3 flex flex-wrap items-center gap-3">
+          <label className="text-sm">Headsets</label>
+          <input
+            type="number"
+            className="w-20 rounded border px-2 py-1"
+            value={headsetCount}
+            onChange={(e)=> setCounts({ headsetCount: Math.max(0, parseInt(e.target.value||"0",10)) })}
+            min={0}
+          />
 
-        <label className="text-sm">Handhelds</label>
-        <input
-          type="number"
-          className="w-20 rounded border px-2 py-1"
-          value={handheldCount}
-          onChange={(e)=> setCounts({ handheldCount: Math.max(0, parseInt(e.target.value||"0",10)) })}
-          min={0}
-        />
-      </div>
+          <label className="text-sm">Handhelds</label>
+          <input
+            type="number"
+            className="w-20 rounded border px-2 py-1"
+            value={handheldCount}
+            onChange={(e)=> setCounts({ handheldCount: Math.max(0, parseInt(e.target.value||"0",10)) })}
+            min={0}
+          />
+        </div>
 
-      {/* tabel */}
-      <div className="overflow-x-auto -mx-1">
-        <table className="min-w-full border text-sm">
-          <thead>
-            <tr className="bg-gray-100">
-              <th className="border px-2 py-1 w-12">#</th>
-              <th className="border px-2 py-1 text-left">Sketch</th>
-              {allColumns.map(col => (
-                <th key={col.id} className="border px-2 py-1 text-left whitespace-nowrap">{col.label}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {orderedSketches.map((sk, idx) => {
-              const t = rowType(sk);
-              const micOptions = micRolesForSketch(sk);
-              const noMicRoles = micOptions.length === 0;
-              const satisfied = rowIsSatisfied(sk);
-
-              return (
-                <tr key={sk.id || idx} className={rowClass(sk)} data-kind={t}>
-                  <td className="border px-2 py-1 text-center">{sk.order ?? (idx+1)}</td>
-                  <td className="border px-2 py-1">
-                    {sk.title || "(zonder titel)"}
-                    {t === "break" && (
-                      <span className="ml-2 inline-block rounded-full bg-yellow-100 text-yellow-800 text-xs px-2 py-0.5 align-middle">
-                        pauze
-                      </span>
-                    )}
-                    {t === "waerse" && (
-                      <span className="ml-2 inline-block rounded-full bg-blue-100 text-blue-700 text-xs px-2 py-0.5 align-middle">
-                        waerse
-                      </span>
-                    )}
-                  </td>
-
-                  {allColumns.map(col => {
-                    // Voor pauze/waerse: helemaal geen select tonen
-                    if (t === "break" || t === "waerse") {
-                      return (
-                        <td key={col.id} className="border px-2 py-1 text-center text-gray-500">—</td>
-                      );
-                    }
-
-                    const assigned = currentAssignment(sk, col.id);
-                    // Disabled-criteria (alleen voor normale rijen):
-                    // - geen mic-rollen in deze sketch -> disabled (grijs)
-                    // - of alle mic-rollen al voorzien én deze cel nog leeg -> disabled (grijs)
-                    const disabled = noMicRoles || (satisfied && !assigned);
-                    const cls = "w-full rounded border px-2 py-1" + (disabled ? " bg-gray-100 text-gray-400 cursor-not-allowed" : "");
-
-                    return (
-                      <td key={col.id} className="border px-2 py-1">
-                        <select
-                          className={cls}
-                          value={assigned}
-                          onChange={(e)=> setAssignment(sk.id, col.id, e.target.value)}
-                          disabled={disabled}
-                        >
-                          <option value="">{disabled ? "—" : "— kies —"}</option>
-                          {micOptions.map(pid => (
-                            <option key={pid} value={pid}>{fullName(pid)}</option>
-                          ))}
-                        </select>
-                      </td>
-                    );
-                  })}
-                </tr>
-              );
-            })}
-            {orderedSketches.length === 0 && (
-              <tr>
-                <td className="border px-2 py-2 text-gray-500 text-center" colSpan={2 + allColumns.length}>
-                  Geen items.
-                </td>
+        {/* tabel */}
+        <div className="overflow-x-auto -mx-1">
+          <table className="min-w-full border text-sm">
+            <thead>
+              <tr className="bg-gray-100">
+                <th className="border px-2 py-1 w-12">#</th>
+                <th className="border px-2 py-1 text-left">Sketch</th>
+                {allColumns.map(col => (
+                  <th key={col.id} className="border px-2 py-1 text-left whitespace-nowrap">{col.label}</th>
+                ))}
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {orderedSketches.map((sk, idx) => {
+                const t = rowType(sk);
+                const micOptions = micRolesForSketch(sk);
+                const noMicRoles = micOptions.length === 0;
+                const satisfied = rowIsSatisfied(sk);
+
+                return (
+                  <tr key={sk.id || idx} className={rowClass(sk)} data-kind={t}>
+                    <td className="border px-2 py-1 text-center">{sk.order ?? (idx+1)}</td>
+                    <td className="border px-2 py-1">
+                      {sk.title || "(zonder titel)"}
+                      {t === "break" && (
+                        <span className="ml-2 inline-block rounded-full bg-yellow-100 text-yellow-800 text-xs px-2 py-0.5 align-middle">
+                          pauze
+                        </span>
+                      )}
+                      {t === "waerse" && (
+                        <span className="ml-2 inline-block rounded-full bg-blue-100 text-blue-700 text-xs px-2 py-0.5 align-middle">
+                          waerse
+                        </span>
+                      )}
+                    </td>
+
+                    {allColumns.map(col => {
+                      // Voor pauze/waerse: helemaal geen select tonen
+                      if (t === "break" || t === "waerse") {
+                        return (
+                          <td key={col.id} className="border px-2 py-1 text-center text-gray-500">—</td>
+                        );
+                      }
+
+                      const assigned = currentAssignment(sk, col.id);
+                      // Disabled-criteria (alleen voor normale rijen):
+                      // - geen mic-rollen in deze sketch -> disabled (grijs)
+                      // - of alle mic-rollen al voorzien én deze cel nog leeg -> disabled (grijs)
+                      const disabled = noMicRoles || (satisfied && !assigned);
+                      const cls = "w-full rounded border px-2 py-1" + (disabled ? " bg-gray-100 text-gray-400 cursor-not-allowed" : "");
+
+                      return (
+                        <td key={col.id} className="border px-2 py-1">
+                          <select
+                            className={cls}
+                            value={assigned}
+                            onChange={(e)=> setAssignment(sk.id, col.id, e.target.value)}
+                            disabled={disabled}
+                          >
+                            <option value="">{disabled ? "—" : "— kies —"}</option>
+                            {micOptions.map(pid => (
+                              <option key={pid} value={pid}>{fullName(pid)}</option>
+                            ))}
+                          </select>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+              {orderedSketches.length === 0 && (
+                <tr>
+                  <td className="border px-2 py-2 text-gray-500 text-center" colSpan={2 + allColumns.length}>
+                    Geen items.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
+      {/* === einde print-mics-area === */}
     </section>
   );
 }
