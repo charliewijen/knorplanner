@@ -222,9 +222,16 @@ const normTime = (str) => {
     };
 
     const setField = (id, field, value, immediate = false) => {
-      setDrafts((prev) => ({ ...prev, [id]: { ...(prev[id] || {}), [field]: value } }));
-      if (!readOnly) (immediate ? commitNow : commitDebounced)(id);
-    };
+  setDrafts((prev) => ({ ...prev, [id]: { ...(prev[id] || {}), [field]: value } }));
+
+  if (readOnly) return;
+
+  // Belangrijk: tijd nooit debounced opslaan (anders krijg je "20" of "20:3")
+  if (field === "time" && !immediate) return;
+
+  (immediate ? commitNow : commitDebounced)(id);
+};
+
 
     /* ---------- afwezig ---------- */
     const [openAbsId, setOpenAbsId] = useState(null);
