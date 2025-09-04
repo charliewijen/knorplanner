@@ -23,7 +23,6 @@ const peopleCmp = (a, b) =>
   lastNameOf(a).localeCompare(lastNameOf(b)) ||
   String((a.firstName||a.name||"")).localeCompare(String((b.firstName||b.name||"")));
 
-
 function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
   const uid = window.uid;
 
@@ -34,17 +33,13 @@ function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
 
   const [sel, setSel] = React.useState(onlySketches[0]?.id || "");
   React.useEffect(() => {
-    // als selectie niet meer bestaat (b.v. na delete), kies eerste
     if (sel && !onlySketches.some((s) => s.id === sel)) {
       setSel(onlySketches[0]?.id || "");
     }
   }, [sel, onlySketches]);
 
   const active = onlySketches.find((s) => s.id === sel);
-
   const personById = Object.fromEntries((people || []).map((p) => [p.id, p]));
-
-  // Eenvoudige URL-check: toon open-knop alleen voor http(s) links
   const hasHttpUrl = (v) => /^https?:\/\//i.test((v || "").trim());
 
   // ====== Edit helpers ======
@@ -55,8 +50,7 @@ function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
     clean.stagePlace = clean.stagePlace || "podium"; // podium | voor
     clean.durationMin = Number.isFinite(clean.durationMin) ? clean.durationMin : 0;
     clean.roles = Array.isArray(clean.roles) ? clean.roles : [];
-    clean.links =
-      clean.links && typeof clean.links === "object" ? clean.links : { text: "", tech: "" };
+    clean.links = clean.links && typeof clean.links === "object" ? clean.links : { text: "", tech: "" };
     clean.sounds = Array.isArray(clean.sounds) ? clean.sounds : []; // [{id,label,url}]
     clean.decor = clean.decor || "";
     return clean;
@@ -67,10 +61,7 @@ function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
   const addRole = () => {
     if (!active) return;
     patch(active.id, {
-      roles: [
-        ...active.roles,
-        { name: `Rol ${active.roles.length + 1}`, personId: "", needsMic: false },
-      ],
+      roles: [...active.roles, { name: `Rol ${active.roles.length + 1}`, personId: "", needsMic: false }],
     });
   };
 
@@ -96,24 +87,20 @@ function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
     patch(active.id, { sounds });
   };
 
-  const printAll = () => window.print();
-
   return (
-    <section id="print-scripts" className="rounded-2xl border p-4 bg-white">
-      {/* Sterke, lokale print-CSS die ALLEEN #print-scripts toont */}
+    <section className="rounded-2xl border p-4 bg-white">
+      {/* Lokale print-CSS (werkt ook zonder PrintButton, via Ctrl/Cmd+P) */}
       <style>{`
         @media print {
           body * { visibility: hidden !important; }
-          #print-scripts, #print-scripts * { visibility: visible !important; }
-          #print-scripts { position: absolute; inset: 0 auto auto 0; width: 100%; }
+          #print-scripts-area, #print-scripts-area * { visibility: visible !important; }
+          #print-scripts-area { position: absolute; inset: 0 auto auto 0; width: 100%; }
           header, .fixed { display: none !important; }
-          /* nette print-typografie */
-          #print-scripts h2 { margin: 0 0 8px 0; padding: 0; }
-          #print-scripts .block { margin-bottom: 10px; }
-          #print-scripts table { width: 100%; border-collapse: collapse; font-size: 12px; }
-          #print-scripts th, #print-scripts td { border: 1px solid #ddd; padding: 6px; vertical-align: top; }
-          #print-scripts .muted { color: #666; }
-          /* pagina-breaks per sketch */
+          #print-scripts-area h2 { margin: 0 0 8px 0; padding: 0; }
+          #print-scripts-area .block { margin-bottom: 10px; }
+          #print-scripts-area table { width: 100%; border-collapse: collapse; font-size: 12px; }
+          #print-scripts-area th, #print-scripts-area td { border: 1px solid #ddd; padding: 6px; vertical-align: top; }
+          #print-scripts-area .muted { color: #666; }
           .sketch-print + .sketch-print { page-break-before: always; }
         }
       `}</style>
@@ -121,12 +108,12 @@ function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
       <div className="mb-3 flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold">Sketches</h2>
-          <div className="text-xs text-gray-600">
-            Beheer per sketch; print toont alle sketches onder elkaar.
-          </div>
+          <div className="text-xs text-gray-600">Beheer per sketch; print toont alle sketches onder elkaar.</div>
         </div>
-        <button className="rounded-full border px-3 py-1 text-sm" onClick={() => window.KP.printSection('print-scripts','Sketches')}>🖨️ Print deze pagina</button>
-
+        {/* Printknop zichtbaar (ook in share mode) en zelf onzichtbaar tijdens print */}
+        <div className="print-hide">
+          <PrintButton targetId="print-scripts-area" label="Print alle sketches" />
+        </div>
       </div>
 
       {/* Selectie — alleen echte sketches (geen pauzes/waerse) */}
@@ -187,9 +174,7 @@ function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
                     className="flex-1 rounded border px-2 py-1"
                     placeholder="https://..."
                     value={active.links?.text || ""}
-                    onChange={(e) =>
-                      patch(active.id, { links: { ...(active.links || {}), text: e.target.value } })
-                    }
+                    onChange={(e)=>patch(active.id, { links: { ...(active.links||{}), text: e.target.value } })}
                   />
                   {hasHttpUrl(active.links?.text) && (
                     <a
@@ -204,7 +189,6 @@ function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
                     </a>
                   )}
                 </div>
-
                 {/* Link naar licht/geluid */}
                 <div className="flex items-center gap-2">
                   <span className="w-40 text-sm">Link naar licht/geluid</span>
@@ -212,9 +196,7 @@ function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
                     className="flex-1 rounded border px-2 py-1"
                     placeholder="https://..."
                     value={active.links?.tech || ""}
-                    onChange={(e) =>
-                      patch(active.id, { links: { ...(active.links || {}), tech: e.target.value } })
-                    }
+                    onChange={(e)=>patch(active.id, { links: { ...(active.links||{}), tech: e.target.value } })}
                   />
                   {hasHttpUrl(active.links?.tech) && (
                     <a
@@ -247,9 +229,7 @@ function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
           <div className="rounded-xl border p-3">
             <div className="mb-2 flex items-center justify-between">
               <h3 className="font-semibold">Rollen</h3>
-              <button className="rounded-xl border px-3 py-2" onClick={addRole}>
-                + Rol
-              </button>
+              <button className="rounded-xl border px-3 py-2" onClick={addRole}>+ Rol</button>
             </div>
             <table className="min-w-full border text-sm">
               <thead>
@@ -262,13 +242,11 @@ function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
               </thead>
               <tbody>
                 {active.roles.map((r, idx) => {
-                  // Personen die al in een andere rol van deze sketch zitten (behalve de huidige selectie)
                   const assigned = new Set(
                     (active.roles || [])
                       .map((rr, i) => (i === idx ? null : rr?.personId))
                       .filter(Boolean)
                   );
-                  // Alfabetisch op achternaam
                   const sortedPeople = [...people].sort(peopleCmp);
 
                   return (
@@ -286,7 +264,6 @@ function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
                           value={r.personId || ""}
                           onChange={(e) => {
                             const pid = e.target.value;
-                            // Uniek afdwingen: zelf zetten, andere rollen die deze pid hebben leegmaken
                             const newRoles = (active.roles || []).map((rr, i) => {
                               if (i === idx) return { ...rr, personId: pid };
                               return rr.personId === pid ? { ...rr, personId: "" } : rr;
@@ -341,9 +318,7 @@ function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
           <div className="rounded-xl border p-3">
             <div className="mb-2 flex items-center justify-between">
               <h3 className="font-semibold">Geluiden & muziek</h3>
-              <button className="rounded-xl border px-3 py-2" onClick={addSound}>
-                + Item
-              </button>
+              <button className="rounded-xl border px-3 py-2" onClick={addSound}>+ Item</button>
             </div>
             {active.sounds.length === 0 && (
               <div className="text-sm text-gray-500">Nog geen items.</div>
@@ -351,15 +326,12 @@ function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
             <div className="space-y-2">
               {active.sounds.map((s, idx) => (
                 <div key={s.id || idx} className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center">
-                  {/* Omschrijving (5 kol) */}
                   <input
                     className="md:col-span-5 min-w-0 rounded border px-2 py-1"
                     placeholder="Omschrijving (bijv. 'VAR on! fluit')"
                     value={s.label || ""}
                     onChange={(e) => updateSound(idx, { label: e.target.value })}
                   />
-
-                  {/* URL + Open in dezelfde kolom (6 kol) */}
                   <div className="md:col-span-6 flex items-center gap-2">
                     <input
                       className="flex-1 min-w-0 rounded border px-2 py-1"
@@ -380,8 +352,6 @@ function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
                       </a>
                     )}
                   </div>
-
-                  {/* Verwijderen (1 kol) */}
                   <button
                     className="md:col-span-1 shrink-0 w-9 rounded border px-0 py-1 justify-self-end"
                     onClick={() => removeSound(idx)}
@@ -399,8 +369,8 @@ function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
         <div className="text-sm text-gray-500">Geen sketch geselecteerd</div>
       )}
 
-      {/* PRINT-ONLY: alle sketches onder elkaar */}
-      <div id="print-scripts" className="hidden print:block">
+      {/* === PRINTDOEL: alle sketches onder elkaar (offscreen, maar PrintButton print exact dit) === */}
+      <div id="print-scripts-area" style={{ position:'absolute', left:'-99999px', top:0 }}>
         <h2 className="text-xl font-bold">Sketches – print</h2>
         <div className="muted text-sm mb-4">Alle sketches onder elkaar (pauzes en muziek niet inbegrepen).</div>
 
@@ -411,9 +381,7 @@ function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
               <h2 className="text-lg font-semibold">
                 {s.title || "(zonder titel)"} <span className="muted">• {s.durationMin || 0} min</span>
               </h2>
-              <div className="block">
-                <strong>Plek:</strong> {s.stagePlace === "voor" ? "Voor de gordijn" : "Podium"}
-              </div>
+              <div className="block"><strong>Plek:</strong> {s.stagePlace === "voor" ? "Voor de gordijn" : "Podium"}</div>
 
               <div className="block">
                 <strong>Rollen</strong>
@@ -434,11 +402,7 @@ function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
                       </tr>
                     ))}
                     {(s.roles || []).length === 0 && (
-                      <tr>
-                        <td colSpan="3" className="muted">
-                          Geen rollen.
-                        </td>
-                      </tr>
+                      <tr><td colSpan="3" className="muted">Geen rollen.</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -482,6 +446,10 @@ function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
           );
         })}
       </div>
+      {/* === einde print-scripts-area === */}
     </section>
   );
 }
+
+// Globaal export (zoals de andere views)
+window.ScriptsView = ScriptsView;
