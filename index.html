@@ -85,7 +85,15 @@
   <script type="text/babel" src="PlannerMinimal.jsx"></script>
 
   <!-- ⬇⬇⬇  PLAATS DEZE CODE ONDER DEZE REGEL (dependencies en andere views geladen)  ⬇⬇⬇ -->
-  <script type="text/babel" src="RehearsalPlanner.jsx"></script>
+  <script type="text/babel" src="RehearsalPlanner.jsx?v=reh2"></script>
+<script type="text/babel">
+  if (window.RehearsalPlanner) {
+    console.log("[Knor] RehearsalPlanner OK");
+  } else {
+    console.error("[Knor] RehearsalPlanner.jsx kon niet laden — check bestandsnaam/pad of syntax.");
+  }
+</script>
+
   <!-- ⬆⬆⬆  EN BOVEN DEZE REGEL (BackstagePlannerApp.jsx)  ⬆⬆⬆ -->
 
   <script type="text/babel" src="ScriptsView.jsx"></script>
