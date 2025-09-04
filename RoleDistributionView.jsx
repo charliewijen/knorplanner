@@ -105,8 +105,9 @@ function RoleDistributionView({ currentShowId, sketches = [], people = [], setSt
   };
 
   return (
-    <div className="rounded-2xl border p-4">
+<div id="print-roles" className="rounded-2xl border p-4">
       <h2 className="text-lg font-semibold mb-3">Rolverdeling (overzicht & volgorde)</h2>
+<PrintButton targetId="print-roles" label="Print rolverdeling" />
 
       <div className="overflow-auto">
         <table className="min-w-full border text-sm">
