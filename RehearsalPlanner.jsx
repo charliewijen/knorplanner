@@ -1,7 +1,5 @@
-// RehearsalPlanner.jsx
-// Compact, NL-weekdag zonder verspringen; stabiele sortering (dag→tijd),
-// vrije-tekst-locatie; “Vandaag” telt als komend; nieuw-item-pop-up met prefill.
-// Belangrijk: commits gebruiken nu een expliciete PATCH → geen stale-state meer.
+// RehearsalPlanner.jsx — stabiel opslaan (geen race), tijd klopt,
+// sorteren op actuele (draft) waarden, NL-weekdag, en nette modal.
 (function () {
   const { useEffect, useMemo, useRef, useState } = React;
 
@@ -186,7 +184,7 @@
       return o;
     });
 
-    // Sync: voeg nieuwe/weggehaalde items bij, maar overschrijf bestaande velden NIET.
+    // Sync met props: voeg nieuwe/weggehaalde items bij, overschrijf bestaande drafts NIET.
     useEffect(() => {
       setDrafts((prev) => {
         const next = { ...prev };
@@ -197,45 +195,51 @@
       });
     }, [rehearsals]);
 
-    // ---- payload builder (alles, zodat parent compleet record krijgt) ----
-    const buildPayload = (base = {}) => ({
-      date: toISO(base.date) || "",
-      time: normTime(base.time) || "",
-      location: base.location || "",
-      comments: base.comments || "",
-      absentees: Array.isArray(base.absentees) ? base.absentees : [],
-      type: base.type || "",
-      requiredPresent: !!base.requiredPresent,
-    });
-
-    // commit helpers (patch-gedreven → geen stale state)
+    // timers en cleanup
     const timersRef = useRef({});
-    const commitNow = (id, patch = null) => {
+    useEffect(() => () => {
+      Object.values(timersRef.current || {}).forEach(t => clearTimeout(t));
+    }, []);
+
+    // helper: base data voor id
+    const baseOf = (id) => (rehearsals.find(x => x.id === id) || { id });
+
+    // commit met actueel object (voorkomt stale drafts)
+    const commitFrom = (id, dObj) => {
       if (readOnly || !onUpdate) return;
-      const merged = { ...(drafts[id] || {}), ...(patch || {}) };
-      onUpdate(id, buildPayload(merged));
+      const d = dObj || drafts[id];
+      if (!d) return;
+      onUpdate(id, {
+        date: toISO(d.date) || "",
+        time: normTime(d.time) || "",
+        location: d.location || "",
+        comments: d.comments || "",
+        absentees: Array.isArray(d.absentees) ? d.absentees : [],
+        type: d.type || "",
+        requiredPresent: !!d.requiredPresent,
+      });
     };
-    const commitDebounced = (id, patch = null, ms = 300) => {
-      if (readOnly || !onUpdate) return;
+
+    const commitDebounced = (id, ms = 300) => {
       clearTimeout(timersRef.current[id]);
-      // Snap de payload op het moment dat we de debounce instellen,
-      // zodat we exact doorsturen wat de gebruiker net invulde.
-      const merged = { ...(drafts[id] || {}), ...(patch || {}) };
-      const payload = buildPayload(merged);
-      timersRef.current[id] = setTimeout(() => onUpdate(id, payload), ms);
+      timersRef.current[id] = setTimeout(() => commitFrom(id), ms);
     };
 
     const setField = (id, field, value, immediate = false) => {
-      // Lokale draft bijwerken
-      setDrafts((prev) => ({ ...prev, [id]: { ...(prev[id] || {}), [field]: value } }));
+      let nextDraft;
+      setDrafts((prev) => {
+        const current = prev[id] ? { ...baseOf(id), ...prev[id] } : { ...baseOf(id) };
+        nextDraft = { ...current, [field]: value };
+        return { ...prev, [id]: nextDraft };
+      });
 
       if (readOnly) return;
 
-      // Tijd nooit debounced committen: normaliseren bij onBlur
+      // Tijd alleen op blur committen (zie input below)
       if (field === "time" && !immediate) return;
 
-      const patch = { [field]: value };
-      (immediate ? commitNow : commitDebounced)(id, patch);
+      if (immediate) commitFrom(id, nextDraft);
+      else commitDebounced(id);
     };
 
     /* ---------- afwezig ---------- */
@@ -243,14 +247,18 @@
     const toggleAbsentee = (id, personId) => {
       const cur = drafts[id]?.absentees || [];
       const next = cur.includes(personId) ? cur.filter(x => x !== personId) : [...cur, personId];
-      // direct committen met patch (geen stale)
-      setField(id, "absentees", next, true);
+      setField(id, "absentees", next, true); // direct committen
     };
     const clearAbsentees = (id) => setField(id, "absentees", [], true);
 
     /* ---------- sortering / splitsing ---------- */
+    // Sorteer op de *actuele* (draft) waarden zodat je meteen de juiste volgorde ziet
+    const mergedForSort = useMemo(() => {
+      return (rehearsals || []).map(r => ({ ...r, ...(drafts[r.id] || {}) }));
+    }, [rehearsals, drafts]);
+
     const sortedAll = useMemo(() => {
-      const arr = [...(rehearsals || [])];
+      const arr = [...mergedForSort];
       arr.sort((a, b) => {
         const da = toDayTs(a.date), db = toDayTs(b.date);
         if (da !== db) return da - db;             // eerst dag
@@ -259,7 +267,7 @@
         return String(a.id).localeCompare(String(b.id));
       });
       return arr;
-    }, [rehearsals]);
+    }, [mergedForSort]);
 
     const upcoming = useMemo(() => sortedAll.filter(r => toDayTs(r.date) >= startOfToday), [sortedAll]);
     const past     = useMemo(() => sortedAll.filter(r => toDayTs(r.date) <  startOfToday).reverse(), [sortedAll]);
@@ -287,9 +295,11 @@
       const nowIds = new Set(rehearsals.map(r => r.id));
       const newId = [...nowIds].find(id => !pending.prevIds.has(id));
       if (newId) {
-        // 1) direct parent bijwerken
-        onUpdate && onUpdate(newId, { ...pending.payload, absentees: [] });
-        // 2) eigen draft meteen naar payload zetten
+        onUpdate && onUpdate(newId, {
+          ...pending.payload,
+          absentees: [],
+        });
+        // eigen draft direct updaten
         setDrafts(prev => ({ ...prev, [newId]: { ...(prev[newId] || {}), ...pending.payload, absentees: [] } }));
         pendingCreateRef.current = null;
       }
@@ -328,7 +338,7 @@
 
     /* ---------- kaart ---------- */
     const Card = (r) => {
-      const d = drafts[r.id] || r;
+      const d = drafts[r.id] || r; // actuele weergave
       const weekday = fmtWeekdayNL(d.date);
 
       const locationInList = isOneOf(d.location, LOCATION_OPTIONS);
@@ -344,10 +354,7 @@
                 type="date"
                 className="w-full rounded border rp-ctrl"
                 value={toISO(d.date) || ""}
-                onChange={(e) => {
-                  const v = toISO(e.target.value);
-                  setField(r.id, "date", v, true);   // direct commit met patch
-                }}
+                onChange={(e) => setField(r.id, "date", toISO(e.target.value), true)} // onmiddellijk committen
                 disabled={readOnly}
               />
             </div>
@@ -357,9 +364,9 @@
               <input
                 type="time"
                 className="w-full rounded border rp-ctrl"
-                value={d.time || ""}
-                onChange={(e) => setField(r.id, "time", e.target.value, false)}          // lokaal bufferen
-                onBlur={(e) => setField(r.id, "time", normTime(e.target.value), true)}   // normaliseren + meteen commit
+                value={normTime(d.time) || ""}                        // altijd valide HH:MM tonen
+                onChange={(e) => setField(r.id, "time", e.target.value, false)} // lokaal bufferen
+                onBlur={(e) => setField(r.id, "time", normTime(e.target.value), true)} // normaliseren + direct committen
                 disabled={readOnly}
               />
             </div>
@@ -370,7 +377,7 @@
                 <select
                   className="w-full rounded border rp-ctrl"
                   value={d.location || LOCATION_OPTIONS[0]}
-                  onChange={(e) => setField(r.id, "location", e.target.value, true)}     // direct commit
+                  onChange={(e) => setField(r.id, "location", e.target.value, true)}
                   disabled={readOnly}
                 >
                   {LOCATION_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
@@ -381,8 +388,8 @@
                   className="w-full rounded border rp-ctrl"
                   placeholder="Locatie (vrije tekst)…"
                   value={d.location || ""}
-                  onChange={(e) => setField(r.id, "location", e.target.value, false)}    // lokaal
-                  onBlur={(e) => commitNow(r.id, { location: e.target.value })}          // commit patch
+                  onChange={(e) => setField(r.id, "location", e.target.value, false)}
+                  onBlur={(e) => commitFrom(r.id)}   // commit met actuele draft
                   disabled={readOnly}
                 />
               )}
@@ -394,7 +401,7 @@
                 <select
                   className="w-full rounded border rp-ctrl"
                   value={d.type || TYPE_OPTIONS[1]}
-                  onChange={(e) => setField(r.id, "type", e.target.value, true)}         // direct commit
+                  onChange={(e) => setField(r.id, "type", e.target.value, true)}
                   disabled={readOnly}
                 >
                   {TYPE_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
@@ -406,19 +413,19 @@
                   placeholder="Type (vrije tekst)…"
                   value={d.type || ""}
                   onChange={(e) => setField(r.id, "type", e.target.value, false)}
-                  onBlur={(e) => commitNow(r.id, { type: e.target.value })}              // commit patch
+                  onBlur={(e) => commitFrom(r.id)}
                   disabled={readOnly}
                 />
               )}
             </div>
 
-            <div className="rp-req" style={{display:'flex',gap:8,alignItems:'center',justifySelf:'start'}>
+            <div className="rp-req" style={{display:'flex',gap:8,alignItems:'center',justifySelf:'start'}}>
               <label className="inline-flex items-center gap-2">
                 <input
                   type="checkbox"
                   className="rounded border"
                   checked={!!d.requiredPresent}
-                  onChange={(e)=> setField(r.id, "requiredPresent", !!e.target.checked, true)} // direct commit
+                  onChange={(e)=> setField(r.id, "requiredPresent", !!e.target.checked, true)} // direct committen
                   disabled={readOnly}
                 />
                 <span style={{fontSize:12,fontWeight:700}}>VERPLICHT AANWEZIG</span>
@@ -447,7 +454,7 @@
                 placeholder="Korte notitie…"
                 value={d.comments || ""}
                 onChange={(e) => setField(r.id, "comments", e.target.value, false)}
-                onBlur={(e) => commitNow(r.id, { comments: e.target.value })}            // commit patch
+                onBlur={() => commitFrom(r.id)}
                 disabled={readOnly}
               />
             </div>
@@ -524,51 +531,38 @@
                 <div className="rp-top" style={{gridTemplateColumns:"160px 110px 1fr 220px auto"}}>
                   <div>
                     <div className="rp-label">Datum</div>
-                    <input
-                      type="date"
-                      className="w-full rounded border rp-ctrl"
+                    <input type="date" className="w-full rounded border rp-ctrl"
                       value={toISO(newDraft.date)}
-                      onChange={(e)=> setNewDraft(d=>({...d, date: toISO(e.target.value)}))}
-                    />
+                      onChange={(e)=> setNewDraft(d=>({...d, date: toISO(e.target.value)}))} />
                   </div>
                   <div>
                     <div className="rp-label">Tijd</div>
-                    <input
-                      type="time"
-                      className="w-full rounded border rp-ctrl"
-                      value={newDraft.time}
+                    <input type="time" className="w-full rounded border rp-ctrl"
+                      value={normTime(newDraft.time)}
                       onChange={(e)=> setNewDraft(d=>({...d, time: e.target.value}))}
-                      onBlur={(e)=> setNewDraft(d=>({...d, time: normTime(e.target.value)}))}
-                    />
+                      onBlur={(e)=> setNewDraft(d=>({...d, time: normTime(e.target.value)}))} />
                   </div>
                   <div className="rp-location">
                     <div className="rp-label">Locatie</div>
-                    <select
-                      className="w-full rounded border rp-ctrl"
+                    <select className="w-full rounded border rp-ctrl"
                       value={isOneOf(newDraft.location, LOCATION_OPTIONS) ? newDraft.location : LOCATION_OPTIONS[0]}
-                      onChange={(e)=> setNewDraft(d=>({...d, location: e.target.value}))}
-                    >
+                      onChange={(e)=> setNewDraft(d=>({...d, location: e.target.value}))}>
                       {LOCATION_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                     </select>
                   </div>
                   <div className="rp-type">
                     <div className="rp-label">Type</div>
-                    <select
-                      className="w-full rounded border rp-ctrl"
+                    <select className="w-full rounded border rp-ctrl"
                       value={isOneOf(newDraft.type, TYPE_OPTIONS) ? newDraft.type : "Reguliere Repetitie"}
-                      onChange={(e)=> setNewDraft(d=>({...d, type: e.target.value}))}
-                    >
+                      onChange={(e)=> setNewDraft(d=>({...d, type: e.target.value}))}>
                       {TYPE_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                     </select>
                   </div>
                   <div className="rp-req" style={{display:'flex',alignItems:'center',gap:8}}>
                     <label className="inline-flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        className="rounded border"
+                      <input type="checkbox" className="rounded border"
                         checked={!!newDraft.requiredPresent}
-                        onChange={(e)=> setNewDraft(d=>({...d, requiredPresent: !!e.target.checked}))}
-                      />
+                        onChange={(e)=> setNewDraft(d=>({...d, requiredPresent: !!e.target.checked}))} />
                       <span style={{fontSize:12,fontWeight:700}}>VERPLICHT AANWEZIG</span>
                     </label>
                   </div>
@@ -580,13 +574,9 @@
                 <div className="rp-row" style={{gridTemplateColumns:"1fr"}}>
                   <div>
                     <div className="rp-label">Notities</div>
-                    <textarea
-                      rows={2}
-                      className="w-full rounded border rp-note"
-                      placeholder="Korte notitie…"
+                    <textarea rows={2} className="w-full rounded border rp-note" placeholder="Korte notitie…"
                       value={newDraft.comments}
-                      onChange={(e)=> setNewDraft(d=>({...d, comments: e.target.value}))}
-                    />
+                      onChange={(e)=> setNewDraft(d=>({...d, comments: e.target.value}))} />
                   </div>
                 </div>
               </div>
