@@ -97,8 +97,9 @@ function CastMatrixView({ sketches = [], people = [], currentShowId, setState = 
   };
 
   return (
-    <div className="rounded-2xl border p-4">
+<div id="print-cast" className="rounded-2xl border p-4">
       <h2 className="text-lg font-semibold mb-3">Biggenconvent</h2>
+<PrintButton targetId="print-cast" label="Print artiesten" />
 
       {/* Add form */}
       <div className="mb-4 grid grid-cols-12 gap-2 items-end">
