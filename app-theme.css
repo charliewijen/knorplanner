@@ -9,6 +9,8 @@
   --kp-accent:#ff5a76; --kp-accent-2:#5c7cfa;
   --kp-ok:#e7f7ee; --kp-warn:#fff7e6; --kp-bad:#ffe9ea;
   --kp-radius-xl:1.25rem; --kp-radius:.75rem; --kp-shadow:0 10px 30px rgba(0,0,0,.05);
+  /* globale page gutter (zijmarges) */
+  --kp-gutter: clamp(12px, 2vw, 24px);
 }
 
 /* ----- Baseline ----- */
@@ -16,6 +18,25 @@ html,body{
   background:var(--kp-bg); color:var(--kp-text);
   font-synthesis-weight:none; text-rendering:optimizeLegibility; -webkit-font-smoothing:antialiased;
   font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial,"Apple Color Emoji","Segoe UI Emoji";
+}
+
+/* ===== FULL-WIDTH LAYOUT OVERRIDES =====
+   → verwijder alle max-width caps zoals Tailwind .container / .max-w-*
+   → geef nette zijmarges via padding, i.p.v. een vaste max-width.
+*/
+.container,
+.max-w-6xl, .max-w-7xl, .max-w-5xl, .max-w-screen-lg, .max-w-screen-xl, .max-w-screen-2xl,
+[class^="max-w-"], [class*=" max-w-"]{
+  max-width: 100% !important;
+  width: 100% !important;
+}
+
+body > #root > * {
+  /* hoofdcontent altijd volle breedte met bescheiden gutter */
+  width: 100%;
+  padding-left: var(--kp-gutter);
+  padding-right: var(--kp-gutter);
+  box-sizing: border-box;
 }
 
 /* Kaarten */
@@ -132,7 +153,6 @@ body::after{
     background: #fff; /* match met je huidige stijl */
     border-bottom: 1px solid var(--kp-border);
     padding: .75rem 1rem !important;
-    /* optioneel: kleine blur zoals Tailwind 'backdrop-blur' */
     backdrop-filter: blur(6px);
   }
 
@@ -145,16 +165,15 @@ body::after{
   /* 4) Nav: niet meer wrappen -> 1 rij met horizontale scroll */
   header nav {
     display: flex;
-    flex-wrap: nowrap !important;   /* override jouw wrap */
-    overflow-x: auto !important;    /* i.p.v. visible */
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
     overflow-y: hidden;
-    gap: .5rem;                     /* iets ruimer voor touch */
+    gap: .5rem;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: thin;
-    padding-bottom: .25rem;         /* kleine buffer onder chips */
+    padding-bottom: .25rem;
   }
 
-  /* (optioneel) scrollbar subtieler op iOS/Chrome */
   header nav::-webkit-scrollbar { height: 6px; }
   header nav::-webkit-scrollbar-thumb { background: #ddd; border-radius: 4px; }
 }
@@ -163,28 +182,27 @@ body::after{
 @media (min-width: 769px) {
   header nav {
     display: flex;
-    flex-wrap: nowrap !important;     /* overschrijft je wrap */
-    overflow-x: auto !important;      /* scroll als het niet past */
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
     overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
-    gap: .5rem;                       /* chips blijven luchtig */
+    gap: .5rem;
   }
-  /* voorkom dat chips zelf afbreken of krimpen */
   header nav > * { flex: 0 0 auto; }
   header nav button,
   header nav a { white-space: nowrap; }
 }
 
 /* =========================================================
-   1) READ-ONLY PAGES (/#share=...) - breder en ademruimte
+   SHARE-/READ-ONLY PAGES – nu ook 100% breed
+   (voorheen capped op ~1440px)
    ========================================================= */
 @media (min-width: 1024px){
-  /* Jouw share-views gebruiken wrappers met .mx-auto.max-w-6xl
-     → maak ze lekker breed maar toch responsief */
   .mx-auto.max-w-6xl{
-    max-width: min(95vw, 90rem) !important; /* ~1440px */
-    padding-left: clamp(12px, 2vw, 24px);
-    padding-right: clamp(12px, 2vw, 24px);
+    max-width: 100% !important;
+    width: 100% !important;
+    padding-left: var(--kp-gutter);
+    padding-right: var(--kp-gutter);
   }
 }
 
@@ -200,34 +218,28 @@ section.rounded-2xl.border,
 }
 
 /* ================================================
-   2) MOBIEL – “sexy” full-width & geen overflow
+   MOBIEL – full-width & geen overflow
    ================================================ */
 @media (max-width: 768px){
-  /* Kaarten mogen altijd de volle breedte pakken */
   section.rounded-2xl.border,
   .rounded-xl.border,
   .pr-card{
     width: 100%;
   }
 
-  /* Lange tabellen/listen: liever scroll dan uit het scherm duwen */
   table{
-    display: block;           /* non-destructief: browsers tonen nog steeds cellen */
+    display: block;
     max-width: 100%;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
   }
 
-  /* Inputs en flex-items moeten echt mogen krimpen */
   input, select, textarea{
     min-width: 0 !important;
     max-width: 100%;
   }
-  .flex-1, .grow{
-    min-width: 0 !important;  /* voorkomt dat knoppen/inputs elkaar duwen */
-  }
+  .flex-1, .grow{ min-width: 0 !important; }
 
-  /* Lange URLs/woorden mogen breken */
   a, .break-anywhere, input[type="url"]{
     overflow-wrap: anywhere;
     word-break: break-word;
@@ -235,29 +247,18 @@ section.rounded-2xl.border,
 }
 
 /* ======================================================
-   3) SPECIFIEKE QUALITY-OF-LIFE fixes (desktop & mobiel)
+   SPECIFIEKE QUALITY-OF-LIFE fixes (desktop & mobiel)
    ====================================================== */
-
-/* In rijen met input + "Open"-knop: zorg dat input krimpt, knop niet overschrijft */
 .pr-card .flex-1.min-w-0,
-.pr-card .flex-1{
-  min-width: 0;               /* essentieel bij flex-rijen */
-}
-.pr-card a[href].whitespace-nowrap{
-  flex: 0 0 auto;             /* knop blijft compact */
-}
-
-/* Afbeeldingen in kaarten nooit buiten kader laten komen */
+.pr-card .flex-1{ min-width: 0; }
+.pr-card a[href].whitespace-nowrap{ flex: 0 0 auto; }
 .pr-card img{ max-width: 100%; height: auto; display: block; }
 
-/* Kleine detail: URL-velden mogen kleiner font hebben als het krap is */
 @media (max-width: 480px){
   input[type="url"]{ font-size: 0.9rem; }
 }
 
-
 /* ====== BRANDING ====== */
-/* Titel groter, zonder menuruimte te pakken */
 .brand-title{
   font-size: clamp(1.35rem, 1.2rem + 1.2vw, 2.2rem);
   line-height: 1.05;
@@ -267,7 +268,6 @@ section.rounded-2xl.border,
   filter: drop-shadow(0 1px 1px rgba(0,0,0,.08));
 }
 
-/* Zorg dat het menu altijd één rij is en scrolt, ook met grote titel */
 @media (min-width: 769px){
   header nav{
     display:flex;
@@ -298,10 +298,8 @@ section.rounded-2xl.border,
   z-index: 10;
 }
 
-/* ====== Kaarten: een kleine corner badge (creatieve plek 3, subtiel) ====== */
-.pr-card{
-  position: relative;
-}
+/* ====== Kaarten: een kleine corner badge ====== */
+.pr-card{ position: relative; }
 .pr-card::before{
   content:"";
   position:absolute;
@@ -315,4 +313,3 @@ section.rounded-2xl.border,
 
 /* Kleine hulpfix: inputs breken netjes */
 input, select, textarea{ min-width: 0; }
-
