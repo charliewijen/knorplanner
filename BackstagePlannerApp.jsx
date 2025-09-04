@@ -1,3 +1,5 @@
+// BackstagePlannerApp.jsx
+
 // GEEN: const { useEffect, useMemo, useState } = React;
 
 const {
