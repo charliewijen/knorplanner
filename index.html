@@ -23,54 +23,27 @@
     );
   </script>
 
+  <!-- Tailwind -->
   <script src="https://cdn.tailwindcss.com"></script>
 
-  <style>
-    @media print {
-      /* verberg alles standaard */
-      body * { visibility: hidden !important; }
-      /* toon alleen programma */
-      #print-program, #print-program * { visibility: visible !important; }
-      /* laat het blok netjes bovenaan staan */
-      #print-program { position: absolute; inset: 0 auto auto 0; width: 100%; }
-      /* verberg sticky topbar en floating tools */
-      header, .fixed { display: none !important; }
-      /* verwijder randen/achtergrond voor print */
-      #print-program { box-shadow: none !important; border: none !important; }
-    }
-  </style>
+  <!-- Hoofd-stylesheet -->
+  <link rel="stylesheet" href="app-theme.css">
 
+  <!-- Kleine, neutrale print-helpers (géén “verberg alles behalve …”) -->
   <style>
-    /* Helpers algemeen */
     .print-hide { display: inline; }
     .print-only { display: none; }
     .no-truncate { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; }
 
-    /* Zet standaard landscape + nette marges voor PDF */
     @page {
       size: A4 landscape;
       margin: 12mm;
     }
 
     @media print {
-      /* toon alléén het microfoonblok */
-      body * { visibility: hidden !important; }
-      #print-mics, #print-mics * { visibility: visible !important; }
-      #print-mics { position: absolute; inset: 0 auto auto 0; width: 100%; }
-
-      /* verberg header/floating tools */
       header, .fixed { display: none !important; }
-
-      /* verberg interactieve UI in print */
       .print-hide { display: none !important; }
       .print-only { display: inline !important; }
-
-      /* compactere tabel voor breedte */
-      #print-mics table { font-size: 11px; border-collapse: collapse; width: 100%; table-layout: fixed; }
-      #print-mics th, #print-mics td { padding: 4px 6px; word-wrap: break-word; }
-      #print-mics th { white-space: nowrap; }
-      /* namen nooit afkappen */
-      #print-mics .no-truncate { white-space: normal !important; }
     }
   </style>
 </head>
@@ -78,10 +51,8 @@
   <div id="root"></div>
 
   <!-- 📦 Componenten / helpers -->
-
-<script type="text/babel" src="PrintUtils.jsx"></script>
-
-  
+  <!-- Print utils MOET vóór de pagina-componenten staan -->
+  <script type="text/babel" src="PrintUtils.jsx"></script>
   <script
     type="text/babel"
     data-presets="env,react"
@@ -89,35 +60,68 @@
     src="BackstageComponents.jsx"
   ></script>
 
- 
-   <!-- 📦 Losse pagina’s -->
-  <script type="text/babel" data-presets="env,react" data-plugins="proposal-nullish-coalescing-operator,proposal-optional-chaining" src="PlannerMinimal.jsx"></script>
+  <!-- 📦 Losse pagina’s -->
+  <script
+    type="text/babel"
+    data-presets="env,react"
+    data-plugins="proposal-nullish-coalescing-operator,proposal-optional-chaining"
+    src="PlannerMinimal.jsx"
+  ></script>
 
-  <!-- Belangrijk: deze MOET vóór BackstagePlannerApp.jsx staan en mét presets/plugins -->
-  <script type="text/babel" data-presets="env,react" data-plugins="proposal-nullish-coalescing-operator,proposal-optional-chaining" src="RehearsalPlanner.jsx"></script>
+  <!-- Belangrijk: MOET vóór BackstagePlannerApp.jsx staan -->
+  <script
+    type="text/babel"
+    data-presets="env,react"
+    data-plugins="proposal-nullish-coalescing-operator,proposal-optional-chaining"
+    src="RehearsalPlanner.jsx"
+  ></script>
 
-  <script type="text/babel" data-presets="env,react" data-plugins="proposal-nullish-coalescing-operator,proposal-optional-chaining" src="ScriptsView.jsx"></script>
-  <script type="text/babel" data-presets="env,react" data-plugins="proposal-nullish-coalescing-operator,proposal-optional-chaining" src="CastMatrixView.jsx"></script>
-  <script type="text/babel" data-presets="env,react" data-plugins="proposal-nullish-coalescing-operator,proposal-optional-chaining" src="MicMatrixView.jsx"></script>
-  <script type="text/babel" data-presets="env,react" data-plugins="proposal-nullish-coalescing-operator,proposal-optional-chaining" src="RoleDistributionView.jsx"></script>
-  <script type="text/babel" data-presets="env,react" data-plugins="proposal-nullish-coalescing-operator,proposal-optional-chaining" src="TechPackViewPage.jsx"></script>
-  <script type="text/babel" data-presets="env,react" data-plugins="proposal-nullish-coalescing-operator,proposal-optional-chaining" src="PRKitView.jsx"></script>
+  <script
+    type="text/babel"
+    data-presets="env,react"
+    data-plugins="proposal-nullish-coalescing-operator,proposal-optional-chaining"
+    src="ScriptsView.jsx"
+  ></script>
 
-  <!-- (optioneel, handig om te checken in de console) -->
-  <script>
-    console.log("RehearsalPlanner aanwezig?", !!window.RehearsalPlanner);
-  </script>
+  <script
+    type="text/babel"
+    data-presets="env,react"
+    data-plugins="proposal-nullish-coalescing-operator,proposal-optional-chaining"
+    src="CastMatrixView.jsx"
+  ></script>
 
-  <!-- 📦 Hoofd-style sheet -->
-  <link rel="stylesheet" href="app-theme.css">
+  <script
+    type="text/babel"
+    data-presets="env,react"
+    data-plugins="proposal-nullish-coalescing-operator,proposal-optional-chaining"
+    src="MicMatrixView.jsx"
+  ></script>
 
-  <!-- 📦 PRKit component -->
+  <script
+    type="text/babel"
+    data-presets="env,react"
+    data-plugins="proposal-nullish-coalescing-operator,proposal-optional-chaining"
+    src="RoleDistributionView.jsx"
+  ></script>
+
+  <script
+    type="text/babel"
+    data-presets="env,react"
+    data-plugins="proposal-nullish-coalescing-operator,proposal-optional-chaining"
+    src="TechPackViewPage.jsx"
+  ></script>
+
   <script
     type="text/babel"
     data-presets="env,react"
     data-plugins="proposal-optional-chaining,proposal-nullish-coalescing-operator"
     src="PRKitView.jsx"
   ></script>
+
+  <!-- (optioneel, handig om te checken in de console) -->
+  <script>
+    console.log("RehearsalPlanner aanwezig?", !!window.RehearsalPlanner);
+  </script>
 
   <!-- 📦 Hoofd-app (MOET als laatste) -->
   <script
@@ -132,4 +136,4 @@
     root.render(<BackstagePlannerApp />);
   </script>
 </body>
-</html> 
+</html>
