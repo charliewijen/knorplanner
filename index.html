@@ -23,7 +23,6 @@
     );
   </script>
 
-  <!-- Tailwind -->
   <script src="https://cdn.tailwindcss.com"></script>
 
   <style>
@@ -79,37 +78,90 @@
   <div id="root"></div>
 
   <!-- 📦 Componenten / helpers -->
-  <script type="text/babel" src="BackstageComponents.jsx"></script>
+  <script
+    type="text/babel"
+    data-presets="env,react"
+    data-plugins="proposal-optional-chaining,proposal-nullish-coalescing-operator"
+    src="BackstageComponents.jsx"
+  ></script>
 
-  <!-- 📦 Losse pagina’s / views -->
-  <script type="text/babel" src="PlannerMinimal.jsx"></script>
+  <!-- 📦 Losse pagina’s -->
+  <script
+    type="text/babel"
+    data-presets="env,react"
+    data-plugins="proposal-optional-chaining,proposal-nullish-coalescing-operator"
+    src="PlannerMinimal.jsx"
+  ></script>
 
-  <!-- ⬇⬇⬇  PLAATS DEZE CODE ONDER DEZE REGEL (dependencies en andere views geladen)  ⬇⬇⬇ -->
-  <script type="text/babel" src="RehearsalPlanner.jsx?v=reh2"></script>
-<script type="text/babel">
-  if (window.RehearsalPlanner) {
-    console.log("[Knor] RehearsalPlanner OK");
-  } else {
-    console.error("[Knor] RehearsalPlanner.jsx kon niet laden — check bestandsnaam/pad of syntax.");
-  }
-</script>
+  <!-- ⚠️ VERVANGDE REGEL — cache buster + Babel presets/plugins -->
+  <script
+    type="text/babel"
+    data-presets="env,react"
+    data-plugins="proposal-optional-chaining,proposal-nullish-coalescing-operator"
+    src="RehearsalPlanner.jsx?v=reh3"
+  ></script>
+  <script type="text/babel">
+    // Mini-check zodat je in de console meteen ziet of hij bestaat
+    if (window.RehearsalPlanner) {
+      console.log("[Knor] RehearsalPlanner OK");
+    } else {
+      console.error("[Knor] RehearsalPlanner.jsx NIET geladen of niet gecompileerd door Babel.");
+    }
+  </script>
 
-  <!-- ⬆⬆⬆  EN BOVEN DEZE REGEL (BackstagePlannerApp.jsx)  ⬆⬆⬆ -->
+  <script
+    type="text/babel"
+    data-presets="env,react"
+    data-plugins="proposal-optional-chaining,proposal-nullish-coalescing-operator"
+    src="ScriptsView.jsx"
+  ></script>
 
-  <script type="text/babel" src="ScriptsView.jsx"></script>
-  <script type="text/babel" src="CastMatrixView.jsx"></script>
-  <script type="text/babel" src="MicMatrixView.jsx"></script>
-  <script type="text/babel" src="RoleDistributionView.jsx"></script>
-  <script type="text/babel" src="TechPackViewPage.jsx"></script>
+  <script
+    type="text/babel"
+    data-presets="env,react"
+    data-plugins="proposal-optional-chaining,proposal-nullish-coalescing-operator"
+    src="CastMatrixView.jsx"
+  ></script>
+
+  <script
+    type="text/babel"
+    data-presets="env,react"
+    data-plugins="proposal-optional-chaining,proposal-nullish-coalescing-operator"
+    src="MicMatrixView.jsx"
+  ></script>
+
+  <script
+    type="text/babel"
+    data-presets="env,react"
+    data-plugins="proposal-optional-chaining,proposal-nullish-coalescing-operator"
+    src="RoleDistributionView.jsx"
+  ></script>
+
+  <script
+    type="text/babel"
+    data-presets="env,react"
+    data-plugins="proposal-optional-chaining,proposal-nullish-coalescing-operator"
+    src="TechPackViewPage.jsx"
+  ></script>
 
   <!-- 📦 Hoofd-style sheet -->
   <link rel="stylesheet" href="app-theme.css">
 
   <!-- 📦 PRKit component -->
-  <script type="text/babel" src="PRKitView.jsx"></script>
+  <script
+    type="text/babel"
+    data-presets="env,react"
+    data-plugins="proposal-optional-chaining,proposal-nullish-coalescing-operator"
+    src="PRKitView.jsx"
+  ></script>
 
-  <!-- 📦 Hoofd-app (moet ALTijd als laatste script) -->
-  <script type="text/babel" src="BackstagePlannerApp.jsx"></script>
+  <!-- 📦 Hoofd-app (MOET als laatste) -->
+  <script
+    type="text/babel"
+    data-presets="env,react"
+    data-plugins="proposal-optional-chaining,proposal-nullish-coalescing-operator"
+    src="BackstagePlannerApp.jsx"
+  ></script>
 
   <script type="text/babel">
     const root = ReactDOM.createRoot(document.getElementById("root"));
