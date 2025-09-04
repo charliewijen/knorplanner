@@ -8,6 +8,22 @@ const fullName = (p) => {
   return [fn, ln].filter(Boolean).join(" ");
 };
 
+const _kindOf = (p) => {
+  const k = (p.role || p.type || p.kind || "").toLowerCase();
+  if (k.includes("dans")) return "danser";
+  return "speler";
+};
+const _sortGroup = (p) => {
+  const isDanser = _kindOf(p) === "danser";
+  const weekly = !!p.repeatsWeekly;
+  return isDanser ? 2 : (weekly ? 0 : 1);
+};
+const peopleCmp = (a, b) =>
+  _sortGroup(a) - _sortGroup(b) ||
+  lastNameOf(a).localeCompare(lastNameOf(b)) ||
+  String((a.firstName||a.name||"")).localeCompare(String((b.firstName||b.name||"")));
+
+
 function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
   const uid = window.uid;
 
@@ -254,9 +270,7 @@ function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
                       .filter(Boolean)
                   );
                   // Alfabetisch op achternaam
-                  const sortedPeople = [...people].sort((a, b) =>
-                    lastNameOf(a).localeCompare(lastNameOf(b))
-                  );
+                  const sortedPeople = [...people].sort(peopleCmp);
 
                   return (
                     <tr key={idx} className="odd:bg-gray-50">
