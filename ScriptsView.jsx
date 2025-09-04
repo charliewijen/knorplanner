@@ -99,7 +99,7 @@ function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
   const printAll = () => window.print();
 
   return (
-    <section className="rounded-2xl border p-4 bg-white">
+    <section id="print-scripts" className="rounded-2xl border p-4 bg-white">
       {/* Sterke, lokale print-CSS die ALLEEN #print-scripts toont */}
       <style>{`
         @media print {
@@ -125,9 +125,8 @@ function ScriptsView({ sketches = [], people = [], onUpdate = () => {} }) {
             Beheer per sketch; print toont alle sketches onder elkaar.
           </div>
         </div>
-        <button className="rounded-full border px-3 py-1 text-sm" onClick={printAll}>
-          Print alle sketches / PDF
-        </button>
+        <button className="rounded-full border px-3 py-1 text-sm" onClick={() => window.KP.printSection('print-scripts','Sketches')}>🖨️ Print deze pagina</button>
+
       </div>
 
       {/* Selectie — alleen echte sketches (geen pauzes/waerse) */}
