@@ -1,3 +1,5 @@
+// RehearsalPlanner.jsx
+
 // RehearsalPlanner.jsx — compact, NL-weekdag zonder verspringen,
 // stabiele sortering (dag→tijd), vrije-tekst-locatie blijft staan,
 // “Vandaag” telt als komend, en nieuw-item-pop-up met correcte prefill.
