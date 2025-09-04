@@ -1,5 +1,5 @@
-// RehearsalPlanner.jsx — stabiel opslaan (geen race), tijd klopt,
-// sorteren op actuele (draft) waarden, NL-weekdag, en nette modal.
+// RehearsalPlanner.jsx — stabiel committen (ook bij wegklikken/terug),
+// geen race op checkboxes/afwezig, sorteren op actuele waarden.
 (function () {
   const { useEffect, useMemo, useRef, useState } = React;
 
@@ -42,12 +42,10 @@
     return s;
   };
 
-  // Converteer allerlei invoer naar "HH:MM" (24h). Laat lege waarden leeg.
   const normTime = (str) => {
     let s = (str ?? "").toString().trim();
     if (!s) return "";
-    s = s.replace(/[.,;]/g, ":");           // 20.30 → 20:30, 20;30 → 20:30
-
+    s = s.replace(/[.,;]/g, ":");
     if (s.includes(":")) {
       const [hRaw, mRaw = "0"] = s.split(":");
       let h = parseInt(hRaw, 10);
@@ -58,8 +56,6 @@
       m = Math.min(59, Math.max(0, m));
       return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
     }
-
-    // Alleen cijfers? Neem laatste 2 als minuten (2035 → 20:35, 8 → 08:00)
     const digits = s.replace(/\D/g, "");
     if (!digits) return "";
     if (digits.length <= 2) {
@@ -137,11 +133,7 @@
       .rp-actions .btn-del{border:1px solid #dc2626;background:#dc2626;color:#fff;border-radius:9999px;padding:6px 12px;font-size:12px}
       .rp-actions .btn{border:1px solid #d1d5db;background:#f3f4f6;border-radius:9999px;padding:6px 12px;font-size:12px}
       .rp-badge-req{font-size:11px;font-weight:800;color:#7c2d12;background:#ffedd5;border:1px solid #fdba74;border-radius:9999px;padding:3px 8px;white-space:nowrap}
-
-      /* R1: grid met 2 rijen -> weekdag in rij 2; pads voorkomen verspringen */
-      .rp-top{display:grid;gap:8px;align-items:end;
-        grid-template-columns:160px 110px 1fr 220px 220px auto;
-        grid-auto-rows:auto}
+      .rp-top{display:grid;gap:8px;align-items:end;grid-template-columns:160px 110px 1fr 220px 220px auto;grid-auto-rows:auto}
       .rp-week{grid-column:1/2;align-self:start;margin-top:-2px}
       .rp-pad{height:18px}
       @media(min-width:768px) and (max-width:1200px){
@@ -155,19 +147,11 @@
         .rp-actions{grid-column:2 / 3;justify-self:end}
         .rp-pad{display:block}
       }
-
       .rp-row{display:grid;gap:8px;align-items:end;margin-top:8px}
       @media(min-width:768px){ .rp-row{grid-template-columns:1fr 1fr auto} }
-      @media(max-width:767px){
-        .rp-row{grid-template-columns:1fr 1fr}
-        .rp-row .rp-edit{grid-column:1 / -1;justify-self:end}
-      }
-
+      @media(max-width:767px){ .rp-row{grid-template-columns:1fr 1fr}.rp-row .rp-edit{grid-column:1 / -1;justify-self:end} }
       input[type="date"].rp-ctrl, input[type="time"].rp-ctrl{appearance:none;-webkit-appearance:none;height:36px}
-      input[type="date"]::-webkit-datetime-edit,
-      input[type="time"]::-webkit-datetime-edit{padding:0}
-
-      /* Modal */
+      input[type="date"]::-webkit-datetime-edit, input[type="time"]::-webkit-datetime-edit{padding:0}
       .rp-modal-back{position:fixed;inset:0;background:rgba(0,0,0,.35);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;z-index:10000}
       .rp-modal{width:min(92vw,720px);background:#fff;border:1px solid #e5e7eb;border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.15)}
       .rp-modal-h{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #eee}
@@ -184,7 +168,53 @@
       return o;
     });
 
-    // Sync met props: voeg nieuwe/weggehaalde items bij, overschrijf bestaande drafts NIET.
+    // helpers voor commit
+    const timersRef = useRef({});
+
+    const commitPayload = (d) => ({
+      date: toISO(d.date) || "",
+      time: normTime(d.time) || "",
+      location: d.location || "",
+      comments: d.comments || "",
+      absentees: Array.isArray(d.absentees) ? d.absentees : [],
+      type: d.type || "",
+      requiredPresent: !!d.requiredPresent,
+    });
+
+    const commitFrom = (id, dObj) => {
+      if (readOnly || !onUpdate) return;
+      const d = dObj || drafts[id];
+      if (!d) return;
+      onUpdate(id, commitPayload(d));
+    };
+
+    const commitDebounced = (id, dObj, ms = 300) => {
+      clearTimeout(timersRef.current[id]);
+      const snapshot = dObj || drafts[id];
+      timersRef.current[id] = setTimeout(() => commitFrom(id, snapshot), ms);
+    };
+
+    // 🔧 FLUSH-ALL bij unmount/wegklikken/visibilitychange → voorkomt “laatste actie kwijt”
+    const flushAll = () => {
+      if (readOnly) return;
+      Object.values(timersRef.current || {}).forEach(t => clearTimeout(t));
+      const ids = Object.keys(drafts || {});
+      ids.forEach(id => commitFrom(id, drafts[id]));
+    };
+
+    useEffect(() => {
+      const onBeforeUnload = () => flushAll();
+      const onVisibility = () => { if (document.visibilityState === "hidden") flushAll(); };
+      window.addEventListener("beforeunload", onBeforeUnload);
+      document.addEventListener("visibilitychange", onVisibility);
+      return () => {
+        flushAll(); // ← commit pending changes i.p.v. cancel
+        window.removeEventListener("beforeunload", onBeforeUnload);
+        document.removeEventListener("visibilitychange", onVisibility);
+      };
+    }, [drafts]); // drafts in deps zodat flush de laatste snapshot commit
+
+    // Sync: voeg nieuwe/weggehaalde items bij, maar overschrijf bestaande drafts NIET.
     useEffect(() => {
       setDrafts((prev) => {
         const next = { ...prev };
@@ -195,36 +225,10 @@
       });
     }, [rehearsals]);
 
-    // timers en cleanup
-    const timersRef = useRef({});
-    useEffect(() => () => {
-      Object.values(timersRef.current || {}).forEach(t => clearTimeout(t));
-    }, []);
-
-    // helper: base data voor id
+    // handzame base
     const baseOf = (id) => (rehearsals.find(x => x.id === id) || { id });
 
-    // commit met actueel object (voorkomt stale drafts)
-    const commitFrom = (id, dObj) => {
-      if (readOnly || !onUpdate) return;
-      const d = dObj || drafts[id];
-      if (!d) return;
-      onUpdate(id, {
-        date: toISO(d.date) || "",
-        time: normTime(d.time) || "",
-        location: d.location || "",
-        comments: d.comments || "",
-        absentees: Array.isArray(d.absentees) ? d.absentees : [],
-        type: d.type || "",
-        requiredPresent: !!d.requiredPresent,
-      });
-    };
-
-    const commitDebounced = (id, ms = 300) => {
-      clearTimeout(timersRef.current[id]);
-      timersRef.current[id] = setTimeout(() => commitFrom(id), ms);
-    };
-
+    // setField: standaard buffered (debounced) commit, behalve waar we immediate willen
     const setField = (id, field, value, immediate = false) => {
       let nextDraft;
       setDrafts((prev) => {
@@ -232,38 +236,47 @@
         nextDraft = { ...current, [field]: value };
         return { ...prev, [id]: nextDraft };
       });
-
       if (readOnly) return;
-
-      // Tijd alleen op blur committen (zie input below)
-      if (field === "time" && !immediate) return;
-
+      if (field === "time" && !immediate) return; // time committen we op blur
       if (immediate) commitFrom(id, nextDraft);
-      else commitDebounced(id);
+      else commitDebounced(id, nextDraft);
     };
 
-    /* ---------- afwezig ---------- */
+    /* ---------- afwezig (race-vrij, immediate) ---------- */
     const [openAbsId, setOpenAbsId] = useState(null);
     const toggleAbsentee = (id, personId) => {
-      const cur = drafts[id]?.absentees || [];
-      const next = cur.includes(personId) ? cur.filter(x => x !== personId) : [...cur, personId];
-      setField(id, "absentees", next, true); // direct committen
+      setDrafts((prev) => {
+        const current = prev[id] ? { ...baseOf(id), ...prev[id] } : { ...baseOf(id) };
+        const cur = Array.isArray(current.absentees) ? current.absentees : [];
+        const next = cur.includes(personId) ? cur.filter(x => x !== personId) : [...cur, personId];
+        const nextDraft = { ...current, absentees: next };
+        // meteen committen met de NIEUWE draft → geen “laatste selectie kwijt”
+        if (!readOnly) commitFrom(id, nextDraft);
+        return { ...prev, [id]: nextDraft };
+      });
     };
-    const clearAbsentees = (id) => setField(id, "absentees", [], true);
+    const clearAbsentees = (id) => {
+      setDrafts((prev) => {
+        const current = prev[id] ? { ...baseOf(id), ...prev[id] } : { ...baseOf(id) };
+        const nextDraft = { ...current, absentees: [] };
+        if (!readOnly) commitFrom(id, nextDraft);
+        return { ...prev, [id]: nextDraft };
+      });
+    };
 
     /* ---------- sortering / splitsing ---------- */
-    // Sorteer op de *actuele* (draft) waarden zodat je meteen de juiste volgorde ziet
-    const mergedForSort = useMemo(() => {
-      return (rehearsals || []).map(r => ({ ...r, ...(drafts[r.id] || {}) }));
-    }, [rehearsals, drafts]);
+    const mergedForSort = useMemo(
+      () => (rehearsals || []).map(r => ({ ...r, ...(drafts[r.id] || {}) })),
+      [rehearsals, drafts]
+    );
 
     const sortedAll = useMemo(() => {
       const arr = [...mergedForSort];
       arr.sort((a, b) => {
         const da = toDayTs(a.date), db = toDayTs(b.date);
-        if (da !== db) return da - db;             // eerst dag
+        if (da !== db) return da - db;
         const ta = timeToMin(a.time), tb = timeToMin(b.time);
-        if (ta !== tb) return ta - tb;             // dan tijd
+        if (ta !== tb) return ta - tb;
         return String(a.id).localeCompare(String(b.id));
       });
       return arr;
@@ -276,30 +289,18 @@
     const [addOpen, setAddOpen] = useState(false);
     const [newDraft, setNewDraft] = useState(() => {
       const todayISO = new Date().toISOString().slice(0, 10);
-      return {
-        date: todayISO,
-        time: "19:00",
-        location: LOCATION_OPTIONS[0],
-        type: "Reguliere Repetitie",
-        comments: "",
-        requiredPresent: false,
-      };
+      return { date: todayISO, time: "19:00", location: LOCATION_OPTIONS[0], type: "Reguliere Repetitie", comments: "", requiredPresent: false };
     });
 
     const pendingCreateRef = useRef(null);
 
-    // Als onAdd géén ID teruggeeft: detecteer het nieuw aangemaakte item
     useEffect(() => {
       const pending = pendingCreateRef.current;
       if (!pending) return;
       const nowIds = new Set(rehearsals.map(r => r.id));
       const newId = [...nowIds].find(id => !pending.prevIds.has(id));
       if (newId) {
-        onUpdate && onUpdate(newId, {
-          ...pending.payload,
-          absentees: [],
-        });
-        // eigen draft direct updaten
+        onUpdate && onUpdate(newId, { ...pending.payload, absentees: [] });
         setDrafts(prev => ({ ...prev, [newId]: { ...(prev[newId] || {}), ...pending.payload, absentees: [] } }));
         pendingCreateRef.current = null;
       }
@@ -320,17 +321,13 @@
         requiredPresent: !!newDraft.requiredPresent,
       };
       if (!onAdd) { setAddOpen(false); return; }
-
       const prevIds = new Set(rehearsals.map(r => r.id));
       let returnedId = null;
       try { returnedId = onAdd(payload); } catch {}
-
       if (typeof returnedId === "string" && returnedId) {
-        // App gaf ID terug -> direct vullen + draft meteen goed zetten
         onUpdate && onUpdate(returnedId, { ...payload, absentees: [] });
         setDrafts(prev => ({ ...prev, [returnedId]: { ...(prev[returnedId] || {}), ...payload, absentees: [] } }));
       } else {
-        // Geen ID -> na props-update detecteren
         pendingCreateRef.current = { prevIds, payload };
       }
       setAddOpen(false);
@@ -338,15 +335,13 @@
 
     /* ---------- kaart ---------- */
     const Card = (r) => {
-      const d = drafts[r.id] || r; // actuele weergave
+      const d = drafts[r.id] || r;
       const weekday = fmtWeekdayNL(d.date);
-
       const locationInList = isOneOf(d.location, LOCATION_OPTIONS);
       const typeInList     = isOneOf(d.type, TYPE_OPTIONS);
 
       return (
         <div key={r.id} className={`rp-card ${d.requiredPresent ? "required" : ""}`}>
-          {/* R1 (inputs) + R2 (weekdag + pads) */}
           <div className="rp-top">
             <div className="rp-date">
               <div className="rp-label">Datum</div>
@@ -354,7 +349,7 @@
                 type="date"
                 className="w-full rounded border rp-ctrl"
                 value={toISO(d.date) || ""}
-                onChange={(e) => setField(r.id, "date", toISO(e.target.value), true)} // onmiddellijk committen
+                onChange={(e) => setField(r.id, "date", toISO(e.target.value), true)}
                 disabled={readOnly}
               />
             </div>
@@ -364,9 +359,9 @@
               <input
                 type="time"
                 className="w-full rounded border rp-ctrl"
-                value={normTime(d.time) || ""}                        // altijd valide HH:MM tonen
-                onChange={(e) => setField(r.id, "time", e.target.value, false)} // lokaal bufferen
-                onBlur={(e) => setField(r.id, "time", normTime(e.target.value), true)} // normaliseren + direct committen
+                value={d.time || ""}                              {/* niet forceren tijdens typen */}
+                onChange={(e) => setField(r.id, "time", e.target.value, false)}
+                onBlur={(e) => setField(r.id, "time", normTime(e.target.value), true)}
                 disabled={readOnly}
               />
             </div>
@@ -389,7 +384,7 @@
                   placeholder="Locatie (vrije tekst)…"
                   value={d.location || ""}
                   onChange={(e) => setField(r.id, "location", e.target.value, false)}
-                  onBlur={(e) => commitFrom(r.id)}   // commit met actuele draft
+                  onBlur={() => commitFrom(r.id)}
                   disabled={readOnly}
                 />
               )}
@@ -413,7 +408,7 @@
                   placeholder="Type (vrije tekst)…"
                   value={d.type || ""}
                   onChange={(e) => setField(r.id, "type", e.target.value, false)}
-                  onBlur={(e) => commitFrom(r.id)}
+                  onBlur={() => commitFrom(r.id)}
                   disabled={readOnly}
                 />
               )}
@@ -425,7 +420,15 @@
                   type="checkbox"
                   className="rounded border"
                   checked={!!d.requiredPresent}
-                  onChange={(e)=> setField(r.id, "requiredPresent", !!e.target.checked, true)} // direct committen
+                  onChange={(e)=> {
+                    // functionele update zodat laatste klik nooit verloren gaat
+                    setDrafts(prev => {
+                      const current = prev[r.id] ? { ...baseOf(r.id), ...prev[r.id] } : { ...baseOf(r.id) };
+                      const nextDraft = { ...current, requiredPresent: !!e.target.checked };
+                      if (!readOnly) commitFrom(r.id, nextDraft);
+                      return { ...prev, [r.id]: nextDraft };
+                    });
+                  }}
                   disabled={readOnly}
                 />
                 <span style={{fontSize:12,fontWeight:700}}>VERPLICHT AANWEZIG</span>
@@ -439,12 +442,10 @@
               </div>
             )}
 
-            {/* Rij 2: weekdag + pads zodat niets verspringt */}
             <div className="rp-week rp-sub">{weekday}</div>
             <div className="rp-pad"></div><div className="rp-pad"></div><div className="rp-pad"></div><div className="rp-pad"></div><div className="rp-pad"></div>
           </div>
 
-          {/* R3: notities + afwezig */}
           <div className="rp-row">
             <div>
               <div className="rp-label">Notities</div>
@@ -481,7 +482,6 @@
             )}
           </div>
 
-          {/* Afwezig-panel */}
           {!readOnly && openAbsId === r.id && (
             <div style={{marginTop:8}}>
               <div className="flex items-center justify-between mb-1">
@@ -519,7 +519,6 @@
           </div>
         )}
 
-        {/* Nieuw item modal */}
         {addOpen && !readOnly && (
           <div className="rp-modal-back" onClick={(e)=>{ if(e.target===e.currentTarget) setAddOpen(false); }}>
             <div className="rp-modal" role="dialog" aria-modal="true">
@@ -538,7 +537,7 @@
                   <div>
                     <div className="rp-label">Tijd</div>
                     <input type="time" className="w-full rounded border rp-ctrl"
-                      value={normTime(newDraft.time)}
+                      value={newDraft.time}
                       onChange={(e)=> setNewDraft(d=>({...d, time: e.target.value}))}
                       onBlur={(e)=> setNewDraft(d=>({...d, time: normTime(e.target.value)}))} />
                   </div>
