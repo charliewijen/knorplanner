@@ -26,15 +26,28 @@ function CastMatrixView({ sketches = [], people = [], currentShowId, setState = 
     return counts;
   }, [realSketches]);
 
-  // Sorteren: spelers (achternaam A-Z), daarna dansers (achternaam A-Z)
-  const lastNameOf = (p) => (p.lastName?.trim()) || (p.name?.trim()?.split(" ").slice(-1)[0] || "");
-  const roleKind = (p) => ((p.role || p.type || "").toLowerCase().includes("dans") ? "danser" : "speler");
+  // ====== Sorteren: 
+  // 1) spelers met repeatsWeekly=true, 
+  // 2) spelers met repeatsWeekly=false,
+  // 3) dansers — allemaal A-Z op achternaam
+  const lastNameOf = (p) =>
+    (p.lastName?.trim()) || (p.name?.trim()?.split(" ").slice(-1)[0] || "");
+  const roleKind = (p) =>
+    ((p.role || p.type || "").toLowerCase().includes("dans") ? "danser" : "speler");
 
-  const players = (people || []).filter(p => roleKind(p) === "speler")
+  const weeklyPlayers = (people || [])
+    .filter(p => roleKind(p) === "speler" && !!p.repeatsWeekly)
     .sort((a,b)=> lastNameOf(a).localeCompare(lastNameOf(b)));
-  const dancers = (people || []).filter(p => roleKind(p) === "danser")
+
+  const nonWeeklyPlayers = (people || [])
+    .filter(p => roleKind(p) === "speler" && !p.repeatsWeekly)
     .sort((a,b)=> lastNameOf(a).localeCompare(lastNameOf(b)));
-  const ordered = [...players, ...dancers];
+
+  const dancers = (people || [])
+    .filter(p => roleKind(p) === "danser")
+    .sort((a,b)=> lastNameOf(a).localeCompare(lastNameOf(b)));
+
+  const ordered = [...weeklyPlayers, ...nonWeeklyPlayers, ...dancers];
 
   // ====== Add person ======
   const [draft, setDraft] = React.useState({ firstName: "", lastName: "", role: "speler" });
@@ -52,6 +65,8 @@ function CastMatrixView({ sketches = [], people = [], currentShowId, setState = 
           firstName: norm(draft.firstName),
           lastName: norm(draft.lastName),
           role: draft.role, // "speler" | "danser"
+          // repeatsWeekly staat standaard op false; kan je direct in de tabel aanvinken
+          repeatsWeekly: false,
         }
       ]
     }));
@@ -135,6 +150,7 @@ function CastMatrixView({ sketches = [], people = [], currentShowId, setState = 
             <tr className="bg-gray-100">
               <th className="border px-2 py-1 text-left">Naam</th>
               <th className="border px-2 py-1 text-left w-32">Type</th>
+              <th className="border px-2 py-1 text-left w-36">Wekelijks?</th>{/* NIEUW */}
               <th className="border px-2 py-1 text-left w-40">Aantal sketches</th>
               <th className="border px-2 py-1 text-left w-40">Acties</th>
             </tr>
@@ -174,11 +190,22 @@ function CastMatrixView({ sketches = [], people = [], currentShowId, setState = 
                     </select>
                   </td>
 
+                  {/* Wekelijks?  (checkbox die p.repeatsWeekly in state bewaart) */}
+                  <td className="border px-2 py-1">
+                    <label className="inline-flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={!!p.repeatsWeekly}
+                        onChange={(e)=>updatePerson(p.id, { repeatsWeekly: !!e.target.checked })}
+                      />
+                      <span className="text-sm">repeteert wekelijks</span>
+                    </label>
+                  </td>
+
                   {/* Aantal sketches (uniek per sketch) */}
                   <td className="border px-2 py-1">
                     <span className="inline-flex items-center gap-2">
                       <span className="font-medium">{count}</span>
-                      
                     </span>
                   </td>
 
@@ -196,7 +223,7 @@ function CastMatrixView({ sketches = [], people = [], currentShowId, setState = 
             })}
             {ordered.length === 0 && (
               <tr>
-                <td className="border px-2 py-2 text-gray-500 text-center" colSpan={4}>
+                <td className="border px-2 py-2 text-gray-500 text-center" colSpan={5}>
                   Nog geen mensen in deze show.
                 </td>
               </tr>
@@ -207,7 +234,8 @@ function CastMatrixView({ sketches = [], people = [], currentShowId, setState = 
 
       <div className="mt-3 text-xs text-gray-600">
         • “Aantal sketches” telt per persoon het aantal unieke sketches waar hij/zij minstens één rol heeft.<br/>
-        • Pauzes en “De Waerse Ku-j” tellen niet mee.
+        • Pauzes en “De Waerse Ku-j” tellen niet mee.<br/>
+        • Sortering: eerst wekelijkse spelers, dan overige spelers, dan dansers (allen alfabetisch).
       </div>
     </div>
   );
