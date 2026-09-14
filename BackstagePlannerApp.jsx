@@ -1,5 +1,10 @@
 // BackstagePlannerApp.jsx
 
+// Alles in een IIFE: voorkomt "Identifier '...' has already been declared"
+// wanneer top-level const-namen (via destructuring uit window) botsen met
+// globale function-declarations uit de andere script-tags (bv. CastMatrixView).
+(function () {
+
 // GEEN: const { useEffect, useMemo, useState } = React;
 
 const {
@@ -1653,3 +1658,5 @@ if (shareTab === "deck") {
 
 // expose naar window zodat index.html kan mounten
 window.BackstagePlannerApp = App;
+
+})();
