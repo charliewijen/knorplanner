@@ -51,79 +51,49 @@ header, .fixed { display: none !important; }
 <div id="root"></div>
 
 <!-- 📦 Componenten / helpers -->
-<!-- Print utils MOET vóór de pagina-componenten staan -->
-<script type="text/babel" src="PrintUtils.jsx"></script>
-<script
-type="text/babel"
-data-presets='[["react", {"runtime": "classic"}]]'
-src="BackstageComponents.jsx"
-></script>
-
-<!-- 📦 Losse pagina’s -->
-<script
-type="text/babel"
-data-presets='[["react", {"runtime": "classic"}]]'
-src="PlannerMinimal.jsx"
-></script>
-
-<!-- Belangrijk: MOET vóór BackstagePlannerApp.jsx staan -->
-<script
-type="text/babel"
-data-presets='[["react", {"runtime": "classic"}]]'
-src="RehearsalPlanner.jsx"
-></script>
-
-<script
-type="text/babel"
-data-presets='[["react", {"runtime": "classic"}]]'
-src="ScriptsView.jsx"
-></script>
-
-<script
-type="text/babel"
-data-presets='[["react", {"runtime": "classic"}]]'
-src="CastMatrixView.jsx"
-></script>
-
-<script
-type="text/babel"
-data-presets='[["react", {"runtime": "classic"}]]'
-src="MicMatrixView.jsx"
-></script>
-
-<script
-type="text/babel"
-data-presets='[["react", {"runtime": "classic"}]]'
-src="RoleDistributionView.jsx"
-></script>
-
-<script
-type="text/babel"
-data-presets='[["react", {"runtime": "classic"}]]'
-src="TechPackViewPage.jsx"
-></script>
-
-<script
-type="text/babel"
-data-presets='[["react", {"runtime": "classic"}]]'
-src="PRKitView.jsx"
-></script>
-
-<!-- (optioneel, handig om te checken in de console) -->
+<!--
+  Deze bestanden worden bewust NIET meer via automatische
+  <script type="text/babel" src="..."> tags geladen: Babel-standalone’s
+  eigen scanner bleek onbetrouwbaar zodra data-presets iets anders dan een
+  kale komma-lijst bevat (nodig om de JSX-runtime op "classic" te zetten).
+  In plaats daarvan laden en transformeren we elk bestand zelf, in de
+  juiste volgorde, en voeren het resultaat pas daarna uit. Dat voorkomt
+  zowel de laadvolgorde-problemen als de import/"automatic runtime"-crash
+  van de automatische scanner.
+-->
 <script>
+(async function loadKnorPlanner() {
+const files = [
+"PrintUtils.jsx",
+"BackstageComponents.jsx",
+"PlannerMinimal.jsx",
+"RehearsalPlanner.jsx",
+"ScriptsView.jsx",
+"CastMatrixView.jsx",
+"MicMatrixView.jsx",
+"RoleDistributionView.jsx",
+"TechPackViewPage.jsx",
+"PRKitView.jsx",
+"BackstagePlannerApp.jsx",
+];
+
+for (const file of files) {
+const res = await fetch(file);
+const src = await res.text();
+const { code } = Babel.transform(src, {
+presets: [["react", { runtime: "classic" }]],
+filename: file,
+});
+const s = document.createElement("script");
+s.textContent = code;
+document.body.appendChild(s);
+}
+
 console.log("RehearsalPlanner aanwezig?", !!window.RehearsalPlanner);
-</script>
 
-<!-- 📦 Hoofd-app (MOET als laatste) -->
-<script
-type="text/babel"
-data-presets='[["react", {"runtime": "classic"}]]'
-src="BackstagePlannerApp.jsx"
-></script>
-
-<script type="text/babel">
 const root = ReactDOM.createRoot(document.getElementById("root"));
-root.render(<BackstagePlannerApp />);
+root.render(React.createElement(window.BackstagePlannerApp));
+})();
 </script>
 </body>
 </html>
