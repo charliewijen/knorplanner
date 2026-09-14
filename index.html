@@ -1,139 +1,129 @@
 <!DOCTYPE html>
 <html lang="nl">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Knorplanner</title>
-  <link rel="icon" href="https://cdn-icons-png.flaticon.com/512/616/616584.png">
-  <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/616/616584.png">
-  <meta name="theme-color" content="#ffffff">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Knorplanner</title>
+<link rel="icon" href="https://cdn-icons-png.flaticon.com/512/616/616584.png">
+<link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/616/616584.png">
+<meta name="theme-color" content="#ffffff">
 
-  <!-- React + Babel -->
-  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<!-- React + Babel -->
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-  <!-- Supabase -->
-  <script src="https://unpkg.com/@supabase/supabase-js"></script>
-  <script>
-    // maak Supabase client globaal beschikbaar
-    window.SUPA = supabase.createClient(
-      "https://tsqcqtkporzvdfwzwcjy.supabase.co",
-      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzcWNxdGtwb3J6dmRmd3p3Y2p5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY0NzcwODIsImV4cCI6MjA3MjA1MzA4Mn0.dTAr_B0smr6PE8zQp6ABcmfCO_39d5svi8RlEF-EWxE"
-    );
-  </script>
+<!-- Supabase -->
+<script src="https://unpkg.com/@supabase/supabase-js"></script>
+<script>
+// maak Supabase client globaal beschikbaar
+window.SUPA = supabase.createClient(
+"https://tsqcqtkporzvdfwzwcjy.supabase.co",
+"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRzcWNxdGtwb3J6dmRmd3p3Y2p5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTY0NzcwODIsImV4cCI6MjA3MjA1MzA4Mn0.dTAr_B0smr6PE8zQp6ABcmfCO_39d5svi8RlEF-EWxE"
+);
+</script>
 
-  <!-- Tailwind -->
-  <script src="https://cdn.tailwindcss.com"></script>
+<!-- Tailwind -->
+<script src="https://cdn.tailwindcss.com"></script>
 
-  <!-- Hoofd-stylesheet -->
-  <link rel="stylesheet" href="app-theme.css">
+<!-- Hoofd-stylesheet -->
+<link rel="stylesheet" href="app-theme.css">
 
-  <!-- Kleine, neutrale print-helpers (géén “verberg alles behalve …”) -->
-  <style>
-    .print-hide { display: inline; }
-    .print-only { display: none; }
-    .no-truncate { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; }
+<!-- Kleine, neutrale print-helpers (géén “verberg alles behalve …”) -->
+<style>
+.print-hide { display: inline; }
+.print-only { display: none; }
+.no-truncate { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; }
 
-    @page {
-      size: A4 landscape;
-      margin: 12mm;
-    }
+@page {
+size: A4 landscape;
+margin: 12mm;
+}
 
-    @media print {
-      header, .fixed { display: none !important; }
-      .print-hide { display: none !important; }
-      .print-only { display: inline !important; }
-    }
-  </style>
+@media print {
+header, .fixed { display: none !important; }
+.print-hide { display: none !important; }
+.print-only { display: inline !important; }
+}
+</style>
 </head>
 <body class="bg-white text-gray-900">
-  <div id="root"></div>
+<div id="root"></div>
 
-  <!-- 📦 Componenten / helpers -->
-  <!-- Print utils MOET vóór de pagina-componenten staan -->
-  <script type="text/babel" src="PrintUtils.jsx"></script>
-  <script
-    type="text/babel"
-    data-presets="env,react"
-    data-plugins="proposal-optional-chaining,proposal-nullish-coalescing-operator"
-    src="BackstageComponents.jsx"
-  ></script>
+<!-- 📦 Componenten / helpers -->
+<!-- Print utils MOET vóór de pagina-componenten staan -->
+<script type="text/babel" src="PrintUtils.jsx"></script>
+<script
+type="text/babel"
+data-presets="env,react"
+src="BackstageComponents.jsx"
+></script>
 
-  <!-- 📦 Losse pagina’s -->
-  <script
-    type="text/babel"
-    data-presets="env,react"
-    data-plugins="proposal-nullish-coalescing-operator,proposal-optional-chaining"
-    src="PlannerMinimal.jsx"
-  ></script>
+<!-- 📦 Losse pagina’s -->
+<script
+type="text/babel"
+data-presets="env,react"
+src="PlannerMinimal.jsx"
+></script>
 
-  <!-- Belangrijk: MOET vóór BackstagePlannerApp.jsx staan -->
-  <script
-    type="text/babel"
-    data-presets="env,react"
-    data-plugins="proposal-nullish-coalescing-operator,proposal-optional-chaining"
-    src="RehearsalPlanner.jsx"
-  ></script>
+<!-- Belangrijk: MOET vóór BackstagePlannerApp.jsx staan -->
+<script
+type="text/babel"
+data-presets="env,react"
+src="RehearsalPlanner.jsx"
+></script>
 
-  <script
-    type="text/babel"
-    data-presets="env,react"
-    data-plugins="proposal-nullish-coalescing-operator,proposal-optional-chaining"
-    src="ScriptsView.jsx"
-  ></script>
+<script
+type="text/babel"
+data-presets="env,react"
+src="ScriptsView.jsx"
+></script>
 
-  <script
-    type="text/babel"
-    data-presets="env,react"
-    data-plugins="proposal-nullish-coalescing-operator,proposal-optional-chaining"
-    src="CastMatrixView.jsx"
-  ></script>
+<script
+type="text/babel"
+data-presets="env,react"
+src="CastMatrixView.jsx"
+></script>
 
-  <script
-    type="text/babel"
-    data-presets="env,react"
-    data-plugins="proposal-nullish-coalescing-operator,proposal-optional-chaining"
-    src="MicMatrixView.jsx"
-  ></script>
+<script
+type="text/babel"
+data-presets="env,react"
+src="MicMatrixView.jsx"
+></script>
 
-  <script
-    type="text/babel"
-    data-presets="env,react"
-    data-plugins="proposal-nullish-coalescing-operator,proposal-optional-chaining"
-    src="RoleDistributionView.jsx"
-  ></script>
+<script
+type="text/babel"
+data-presets="env,react"
+src="RoleDistributionView.jsx"
+></script>
 
-  <script
-    type="text/babel"
-    data-presets="env,react"
-    data-plugins="proposal-nullish-coalescing-operator,proposal-optional-chaining"
-    src="TechPackViewPage.jsx"
-  ></script>
+<script
+type="text/babel"
+data-presets="env,react"
+src="TechPackViewPage.jsx"
+></script>
 
-  <script
-    type="text/babel"
-    data-presets="env,react"
-    data-plugins="proposal-optional-chaining,proposal-nullish-coalescing-operator"
-    src="PRKitView.jsx"
-  ></script>
+<script
+type="text/babel"
+data-presets="env,react"
+src="PRKitView.jsx"
+></script>
 
-  <!-- (optioneel, handig om te checken in de console) -->
-  <script>
-    console.log("RehearsalPlanner aanwezig?", !!window.RehearsalPlanner);
-  </script>
+<!-- (optioneel, handig om te checken in de console) -->
+<script>
+console.log("RehearsalPlanner aanwezig?", !!window.RehearsalPlanner);
+</script>
 
-  <!-- 📦 Hoofd-app (MOET als laatste) -->
-  <script
-    type="text/babel"
-    data-presets="env,react"
-    data-plugins="proposal-optional-chaining,proposal-nullish-coalescing-operator"
-    src="BackstagePlannerApp.jsx"
-  ></script>
+<!-- 📦 Hoofd-app (MOET als laatste) -->
+<script
+type="text/babel"
+data-presets="env,react"
+src="BackstagePlannerApp.jsx"
+></script>
 
-  <script type="text/babel">
-    const root = ReactDOM.createRoot(document.getElementById("root"));
-    root.render(<BackstagePlannerApp />);
-  </script>
+<script type="text/babel">
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<BackstagePlannerApp />);
+</script>
 </body>
 </html>
